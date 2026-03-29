@@ -13,7 +13,7 @@ const SUPABASE_ANON = "sb_publishable_uHtXEsYeYfnSzKU3maqPOw_rutBeBjh";
 // Pega aquí la URL de tu logo (imagen subida a internet)
 // Ejemplo: "https://i.imgur.com/tulogo.png"
 // Si lo dejas vacío ("") se mostrará el ícono 📡 por defecto
-const LOGO_URL = "https://imgur.com/a/iX5gd48";
+const LOGO_URL = "https://i.imgur.com/1s2tyxn.png";
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 
