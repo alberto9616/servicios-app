@@ -9,6 +9,12 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL  = "https://fwimnbieduydfsjwljjv.supabase.co";
 const SUPABASE_ANON = "sb_publishable_uHtXEsYeYfnSzKU3maqPOw_rutBeBjh";
 
+// ── Logo de la empresa ─────────────────────────────────────
+// Pega aquí la URL de tu logo (imagen subida a internet)
+// Ejemplo: "https://i.imgur.com/tulogo.png"
+// Si lo dejas vacío ("") se mostrará el ícono 📡 por defecto
+const LOGO_URL = "https://imgur.com/a/iX5gd48";
+
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 
 // ──────────────────────────────────────────────────────────
@@ -29,6 +35,7 @@ const mapTicket = (r, mensajes = []) => r ? ({
   id: r.id, clienteId: r.cliente_id, clienteNombre: r.cliente_nombre,
   tipo: r.tipo, titulo: r.titulo, categoria: r.categoria, estado: r.estado,
   prioridad: r.prioridad, ordenId: r.orden_id,
+  numero: r.numero || null,
   fechaCreacion: new Date(r.fecha_creacion).getTime(),
   mensajes: mensajes.map(m => ({ autor: m.autor, texto: m.texto, ts: new Date(m.ts).getTime() }))
 }) : null;
@@ -832,7 +839,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   });
   const pendientes = tickets.filter(t => t.estado === "Abierto").sort((a, b) => (b.prioridad === "alta" ? 1 : 0) - (a.prioridad === "alta" ? 1 : 0));
   const enProceso = tickets.filter(t => t.estado === "En proceso");
-  const resueltos = tickets.filter(t => t.estado === "Resuelto");
+  const resueltos = tickets.filter(t => t.estado === "Resuelto").sort((a, b) => b.fechaCreacion - a.fechaCreacion);
   const misOrdenes = ordenes.filter(o => o.secretarioId === usuario.id);
 
   const enviarMsg = async (ticketId, texto, autor) => {
@@ -976,6 +983,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
           <div key={t.id} onClick={() => setTicketAbierto(t.id)} style={{ background: "#0f172a", border: "1px solid " + (t.prioridad === "alta" ? "#8b5cf644" : "#1e293b"), borderLeft: "4px solid " + (t.prioridad === "alta" ? "#8b5cf6" : TICKET_COLOR[t.estado]), borderRadius: 12, padding: "11px 14px", cursor: "pointer", marginBottom: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span>{opcion?.emoji || "🔧"}</span>
+              {t.numero && <span style={{ fontSize: 11, color: "#475569", fontWeight: 700, background: "#1e293b", borderRadius: 6, padding: "1px 7px" }}>#{t.numero}</span>}
               <span style={{ fontWeight: 700, color: "#f1f5f9", flex: 1, fontSize: 14 }}>{t.titulo}</span>
               {t.categoria === "solicitudes" && <Badge text="📋 Solicitud" color="#0ea5e9" />}
               {t.prioridad === "alta" && <Badge text="🏢 PRIORIDAD" color="#8b5cf6" />}
@@ -1370,7 +1378,6 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
 // ══════════════════════════════════════════════════════════════
 function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zonas }) {
   const [tab, setTab] = useState("hoy");
-  const [nota, setNota] = useState("");
 
   const zonaT = zonas.find(z => z.id === usuario.zonaId);
   const hoy = new Date().toISOString().split("T")[0];
@@ -1393,22 +1400,22 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
     } catch (err) { console.error("Error cambiando estado orden:", err); }
   };
 
-  const agregarNota = async (ordenId) => {
-    if (!nota.trim()) return;
-    const orden = ordenes.find(o => o.id === ordenId);
-    if (!orden) return;
-    const nuevasNotas = [...(orden.notas || []), { texto: nota.trim(), ts: Date.now() }];
-    try {
-      await db.agregarNotaOrden(ordenId, nuevasNotas);
-      setOrdenes(p => p.map(o => o.id === ordenId ? { ...o, notas: nuevasNotas } : o));
-      setNota("");
-    } catch (err) { console.error("Error agregando nota:", err); }
-  };
-
+  // OrdenCard con nota local para evitar que el teclado se cierre en móvil
   const OrdenCard = ({ orden }) => {
     const [abierta, setAbierta] = useState(false);
+    const [nota, setNota] = useState("");
     const esTraslado = orden.tipo === "Traslado / cambio de domicilio";
     const esInstalacion = orden.tipo === "Instalación nueva";
+
+    const agregarNota = async () => {
+      if (!nota.trim()) return;
+      const nuevasNotas = [...(orden.notas || []), { texto: nota.trim(), ts: Date.now() }];
+      try {
+        await db.agregarNotaOrden(orden.id, nuevasNotas);
+        setOrdenes(p => p.map(o => o.id === orden.id ? { ...o, notas: nuevasNotas } : o));
+        setNota("");
+      } catch (err) { console.error("Error agregando nota:", err); }
+    };
     return (
       <div style={{ background: "#0f172a", border: "1px solid " + (orden.prioridad === "alta" ? "#8b5cf633" : "#1e293b"), borderLeft: "4px solid " + ORDEN_COLOR[orden.estado], borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
         <div onClick={() => setAbierta(!abierta)} style={{ padding: "12px 16px", cursor: "pointer" }}>
@@ -1463,8 +1470,8 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
             {orden.estado !== "Completada" && (
               <>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                  <Inp value={nota} onChange={e => setNota(e.target.value)} onKeyDown={e => e.key === "Enter" && agregarNota(orden.id)} placeholder="Agregar nota de campo..." />
-                  <Btn onClick={() => agregarNota(orden.id)} style={{ padding: "9px 14px", fontSize: 13 }}>+</Btn>
+                  <Inp value={nota} onChange={e => setNota(e.target.value)} onKeyDown={e => e.key === "Enter" && agregarNota()} placeholder="Agregar nota de campo..." />
+                  <Btn onClick={agregarNota} style={{ padding: "9px 14px", fontSize: 13 }}>+</Btn>
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {orden.estado === "Pendiente" && <Btn onClick={() => cambiarEstado(orden.id, "En camino")} variant="primary" style={{ fontSize: 13 }}>🚗 En camino</Btn>}
@@ -2204,7 +2211,23 @@ export default function App() {
     else setLoginError("Usuario o clave incorrectos.");
   };
 
-  const cerrarSesion = () => { setSesion(null); setLoginUser(""); setLoginClave(""); };
+  const cerrarSesion = useCallback(() => { setSesion(null); setLoginUser(""); setLoginClave(""); }, []);
+
+  // ── Cierre automático por inactividad (1 minuto) ──────────
+  const timerRef = useRef(null);
+  const resetTimer = useCallback(() => {
+    if (!sesion) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => { cerrarSesion(); }, 60000);
+  }, [sesion, cerrarSesion]);
+
+  useEffect(() => {
+    if (!sesion) { clearTimeout(timerRef.current); return; }
+    const eventos = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "click"];
+    eventos.forEach(e => window.addEventListener(e, resetTimer));
+    resetTimer();
+    return () => { eventos.forEach(e => window.removeEventListener(e, resetTimer)); clearTimeout(timerRef.current); };
+  }, [sesion, resetTimer]);
 
   const ticketsNuevos = tickets.filter(t => t.estado === "Abierto").length;
   const ordenesHoyTecnico = sesion?.rol === "tecnico"
@@ -2253,7 +2276,11 @@ export default function App() {
       {/* HEADER */}
       <header style={{ borderBottom: "1px solid #1e293b", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "#020817ee", zIndex: 10, backdropFilter: "blur(10px)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 24 }}>📡</span>
+          {LOGO_URL ? (
+            <img src={LOGO_URL} alt="Logo" style={{ width: 32, height: 32, objectFit: "contain", borderRadius: 8 }} />
+          ) : (
+            <span style={{ fontSize: 24 }}>📡</span>
+          )}
           <div>
             <div style={{ fontWeight: 800, fontSize: 15, color: "#f1f5f9", letterSpacing: -0.5 }}>{nombreEmpresaHeader}</div>
             <div style={{ fontSize: 10, color: "#64748b" }}>
@@ -2278,7 +2305,11 @@ export default function App() {
       {!sesion && (
         <div style={{ maxWidth: 380, margin: "70px auto", padding: 16 }}>
           <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 18, padding: 32, textAlign: "center" }}>
-            <div style={{ fontSize: 52, marginBottom: 12 }}>📡</div>
+            {LOGO_URL ? (
+              <img src={LOGO_URL} alt="Logo" style={{ width: 100, height: 100, objectFit: "contain", marginBottom: 12, borderRadius: 16 }} />
+            ) : (
+              <div style={{ fontSize: 52, marginBottom: 12 }}>📡</div>
+            )}
             <h2 style={{ color: "#f1f5f9", marginBottom: 4, fontSize: 20 }}>GC HOGAR.NET</h2>
             <p style={{ color: "#64748b", marginBottom: 24, fontSize: 13 }}>Ingresa con tu usuario y clave</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
