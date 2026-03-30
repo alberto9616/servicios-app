@@ -2306,11 +2306,11 @@ export default function App() {
         <div style={{ maxWidth: 400, margin: "60px auto", padding: 16 }}>
           <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 24, overflow: "hidden", boxShadow: "0 25px 60px #00000066" }}>
             {/* Bloque superior con logo */}
-            <div style={{ background: "linear-gradient(135deg, #0ea5e915 0%, #0f172a 100%)", borderBottom: "1px solid #1e293b", padding: "36px 32px 28px", textAlign: "center" }}>
+            <div style={{ background: "#ffffff", borderBottom: "1px solid #e2e8f0", padding: "32px 32px 24px", textAlign: "center" }}>
               {LOGO_URL ? (
-                <img src={LOGO_URL} alt="Logo" style={{ width: "100%", maxWidth: 220, height: 160, objectFit: "contain", mixBlendMode: "multiply", filter: "contrast(1.05)" }} />
+                <img src={LOGO_URL} alt="Logo" style={{ width: "100%", maxWidth: 240, height: 170, objectFit: "contain" }} />
               ) : (
-                <div style={{ fontSize: 64, marginBottom: 8 }}>📡</div>
+                <div style={{ fontSize: 64 }}>📡</div>
               )}
             </div>
             {/* Bloque inferior con formulario */}
