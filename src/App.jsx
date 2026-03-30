@@ -9,6 +9,11 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL  = "https://fwimnbieduydfsjwljjv.supabase.co";
 const SUPABASE_ANON = "sb_publishable_uHtXEsYeYfnSzKU3maqPOw_rutBeBjh";
 
+// ── Wispro Sync — Edge Function URL ────────────────────────
+// Reemplaza [TU-PROJECT-ID] con el ID de tu proyecto Supabase
+// Lo encuentras en: supabase.com → tu proyecto → Settings → General
+const WISPRO_SYNC_URL = "https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/wispro-sync";
+
 // ── Logo de la empresa ─────────────────────────────────────
 // Pega aquí la URL de tu logo (imagen subida a internet)
 // Ejemplo: "https://i.imgur.com/tulogo.png"
@@ -242,6 +247,137 @@ const formatTime = (ts) => new Date(ts).toLocaleString("es-CO", { day: "2-digit"
 const genId = () => Date.now().toString() + Math.random().toString(36).slice(2, 6);
 
 // ══════════════════════════════════════════════════════════════
+// WISPRO SYNC — hook + banner
+// ══════════════════════════════════════════════════════════════
+function useWisproSync() {
+  const [syncState, setSyncState] = useState({
+    syncing: false,
+    lastSync: null,
+    error: null,
+  });
+
+  const cargarUltimoSync = async () => {
+    try {
+      const { data } = await sb
+        .from("wispro_sync_log")
+        .select("synced_at, clientes_actualizados, errores, status")
+        .order("synced_at", { ascending: false })
+        .limit(1)
+        .single();
+      if (data) {
+        setSyncState(prev => ({
+          ...prev,
+          lastSync: {
+            ts: new Date(data.synced_at),
+            clientesActualizados: data.clientes_actualizados,
+            errores: data.errores,
+            status: data.status,
+          }
+        }));
+      }
+    } catch { /* sin registros previos */ }
+  };
+
+  const sincronizarAhora = async (onDone) => {
+    setSyncState(prev => ({ ...prev, syncing: true, error: null }));
+    try {
+      const res = await fetch(WISPRO_SYNC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Error en sincronización");
+      setSyncState(prev => ({
+        ...prev,
+        syncing: false,
+        lastSync: {
+          ts: new Date(),
+          clientesActualizados: data.clientesActualizados,
+          errores: data.errores,
+          status: data.errores === 0 ? "ok" : "parcial",
+        }
+      }));
+      if (onDone) onDone();
+    } catch (e) {
+      setSyncState(prev => ({ ...prev, syncing: false, error: e.message }));
+    }
+  };
+
+  useEffect(() => { cargarUltimoSync(); }, []);
+  return { ...syncState, sincronizarAhora };
+}
+
+function WisproSyncBanner({ onSync }) {
+  const { syncing, lastSync, error, sincronizarAhora } = useWisproSync();
+
+  const formatRelativo = (fecha) => {
+    if (!fecha) return "Nunca";
+    const diff = Math.floor((Date.now() - fecha.getTime()) / 60000);
+    if (diff < 1)  return "Hace un momento";
+    if (diff < 60) return `Hace ${diff} min`;
+    const h = Math.floor(diff / 60);
+    return `Hace ${h}h ${diff % 60}min`;
+  };
+
+  const colorStatus = {
+    ok:      { bg: "#f0fdf4", border: "#bbf7d0", text: "#16a34a", icon: "✅" },
+    parcial: { bg: "#fffbeb", border: "#fde68a", text: "#d97706", icon: "⚠️" },
+    error:   { bg: "#fef2f2", border: "#fecaca", text: "#dc2626", icon: "❌" },
+  };
+  const cs = colorStatus[lastSync?.status ?? "ok"];
+
+  return (
+    <div style={{
+      background: lastSync ? cs.bg : "#f8fafc",
+      border: "1px solid " + (lastSync ? cs.border : "#e2e8f0"),
+      borderLeft: "4px solid " + (lastSync ? cs.text : "#cbd5e1"),
+      borderRadius: 12,
+      padding: "12px 16px",
+      marginBottom: 16,
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      flexWrap: "wrap",
+    }}>
+      <span style={{ fontSize: 22 }}>📡</span>
+      <div style={{ flex: 1, minWidth: 160 }}>
+        <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 13 }}>
+          Sincronización con Wispro Cloud
+        </div>
+        {lastSync ? (
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+            {cs.icon} {formatRelativo(lastSync.ts)} · {lastSync.clientesActualizados} clientes actualizados
+            {lastSync.errores > 0 && <span style={{ color: "#d97706", marginLeft: 6 }}>· {lastSync.errores} con error</span>}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>Sin sincronización registrada</div>
+        )}
+        {error && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {error}</div>}
+      </div>
+      <button
+        onClick={() => sincronizarAhora(onSync)}
+        disabled={syncing}
+        style={{
+          background: syncing ? "#e2e8f0" : "#0ea5e9",
+          color: syncing ? "#64748b" : "#fff",
+          border: "none",
+          borderRadius: 8,
+          padding: "8px 14px",
+          cursor: syncing ? "not-allowed" : "pointer",
+          fontWeight: 700,
+          fontSize: 13,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        {syncing ? <>⟳ Sincronizando…</> : <>🔄 Sincronizar ahora</>}
+      </button>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
 // COMPONENTES BASE
 // ══════════════════════════════════════════════════════════════
 const Badge = ({ text, color }) => (
@@ -249,25 +385,25 @@ const Badge = ({ text, color }) => (
 );
 
 const Card = ({ children, style = {} }) => (
-  <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 14, padding: 20, ...style }}>{children}</div>
+  <div style={{ background: "#ffffff", border: "1px solid #1e293b", borderRadius: 14, padding: 20, ...style }}>{children}</div>
 );
 
 const Inp = ({ style: s = {}, ...props }) => (
-  <input style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#f1f5f9", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", ...s }} {...props} />
+  <input style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", ...s }} {...props} />
 );
 
 const Sel = ({ children, style: s = {}, ...props }) => (
-  <select style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#f1f5f9", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", ...s }} {...props}>{children}</select>
+  <select style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", ...s }} {...props}>{children}</select>
 );
 
 const Btn = ({ children, variant = "primary", style: s = {}, ...props }) => {
-  const bg = variant === "primary" ? "#0ea5e9" : variant === "danger" ? "#ef4444" : variant === "success" ? "#22c55e" : variant === "purple" ? "#8b5cf6" : "#1e293b";
+  const bg = variant === "primary" ? "#0ea5e9" : variant === "danger" ? "#ef4444" : variant === "success" ? "#22c55e" : variant === "purple" ? "#8b5cf6" : "#e2e8f0";
   return <button style={{ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", cursor: "pointer", fontWeight: 700, fontSize: 14, ...s }} {...props}>{children}</button>;
 };
 
 const Field = ({ label, children }) => (
   <div style={{ marginBottom: 14 }}>
-    <label style={{ display: "block", fontSize: 11, color: "#94a3b8", marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</label>
+    <label style={{ display: "block", fontSize: 11, color: "#475569", marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</label>
     {children}
   </div>
 );
@@ -296,10 +432,10 @@ function ChatTicket({ ticket, onSend, autorActual, nombreActual, usuarios }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ padding: "10px 16px", borderBottom: "1px solid #1e293b", background: "#0a1628" }}>
+      <div style={{ padding: "10px 16px", borderBottom: "1px solid #1e293b", background: "#0f172a" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 16 }}>{opcion?.emoji || "🔧"}</span>
-          <span style={{ fontWeight: 700, color: "#f1f5f9", fontSize: 14, flex: 1 }}>{ticket.titulo}</span>
+          <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 14, flex: 1 }}>{ticket.titulo}</span>
           <Badge text={ticket.estado} color={TICKET_COLOR[ticket.estado]} />
           {ticket.categoria === "solicitudes" && <Badge text="📋 SOLICITUD" color="#0ea5e9" />}
           {ticket.prioridad === "alta" && <Badge text="🔴 EMPRESA" color="#ef4444" />}
@@ -314,15 +450,15 @@ function ChatTicket({ ticket, onSend, autorActual, nombreActual, usuarios }) {
           const esSistema = m.autor === "sistema";
           if (esSistema) return (
             <div key={i} style={{ textAlign: "center" }}>
-              <span style={{ background: "#1e293b", color: "#64748b", fontSize: 11, borderRadius: 20, padding: "3px 12px" }}>{m.texto}</span>
+              <span style={{ background: "#e2e8f0", color: "#64748b", fontSize: 11, borderRadius: 20, padding: "3px 12px" }}>{m.texto}</span>
             </div>
           );
           return (
             <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: esPropio ? "flex-end" : "flex-start" }}>
-              <div style={{ fontSize: 11, color: "#475569", marginBottom: 3 }}>
+              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>
                 {getNombre(m.autor)} · {formatTime(m.ts)}
               </div>
-              <div style={{ maxWidth: "82%", padding: "10px 14px", borderRadius: esPropio ? "16px 16px 4px 16px" : "16px 16px 16px 4px", background: esPropio ? "#0ea5e9" : "#1e293b", color: "#f1f5f9", fontSize: 14, lineHeight: 1.5 }}>
+              <div style={{ maxWidth: "82%", padding: "10px 14px", borderRadius: esPropio ? "16px 16px 4px 16px" : "16px 16px 16px 4px", background: esPropio ? "#0ea5e9" : "#e2e8f0", color: "#0f172a", fontSize: 14, lineHeight: 1.5 }}>
                 {m.texto}
               </div>
             </div>
@@ -429,7 +565,8 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
     return (
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "16px" }}>
         <button onClick={() => setTicketAbierto(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 12 }}>← Mis reportes</button>
-        <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 14, overflow: "hidden", height: 500 }}>
+        {t.id && <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8, fontWeight: 700 }}>Ticket <span style={{ color: "#0ea5e9" }}>#{t.id.slice(0,8).toUpperCase()}</span></div>}
+        <div style={{ background: "#ffffff", border: "1px solid #1e293b", borderRadius: 14, overflow: "hidden", height: 500 }}>
           <ChatTicket ticket={t} onSend={enviarMsg} autorActual="cliente" nombreActual={usuario.nombre} usuarios={usuarios} />
         </div>
       </div>
@@ -443,7 +580,7 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
           <span>🏢</span>
           <div>
             <span style={{ color: "#c4b5fd", fontSize: 13, fontWeight: 600 }}>Cliente Empresarial · Atención prioritaria garantizada</span>
-            {usuario.nombreEmpresa && <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{usuario.nombreEmpresa}</div>}
+            {usuario.nombreEmpresa && <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{usuario.nombreEmpresa}</div>}
           </div>
         </div>
       )}
@@ -457,13 +594,13 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                 <span style={{ fontWeight: 700, color: TIPO_COLOR[a.tipo], fontSize: 13 }}>{a.titulo}</span>
                 <span style={{ marginLeft: "auto", fontSize: 11, color: "#64748b" }}>Afecta: {a.afecta}</span>
               </div>
-              <p style={{ margin: 0, color: "#cbd5e1", fontSize: 13 }}>{a.mensaje}</p>
+              <p style={{ margin: 0, color: "#475569", fontSize: 13 }}>{a.mensaje}</p>
             </div>
           ))}
         </div>
       )}
 
-      <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "#0f172a", borderRadius: 10, padding: 4 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "#ffffff", borderRadius: 10, padding: 4 }}>
         {[["info", "📋 Mi cuenta"], ["soporte", "🛠️ Soporte"], ["promo", "🎁 Promociones"]].map(([k, v]) => (
           <button key={k} onClick={() => { setTab(k); resetChat(); }} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", background: tab === k ? "#0ea5e9" : "transparent", color: tab === k ? "#fff" : "#64748b", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             {v}
@@ -476,25 +613,25 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
         <div>
           <div style={{ textAlign: "center", marginBottom: 18 }}>
             <div style={{ fontSize: 32, marginBottom: 6 }}>🎁</div>
-            <div style={{ fontWeight: 800, color: "#f1f5f9", fontSize: 17 }}>Promociones y Servicios</div>
+            <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 17 }}>Promociones y Servicios</div>
             <div style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>Descubre nuestras ofertas exclusivas</div>
           </div>
           {propaganda.filter(p => p.activo).length === 0 ? (
-            <div style={{ textAlign: "center", color: "#475569", padding: 40, fontSize: 14 }}>Sin promociones activas por el momento.</div>
+            <div style={{ textAlign: "center", color: "#64748b", padding: 40, fontSize: 14 }}>Sin promociones activas por el momento.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {propaganda.filter(p => p.activo).map(p => (
-                <div key={p.id} style={{ background: "#0f172a", border: "1px solid " + p.color + "44", borderLeft: "4px solid " + p.color, borderRadius: 14, padding: 18, position: "relative", overflow: "hidden" }}>
+                <div key={p.id} style={{ background: "#ffffff", border: "1px solid " + p.color + "44", borderLeft: "4px solid " + p.color, borderRadius: 14, padding: 18, position: "relative", overflow: "hidden" }}>
                   <div style={{ position: "absolute", top: 10, right: 14, fontSize: 40, opacity: 0.12 }}>{p.imagen}</div>
                   <div style={{ display: "flex", align: "center", gap: 10, marginBottom: 8 }}>
                     <span style={{ fontSize: 28 }}>{p.imagen}</span>
                     <div>
-                      <div style={{ fontWeight: 800, color: "#f1f5f9", fontSize: 15 }}>{p.titulo}</div>
+                      <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>{p.titulo}</div>
                       <Badge text={p.categoria === "promocion" ? "🏷️ Promoción" : p.categoria === "equipos" ? "🖥️ Equipos" : "📷 Cámaras"} color={p.color} />
                     </div>
                   </div>
-                  <p style={{ color: "#94a3b8", fontSize: 14, margin: "0 0 8px", lineHeight: 1.6 }}>{p.descripcion}</p>
-                  {p.fecha && <div style={{ fontSize: 11, color: "#475569" }}>⏳ Válido hasta: {formatDate(p.fecha)}</div>}
+                  <p style={{ color: "#475569", fontSize: 14, margin: "0 0 8px", lineHeight: 1.6 }}>{p.descripcion}</p>
+                  {p.fecha && <div style={{ fontSize: 11, color: "#64748b" }}>⏳ Válido hasta: {formatDate(p.fecha)}</div>}
                   <div style={{ marginTop: 12 }}>
                     <Btn style={{ fontSize: 13, padding: "8px 16px", background: p.color }}>📞 Consultar ahora</Btn>
                   </div>
@@ -509,16 +646,16 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <Card>
             <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Servicio activo</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#f1f5f9", marginBottom: 4 }}>{usuario.servicio}</div>
-            <div style={{ fontSize: 14, color: "#94a3b8" }}>Plan: {usuario.plan}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>{usuario.servicio}</div>
+            <div style={{ fontSize: 14, color: "#475569" }}>Plan: {usuario.plan}</div>
             {zonaUsuario && <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>📍 Zona: <span style={{ color: zonaUsuario.color }}>{zonaUsuario.nombre}</span></div>}
           </Card>
           <Card style={{ border: "1px solid " + ESTADO_COLOR[usuario.estado] + "44" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Próximo pago</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: "#f1f5f9" }}>{formatCOP(usuario.monto)}</div>
-                <div style={{ fontSize: 14, color: "#94a3b8", marginTop: 4 }}>Vence: {formatDate(usuario.fechaPago)}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: "#0f172a" }}>{formatCOP(usuario.monto)}</div>
+                <div style={{ fontSize: 14, color: "#475569", marginTop: 4 }}>Vence: {formatDate(usuario.fechaPago)}</div>
               </div>
               <Badge text={usuario.estado} color={ESTADO_COLOR[usuario.estado]} />
             </div>
@@ -526,14 +663,14 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
           {usuario.direccion && (
             <Card>
               <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Dirección de instalación</div>
-              <div style={{ fontSize: 14, color: "#f1f5f9" }}>📍 {usuario.direccion}</div>
+              <div style={{ fontSize: 14, color: "#0f172a" }}>📍 {usuario.direccion}</div>
             </Card>
           )}
           {usuario.claveWifi && (
             <Card style={{ border: "1px solid #0ea5e944" }}>
               <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Clave WiFi registrada</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: "#0ea5e9", letterSpacing: 2 }}>🔑 {usuario.claveWifi}</div>
-              <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>Para cambiarla ve a Soporte → Cambio de clave WiFi</div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Para cambiarla ve a Soporte → Cambio de clave WiFi</div>
             </Card>
           )}
         </div>
@@ -544,12 +681,12 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
           {/* NIVEL 1: Selección de categoría */}
           {!categoriaChat && !seleccion && (
             <div>
-              <p style={{ color: "#94a3b8", fontSize: 14, margin: "0 0 14px", textAlign: "center" }}>
-                Hola <strong style={{ color: "#f1f5f9" }}>{usuario.nombre.split(" ")[0]}</strong>, ¿qué necesitas?
+              <p style={{ color: "#475569", fontSize: 14, margin: "0 0 14px", textAlign: "center" }}>
+                Hola <strong style={{ color: "#0f172a" }}>{usuario.nombre.split(" ")[0]}</strong>, ¿qué necesitas?
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 20 }}>
                 {CATEGORIAS_SOPORTE.map(cat => (
-                  <button key={cat.id} onClick={() => setCategoriaChat(cat.id)} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, color: "#f1f5f9", padding: "16px 18px", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 12, fontSize: 15, fontWeight: 700 }}>
+                  <button key={cat.id} onClick={() => setCategoriaChat(cat.id)} style={{ background: "#e2e8f0", border: "1px solid #334155", borderRadius: 12, color: "#0f172a", padding: "16px 18px", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 12, fontSize: 15, fontWeight: 700 }}>
                     <span style={{ fontSize: 24 }}>{cat.emoji}</span>
                     <div>
                       <div>{cat.label}</div>
@@ -557,7 +694,7 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                         {cat.id === "solicitudes" ? "Traslados, reubicaciones, cambio de clave WiFi" : "Problemas técnicos, consultas de pago"}
                       </div>
                     </div>
-                    <span style={{ marginLeft: "auto", color: "#475569" }}>›</span>
+                    <span style={{ marginLeft: "auto", color: "#64748b" }}>›</span>
                   </button>
                 ))}
               </div>
@@ -571,8 +708,8 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                     return (
                       <div key={t.id}>
                         {editandoTicket?.id === t.id ? (
-                          <div style={{ background: "#1e293b", border: "1px solid #0ea5e944", borderRadius: 12, padding: 14, marginBottom: 8 }}>
-                            <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>✏️ Editar solicitud:</div>
+                          <div style={{ background: "#e2e8f0", border: "1px solid #0ea5e944", borderRadius: 12, padding: 14, marginBottom: 8 }}>
+                            <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>✏️ Editar solicitud:</div>
                             <Inp value={editandoTicket.texto} onChange={e => setEditandoTicket({ ...editandoTicket, texto: e.target.value })} style={{ marginBottom: 10 }} />
                             <div style={{ display: "flex", gap: 8 }}>
                               <Btn onClick={guardarEdicionTicket} style={{ fontSize: 12, padding: "6px 14px" }}>Guardar</Btn>
@@ -580,16 +717,16 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                             </div>
                           </div>
                         ) : (
-                          <div key={t.id} style={{ background: hay ? "#1e293b" : "#0f172a", border: hay ? "1px solid #0ea5e944" : "1px solid #1e293b", borderLeft: "4px solid " + (hay ? "#0ea5e9" : TICKET_COLOR[t.estado]), borderRadius: 12, padding: "11px 14px", marginBottom: 8 }}>
+                          <div key={t.id} style={{ background: hay ? "#e2e8f0" : "#ffffff", border: hay ? "1px solid #0ea5e944" : "1px solid #1e293b", borderLeft: "4px solid " + (hay ? "#0ea5e9" : TICKET_COLOR[t.estado]), borderRadius: 12, padding: "11px 14px", marginBottom: 8 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <span onClick={() => setTicketAbierto(t.id)} style={{ cursor: "pointer" }}>{ALL_OPCIONES.find(p => p.id === t.tipo)?.emoji || "🔧"}</span>
-                              <span onClick={() => setTicketAbierto(t.id)} style={{ fontWeight: 600, color: "#f1f5f9", flex: 1, fontSize: 13, cursor: "pointer" }}>{t.titulo}</span>
+                              <span onClick={() => setTicketAbierto(t.id)} style={{ fontWeight: 600, color: "#0f172a", flex: 1, fontSize: 13, cursor: "pointer" }}>{t.titulo}</span>
                               {t.categoria === "solicitudes" && <Badge text="Solicitud" color="#0ea5e9" />}
                               <Badge text={t.estado} color={TICKET_COLOR[t.estado]} />
                               {puedeEditar && (
                                 <>
-                                  <button onClick={() => setEditandoTicket({ id: t.id, texto: t.titulo })} style={{ background: "#1e293b", color: "#94a3b8", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>✏️</button>
-                                  <button onClick={() => setConfirmDeleteTicket(t.id)} style={{ background: "#1e293b", color: "#ef4444", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>🗑️</button>
+                                  <button onClick={() => setEditandoTicket({ id: t.id, texto: t.titulo })} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>✏️</button>
+                                  <button onClick={() => setConfirmDeleteTicket(t.id)} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>🗑️</button>
                                 </>
                               )}
                             </div>
@@ -602,10 +739,10 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                   {/* Modal confirmación eliminar */}
                   {confirmDeleteTicket && (
                     <div style={{ position: "fixed", inset: 0, background: "#000a", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-                      <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 16, padding: 28, maxWidth: 360, textAlign: "center" }}>
+                      <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 16, padding: 28, maxWidth: 360, textAlign: "center" }}>
                         <div style={{ fontSize: 36, marginBottom: 10 }}>🗑️</div>
-                        <div style={{ fontWeight: 700, color: "#f1f5f9", marginBottom: 8 }}>¿Eliminar esta solicitud?</div>
-                        <div style={{ color: "#94a3b8", fontSize: 13, marginBottom: 20 }}>Esta acción no se puede deshacer.</div>
+                        <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 8 }}>¿Eliminar esta solicitud?</div>
+                        <div style={{ color: "#475569", fontSize: 13, marginBottom: 20 }}>Esta acción no se puede deshacer.</div>
                         <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
                           <Btn variant="danger" onClick={() => eliminarTicket(confirmDeleteTicket)} style={{ fontSize: 13 }}>Sí, eliminar</Btn>
                           <Btn variant="ghost" onClick={() => setConfirmDeleteTicket(null)} style={{ fontSize: 13 }}>Cancelar</Btn>
@@ -622,14 +759,14 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
           {categoriaChat && !seleccion && (
             <div>
               <button onClick={() => setCategoriaChat(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
-              <p style={{ color: "#94a3b8", fontSize: 14, margin: "0 0 12px" }}>
+              <p style={{ color: "#475569", fontSize: 14, margin: "0 0 12px" }}>
                 {categoriaChat === "solicitudes" ? "📋 Selecciona el tipo de solicitud:" : "⚠️ ¿Cuál es el problema?"}
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                 {ALL_OPCIONES.filter(o => o.categoria === categoriaChat).map(op => (
-                  <button key={op.id} onClick={() => { setSeleccion(op); setReportado(false); setClaveEnviada(false); }} style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, color: "#f1f5f9", padding: "13px 16px", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 12, fontSize: 14, fontWeight: 600 }}>
+                  <button key={op.id} onClick={() => { setSeleccion(op); setReportado(false); setClaveEnviada(false); }} style={{ background: "#e2e8f0", border: "1px solid #334155", borderRadius: 12, color: "#0f172a", padding: "13px 16px", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 12, fontSize: 14, fontWeight: 600 }}>
                     <span style={{ fontSize: 20 }}>{op.emoji}</span>{op.label}
-                    <span style={{ marginLeft: "auto", color: "#475569" }}>›</span>
+                    <span style={{ marginLeft: "auto", color: "#64748b" }}>›</span>
                   </button>
                 ))}
               </div>
@@ -642,8 +779,8 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
               <button onClick={() => setSeleccion(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
               <Card>
                 <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Tu próximo pago</div>
-                <div style={{ fontSize: 30, fontWeight: 800, color: "#f1f5f9" }}>{formatCOP(usuario.monto)}</div>
-                <div style={{ fontSize: 14, color: "#94a3b8", marginTop: 4 }}>Vence: {formatDate(usuario.fechaPago)}</div>
+                <div style={{ fontSize: 30, fontWeight: 800, color: "#0f172a" }}>{formatCOP(usuario.monto)}</div>
+                <div style={{ fontSize: 14, color: "#475569", marginTop: 4 }}>Vence: {formatDate(usuario.fechaPago)}</div>
                 <div style={{ marginTop: 10 }}><Badge text={usuario.estado} color={ESTADO_COLOR[usuario.estado]} /></div>
               </Card>
             </div>
@@ -655,7 +792,7 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
               <button onClick={() => setSeleccion(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                 <span style={{ fontSize: 24 }}>🔑</span>
-                <h3 style={{ color: "#f1f5f9", margin: 0, fontSize: 16 }}>Cambio de clave WiFi</h3>
+                <h3 style={{ color: "#0f172a", margin: 0, fontSize: 16 }}>Cambio de clave WiFi</h3>
               </div>
               {usuario.claveWifi && (
                 <Card style={{ marginBottom: 14 }}>
@@ -665,9 +802,9 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
                 {(PASOS[seleccion.id] || []).map((paso, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, background: "#1e293b", borderRadius: 12, padding: "10px 14px", alignItems: "flex-start" }}>
+                  <div key={i} style={{ display: "flex", gap: 10, background: "#e2e8f0", borderRadius: 12, padding: "10px 14px", alignItems: "flex-start" }}>
                     <span style={{ background: "#0ea5e9", color: "#fff", borderRadius: "50%", width: 22, height: 22, minWidth: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
-                    <span style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.5 }}>{paso}</span>
+                    <span style={{ color: "#475569", fontSize: 13, lineHeight: 1.5 }}>{paso}</span>
                   </div>
                 ))}
               </div>
@@ -675,11 +812,11 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                 <div style={{ background: "#22c55e22", border: "1px solid #22c55e44", borderRadius: 12, padding: 16, textAlign: "center" }}>
                   <div style={{ fontSize: 26, marginBottom: 6 }}>✅</div>
                   <div style={{ fontWeight: 700, color: "#22c55e" }}>¡Clave registrada exitosamente!</div>
-                  <div style={{ color: "#94a3b8", fontSize: 13, marginTop: 4 }}>Tu nueva clave WiFi ha sido guardada y el equipo técnico la aplicará en tu router.</div>
+                  <div style={{ color: "#475569", fontSize: 13, marginTop: 4 }}>Tu nueva clave WiFi ha sido guardada y el equipo técnico la aplicará en tu router.</div>
                   <Btn onClick={resetChat} style={{ marginTop: 12, fontSize: 13 }}>Ver mis solicitudes</Btn>
                 </div>
               ) : (
-                <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 12, padding: 14 }}>
+                <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 12, padding: 14 }}>
                   <Field label="Nueva clave WiFi (mínimo 8 caracteres)">
                     <Inp value={nuevaClave} onChange={e => setNuevaClave(e.target.value)} placeholder="Ej: MiClave2024" type="text" />
                   </Field>
@@ -698,13 +835,13 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
               <button onClick={() => setSeleccion(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                 <span style={{ fontSize: 24 }}>{seleccion.emoji}</span>
-                <h3 style={{ color: "#f1f5f9", margin: 0, fontSize: 16 }}>{seleccion.label}</h3>
+                <h3 style={{ color: "#0f172a", margin: 0, fontSize: 16 }}>{seleccion.label}</h3>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
                 {(PASOS[seleccion.id] || []).map((paso, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, background: "#1e293b", borderRadius: 12, padding: "10px 14px", alignItems: "flex-start" }}>
+                  <div key={i} style={{ display: "flex", gap: 10, background: "#e2e8f0", borderRadius: 12, padding: "10px 14px", alignItems: "flex-start" }}>
                     <span style={{ background: "#8b5cf6", color: "#fff", borderRadius: "50%", width: 22, height: 22, minWidth: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
-                    <span style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.5 }}>{paso}</span>
+                    <span style={{ color: "#475569", fontSize: 13, lineHeight: 1.5 }}>{paso}</span>
                   </div>
                 ))}
               </div>
@@ -712,11 +849,11 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                 <div style={{ background: "#22c55e22", border: "1px solid #22c55e44", borderRadius: 12, padding: 16, textAlign: "center" }}>
                   <div style={{ fontSize: 26, marginBottom: 6 }}>✅</div>
                   <div style={{ fontWeight: 700, color: "#22c55e" }}>¡Solicitud enviada!</div>
-                  <div style={{ color: "#94a3b8", fontSize: 13, marginTop: 4 }}>El equipo te contactará pronto para coordinar.</div>
+                  <div style={{ color: "#475569", fontSize: 13, marginTop: 4 }}>El equipo te contactará pronto para coordinar.</div>
                   <Btn onClick={resetChat} style={{ marginTop: 12, fontSize: 13 }}>Ver mis solicitudes</Btn>
                 </div>
               ) : (
-                <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 12, padding: 14, textAlign: "center" }}>
+                <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 12, padding: 14, textAlign: "center" }}>
                   <Btn variant="purple" onClick={() => crearTicket()} style={{ width: "100%", fontSize: 14 }}>{seleccion.emoji} Enviar solicitud</Btn>
                 </div>
               )}
@@ -729,14 +866,14 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
               <button onClick={() => { setSeleccion(null); setReportado(false); }} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                 <span style={{ fontSize: 24 }}>{seleccion.emoji}</span>
-                <h3 style={{ color: "#f1f5f9", margin: 0, fontSize: 16 }}>{seleccion.label}</h3>
+                <h3 style={{ color: "#0f172a", margin: 0, fontSize: 16 }}>{seleccion.label}</h3>
               </div>
-              <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 12 }}>Intenta estos pasos primero:</p>
+              <p style={{ color: "#475569", fontSize: 13, marginBottom: 12 }}>Intenta estos pasos primero:</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
                 {(PASOS[seleccion.id] || []).map((paso, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, background: "#1e293b", borderRadius: 12, padding: "10px 14px", alignItems: "flex-start" }}>
+                  <div key={i} style={{ display: "flex", gap: 10, background: "#e2e8f0", borderRadius: 12, padding: "10px 14px", alignItems: "flex-start" }}>
                     <span style={{ background: "#0ea5e9", color: "#fff", borderRadius: "50%", width: 22, height: 22, minWidth: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
-                    <span style={{ color: "#cbd5e1", fontSize: 13, lineHeight: 1.5 }}>{paso}</span>
+                    <span style={{ color: "#475569", fontSize: 13, lineHeight: 1.5 }}>{paso}</span>
                   </div>
                 ))}
               </div>
@@ -744,11 +881,11 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                 <div style={{ background: "#22c55e22", border: "1px solid #22c55e44", borderRadius: 12, padding: 16, textAlign: "center" }}>
                   <div style={{ fontSize: 26, marginBottom: 6 }}>✅</div>
                   <div style={{ fontWeight: 700, color: "#22c55e" }}>¡Reporte enviado!</div>
-                  <div style={{ color: "#94a3b8", fontSize: 13, marginTop: 4 }}>El equipo te responderá pronto.</div>
+                  <div style={{ color: "#475569", fontSize: 13, marginTop: 4 }}>El equipo te responderá pronto.</div>
                   <Btn onClick={resetChat} style={{ marginTop: 12, fontSize: 13 }}>Ver mis reportes</Btn>
                 </div>
               ) : (
-                <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 12, padding: 14, textAlign: "center" }}>
+                <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 12, padding: 14, textAlign: "center" }}>
                   <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 10px" }}>¿No se resolvió?</p>
                   <Btn variant="danger" onClick={() => crearTicket()} style={{ width: "100%", fontSize: 14 }}>📢 Reportar falla al soporte</Btn>
                 </div>
@@ -778,6 +915,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   const [showFormAviso, setShowFormAviso] = useState(false);
   const [busqCliente, setBusqCliente] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("todos");
+  const [busqTicket, setBusqTicket] = useState("");
 
   // La zona del secretario
   const zonaSecretario = zonas.find(z => z.id === usuario.zonaId);
@@ -964,9 +1102,9 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
           <Sel style={{ width: "auto" }} value={t.estado} onChange={e => cambiarEstadoTicket(t.id, e.target.value)}>
             <option>Abierto</option><option>En proceso</option><option>Resuelto</option>
           </Sel>
-          {!t.ordenId && <Btn onClick={() => setModalOrden(t)} style={{ fontSize: 13, padding: "7px 14px" }}>🔧 Crear orden</Btn>}
+          {!t.ordenId && <Btn onClick={() => { setModalOrden(t); setTicketAbierto(null); }} style={{ fontSize: 13, padding: "7px 14px" }}>🔧 Crear orden</Btn>}
         </div>
-        <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 14, overflow: "hidden", height: 500 }}>
+        <div style={{ background: "#ffffff", border: "1px solid #1e293b", borderRadius: 14, overflow: "hidden", height: 500 }}>
           <ChatTicket ticket={t} onSend={enviarMsg} autorActual={usuario.id} nombreActual={usuario.nombre} usuarios={usuarios} />
         </div>
       </div>
@@ -976,21 +1114,21 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   const TabTickets = ({ lista, titulo }) => (
     <div style={{ marginBottom: 20 }}>
       <div style={{ color: "#64748b", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>{titulo} ({lista.length})</div>
-      {lista.length === 0 ? <div style={{ color: "#334155", fontSize: 13, padding: "10px 0" }}>Sin tickets</div> : lista.map(t => {
+      {lista.length === 0 ? <div style={{ color: "#475569", fontSize: 13, padding: "10px 0" }}>Sin tickets</div> : lista.map(t => {
         const ult = t.mensajes[t.mensajes.length - 1];
         const opcion = ALL_OPCIONES.find(p => p.id === t.tipo);
         return (
-          <div key={t.id} onClick={() => setTicketAbierto(t.id)} style={{ background: "#0f172a", border: "1px solid " + (t.prioridad === "alta" ? "#8b5cf644" : "#1e293b"), borderLeft: "4px solid " + (t.prioridad === "alta" ? "#8b5cf6" : TICKET_COLOR[t.estado]), borderRadius: 12, padding: "11px 14px", cursor: "pointer", marginBottom: 8 }}>
+          <div key={t.id} onClick={() => setTicketAbierto(t.id)} style={{ background: "#ffffff", border: "1px solid " + (t.prioridad === "alta" ? "#8b5cf644" : "#e2e8f0"), borderLeft: "4px solid " + (t.prioridad === "alta" ? "#8b5cf6" : TICKET_COLOR[t.estado]), borderRadius: 12, padding: "11px 14px", cursor: "pointer", marginBottom: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span>{opcion?.emoji || "🔧"}</span>
-              {t.numero && <span style={{ fontSize: 11, color: "#475569", fontWeight: 700, background: "#1e293b", borderRadius: 6, padding: "1px 7px" }}>#{t.numero}</span>}
-              <span style={{ fontWeight: 700, color: "#f1f5f9", flex: 1, fontSize: 14 }}>{t.titulo}</span>
+              {t.numero && <span style={{ fontSize: 11, color: "#64748b", fontWeight: 700, background: "#e2e8f0", borderRadius: 6, padding: "1px 7px" }}>#{t.numero}</span>}
+              <span style={{ fontWeight: 700, color: "#0f172a", flex: 1, fontSize: 14 }}>{t.titulo}</span>
               {t.categoria === "solicitudes" && <Badge text="📋 Solicitud" color="#0ea5e9" />}
               {t.prioridad === "alta" && <Badge text="🏢 PRIORIDAD" color="#8b5cf6" />}
               <Badge text={t.estado} color={TICKET_COLOR[t.estado]} />
             </div>
             <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{t.clienteNombre} · {formatTime(t.fechaCreacion)}</div>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3 }}>{ult?.texto?.slice(0, 60)}{(ult?.texto?.length || 0) > 60 ? "..." : ""}</div>
+            <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>{ult?.texto?.slice(0, 60)}{(ult?.texto?.length || 0) > 60 ? "..." : ""}</div>
           </div>
         );
       })}
@@ -1006,7 +1144,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
           <span style={{ color: "#64748b", fontSize: 12 }}>· Solo ves clientes y técnicos de tu zona</span>
         </div>
       )}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#0f172a", borderRadius: 10, padding: 4, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#ffffff", borderRadius: 10, padding: 4, flexWrap: "wrap" }}>
         {[["tickets", "🎫 Tickets", pendientes.length], ["ordenes", "📋 Órdenes", 0], ["clientes", "👥 Clientes", 0], ["avisos", "📢 Avisos", 0], ["promo", "🎁 Promos", 0]].map(([k, v, badge]) => (
           <button key={k} onClick={() => { setTab(k); setShowFormCliente(false); setShowFormAviso(false); }} style={{ flex: 1, padding: "8px 4px", borderRadius: 8, border: "none", cursor: "pointer", background: tab === k ? "#0ea5e9" : "transparent", color: tab === k ? "#fff" : "#64748b", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, minWidth: 60 }}>
             {v}{badge > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "1px 7px", fontSize: 10, fontWeight: 800 }}>{badge}</span>}
@@ -1016,9 +1154,34 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
 
       {tab === "tickets" && (
         <div>
-          <TabTickets lista={pendientes} titulo="🔴 Abiertos (prioridad empresa primero)" />
-          <TabTickets lista={enProceso} titulo="🔵 En proceso" />
-          <TabTickets lista={resueltos} titulo="✅ Resueltos" />
+          {/* Búsqueda de tickets */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
+            <Inp
+              placeholder="🔍 Buscar por cédula del cliente o N° de ticket..."
+              value={busqTicket}
+              onChange={e => setBusqTicket(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            {busqTicket && (
+              <button onClick={() => setBusqTicket("")} style={{ background: "#e2e8f0", color: "#64748b", border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>
+            )}
+          </div>
+          {(() => {
+            const q = busqTicket.toLowerCase().trim();
+            const filtrar = lista => !q ? lista : lista.filter(t => {
+              const cliente = usuarios.find(u => u.id === t.clienteId);
+              return (t.id && t.id.toLowerCase().includes(q)) ||
+                     (cliente?.cedula && cliente.cedula.toLowerCase().includes(q)) ||
+                     (t.clienteNombre && t.clienteNombre.toLowerCase().includes(q));
+            });
+            return (
+              <>
+                <TabTickets lista={filtrar(pendientes)} titulo="🔴 Abiertos (prioridad empresa primero)" />
+                <TabTickets lista={filtrar(enProceso)} titulo="🔵 En proceso" />
+                <TabTickets lista={filtrar(resueltos)} titulo={`✅ Resueltos (${resueltos.length})`} />
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -1028,12 +1191,12 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             <div style={{ color: "#64748b", fontSize: 13 }}>{misOrdenes.length} órdenes creadas por ti</div>
             <Btn onClick={() => setShowModalOrdenManual(true)} style={{ fontSize: 13, padding: "8px 14px" }}>➕ Nueva orden manual</Btn>
           </div>
-          {misOrdenes.length === 0 ? <div style={{ color: "#334155", textAlign: "center", padding: 40 }}>Aún no has creado órdenes.<br /><span style={{ fontSize: 13 }}>Usa "Nueva orden manual" o abre un ticket y presiona "Crear orden".</span></div> : [...misOrdenes].reverse().map(o => {
+          {misOrdenes.length === 0 ? <div style={{ color: "#475569", textAlign: "center", padding: 40 }}>Aún no has creado órdenes.<br /><span style={{ fontSize: 13 }}>Usa "Nueva orden manual" o abre un ticket y presiona "Crear orden".</span></div> : [...misOrdenes].reverse().map(o => {
             const tecnico = usuarios.find(u => u.id === o.tecnicoId);
             return (
-              <div key={o.id} style={{ background: "#0f172a", border: "1px solid " + (o.prioridad === "alta" ? "#8b5cf633" : "#1e293b"), borderLeft: "4px solid " + ORDEN_COLOR[o.estado], borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
+              <div key={o.id} style={{ background: "#ffffff", border: "1px solid " + (o.prioridad === "alta" ? "#8b5cf633" : "#e2e8f0"), borderLeft: "4px solid " + ORDEN_COLOR[o.estado], borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 700, color: "#f1f5f9", flex: 1 }}>{o.tipo}</span>
+                  <span style={{ fontWeight: 700, color: "#0f172a", flex: 1 }}>{o.tipo}</span>
                   {o.esManual && <Badge text="✍️ Manual" color="#f59e0b" />}
                   {o.prioridad === "alta" && <Badge text="🏢 Empresa" color="#8b5cf6" />}
                   <Badge text={o.estado} color={ORDEN_COLOR[o.estado]} />
@@ -1041,12 +1204,12 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
                   👤 {o.clienteNombre} · 🔧 {tecnico?.nombre || "Sin asignar"} · 📅 {o.fecha} {o.hora}
                 </div>
-                {o.direccion && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3 }}>📍 {o.direccion}</div>}
-                {o.descripcion && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3 }}>{o.descripcion}</div>}
+                {o.direccion && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>📍 {o.direccion}</div>}
+                {o.descripcion && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>{o.descripcion}</div>}
                 {o.datosInstalacion && (
                   <div style={{ background: "#0ea5e911", border: "1px solid #0ea5e922", borderRadius: 8, padding: "8px 10px", marginTop: 6, fontSize: 12 }}>
                     <span style={{ color: "#0ea5e9", fontWeight: 700 }}>📋 Datos instalación nueva: </span>
-                    <span style={{ color: "#94a3b8" }}>CC: {o.datosInstalacion.cedula} · Tel: {o.datosInstalacion.telefono}{o.datosInstalacion.correo ? " · " + o.datosInstalacion.correo : ""}</span>
+                    <span style={{ color: "#475569" }}>CC: {o.datosInstalacion.cedula} · Tel: {o.datosInstalacion.telefono}{o.datosInstalacion.correo ? " · " + o.datosInstalacion.correo : ""}</span>
                   </div>
                 )}
               </div>
@@ -1059,7 +1222,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
         <div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
             <Inp placeholder="🔍  Buscar..." value={busqCliente} onChange={e => setBusqCliente(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-            {busqCliente && <button onClick={() => setBusqCliente("")} style={{ background: "#334155", color: "#94a3b8", border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
+            {busqCliente && <button onClick={() => setBusqCliente("")} style={{ background: "#334155", color: "#475569", border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
             <Sel value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} style={{ width: "auto", minWidth: 130 }}>
               <option value="todos">Todos</option>
               <option value="final">Solo finales</option>
@@ -1068,10 +1231,10 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             </Sel>
             <Btn onClick={() => { setEditCliente(emptyCliente); setShowFormCliente(true); }} style={{ fontSize: 13 }}>+ Nuevo</Btn>
           </div>
-          <div style={{ color: "#475569", fontSize: 12, marginBottom: 10 }}>{clientesFiltrados.length} de {clientes.length} clientes</div>
+          <div style={{ color: "#64748b", fontSize: 12, marginBottom: 10 }}>{clientesFiltrados.length} de {clientes.length} clientes</div>
           {showFormCliente && editCliente && (
-            <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#f1f5f9", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editCliente.id ? "Editar cliente" : "Nuevo cliente"} — Zona: {zonaSecretario?.nombre}</h3>
+            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editCliente.id ? "Editar cliente" : "Nuevo cliente"} — Zona: {zonaSecretario?.nombre}</h3>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                 <Field label="Nombre completo"><Inp value={editCliente.nombre} onChange={e => setEditCliente({ ...editCliente, nombre: e.target.value })} /></Field>
                 <Field label="Tipo de cliente">
@@ -1099,7 +1262,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   </Sel>
                   {editCliente.plan && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4 }}>✓ Plan seleccionado: <strong>{editCliente.plan}</strong></div>}
                 </Field>
-                <Field label="Monto (COP)"><Inp type="number" value={editCliente.monto || ""} onChange={e => setEditCliente({ ...editCliente, monto: Number(e.target.value) })} readOnly style={{ background: "#0a1628", opacity: 0.8, cursor: "not-allowed" }} /></Field>
+                <Field label="Monto (COP)"><Inp type="number" value={editCliente.monto || ""} onChange={e => setEditCliente({ ...editCliente, monto: Number(e.target.value) })} readOnly style={{ background: "#0f172a", opacity: 0.8, cursor: "not-allowed" }} /></Field>
                 <Field label="Fecha de pago"><Inp type="date" value={editCliente.fechaPago || ""} onChange={e => setEditCliente({ ...editCliente, fechaPago: e.target.value })} /></Field>
                 <Field label="Estado de cuenta">
                   <Sel value={editCliente.estado || "Al día"} onChange={e => setEditCliente({ ...editCliente, estado: e.target.value })}>
@@ -1116,15 +1279,15 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {clientesFiltrados.map(c => (
-              <div key={c.id} style={{ background: "#0f172a", border: "1px solid " + (c.tipo === "empresa" ? "#8b5cf633" : "#1e293b"), borderLeft: "4px solid " + (c.tipo === "empresa" ? "#8b5cf6" : "#0ea5e9"), borderRadius: 12, padding: "12px 16px", opacity: c.activo ? 1 : 0.5, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div key={c.id} style={{ background: "#ffffff", border: "1px solid " + (c.tipo === "empresa" ? "#8b5cf633" : "#e2e8f0"), borderLeft: "4px solid " + (c.tipo === "empresa" ? "#8b5cf6" : "#0ea5e9"), borderRadius: 12, padding: "12px 16px", opacity: c.activo ? 1 : 0.5, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 150 }}>
-                  <div style={{ fontWeight: 700, color: "#f1f5f9", fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
                     {c.nombre}
                     {c.tipo === "empresa" && <Badge text="🏢 Empresa" color="#8b5cf6" />}
                   </div>
                   <div style={{ fontSize: 12, color: "#64748b" }}>@{c.usuario} · CC/NIT: {c.cedula}</div>
                   {c.telefono && <div style={{ fontSize: 11, color: "#0ea5e9" }}>📞 {c.telefono}</div>}
-                  {c.direccion && <div style={{ fontSize: 11, color: "#475569" }}>📍 {c.direccion}</div>}
+                  {c.direccion && <div style={{ fontSize: 11, color: "#64748b" }}>📍 {c.direccion}</div>}
                   {c.claveWifi && <div style={{ fontSize: 11, color: "#0ea5e9" }}>🔑 WiFi: {c.claveWifi}</div>}
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -1133,9 +1296,18 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 </div>
                 {c.estado && <Badge text={c.estado} color={ESTADO_COLOR[c.estado] || "#64748b"} />}
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => toggleCliente(c.id)} style={{ background: c.activo ? "#22c55e22" : "#1e293b", color: c.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{c.activo ? "Activo" : "Inactivo"}</button>
-                  <button onClick={() => { setEditCliente(c); setShowFormCliente(true); }} style={{ background: "#1e293b", color: "#94a3b8", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                  <button onClick={() => deleteCliente(c.id)} style={{ background: "#1e293b", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                  <button onClick={() => toggleCliente(c.id)} style={{ background: c.activo ? "#f0fdf4" : "#f1f5f9", color: c.activo ? "#16a34a" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{c.activo ? "Activo" : "Inactivo"}</button>
+                  <button onClick={() => { setEditCliente(c); setShowFormCliente(true); }} style={{ background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                  <button title="Cambiar clave" onClick={async () => {
+                    const nuevaClave = prompt(`Nueva clave para ${c.nombre}:`);
+                    if (!nuevaClave || nuevaClave.length < 4) { alert("La clave debe tener al menos 4 caracteres."); return; }
+                    try {
+                      await db.upsertUsuario({ ...c, clave: nuevaClave.trim() });
+                      setUsuarios(p => p.map(u => u.id === c.id ? { ...u, clave: nuevaClave.trim() } : u));
+                      alert(`✅ Clave actualizada para ${c.nombre}`);
+                    } catch (err) { alert("Error al cambiar clave: " + err.message); }
+                  }} style={{ background: "#f1f5f9", color: "#0ea5e9", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🔑</button>
+                  <button onClick={() => deleteCliente(c.id)} style={{ background: "#f1f5f9", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                 </div>
               </div>
             ))}
@@ -1146,12 +1318,12 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       {tab === "avisos" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ color: "#94a3b8", fontSize: 14 }}>{avisos.length} avisos</span>
+            <span style={{ color: "#475569", fontSize: 14 }}>{avisos.length} avisos</span>
             <Btn onClick={() => { setEditAviso({ ...emptyAviso, id: genId() }); setShowFormAviso(true); }} style={{ fontSize: 13 }}>+ Nuevo aviso</Btn>
           </div>
           {showFormAviso && editAviso && (
-            <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#f1f5f9", marginTop: 0, marginBottom: 16, fontSize: 15 }}>Nuevo aviso general</h3>
+            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>Nuevo aviso general</h3>
               <Field label="Tipo">
                 <Sel value={editAviso.tipo} onChange={e => setEditAviso({ ...editAviso, tipo: e.target.value })}>
                   <option>Información</option><option>Mantenimiento</option><option>Falla</option>
@@ -1159,7 +1331,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
               </Field>
               <Field label="Título"><Inp value={editAviso.titulo} onChange={e => setEditAviso({ ...editAviso, titulo: e.target.value })} /></Field>
               <Field label="Mensaje">
-                <textarea value={editAviso.mensaje} onChange={e => setEditAviso({ ...editAviso, mensaje: e.target.value })} style={{ background: "#0a1628", border: "1px solid #334155", borderRadius: 8, color: "#f1f5f9", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
+                <textarea value={editAviso.mensaje} onChange={e => setEditAviso({ ...editAviso, mensaje: e.target.value })} style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
               </Field>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
                 <Field label="Afecta">
@@ -1177,14 +1349,14 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {avisos.map(a => (
-              <div key={a.id} style={{ background: "#0f172a", border: "1px solid " + TIPO_COLOR[a.tipo] + "33", borderLeft: "4px solid " + TIPO_COLOR[a.tipo], borderRadius: 12, padding: "12px 16px" }}>
+              <div key={a.id} style={{ background: "#ffffff", border: "1px solid " + TIPO_COLOR[a.tipo] + "33", borderLeft: "4px solid " + TIPO_COLOR[a.tipo], borderRadius: 12, padding: "12px 16px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <Badge text={a.tipo} color={TIPO_COLOR[a.tipo]} />
-                  <span style={{ fontWeight: 700, color: "#f1f5f9", flex: 1 }}>{a.titulo}</span>
-                  <button onClick={() => toggleAviso(a.id)} style={{ background: a.activo ? "#22c55e22" : "#1e293b", color: a.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 20, padding: "3px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{a.activo ? "Activo" : "Inactivo"}</button>
+                  <span style={{ fontWeight: 700, color: "#0f172a", flex: 1 }}>{a.titulo}</span>
+                  <button onClick={() => toggleAviso(a.id)} style={{ background: a.activo ? "#22c55e22" : "#e2e8f0", color: a.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 20, padding: "3px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{a.activo ? "Activo" : "Inactivo"}</button>
                   <button onClick={() => deleteAviso(a.id)} style={{ background: "transparent", color: "#ef4444", border: "none", cursor: "pointer", fontSize: 16 }}>🗑️</button>
                 </div>
-                <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: 13 }}>{a.mensaje}</p>
+                <p style={{ margin: "6px 0 0", color: "#475569", fontSize: 13 }}>{a.mensaje}</p>
               </div>
             ))}
           </div>
@@ -1193,25 +1365,25 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
 
       {tab === "promo" && (
         <div>
-          <div style={{ background: "#1e293b", borderRadius: 10, padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ background: "#e2e8f0", borderRadius: 10, padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
             <span>👁️</span>
-            <span style={{ color: "#94a3b8", fontSize: 13 }}>Vista previa de las promociones visibles para los clientes. Solo el administrador puede editar este contenido.</span>
+            <span style={{ color: "#475569", fontSize: 13 }}>Vista previa de las promociones visibles para los clientes. Solo el administrador puede editar este contenido.</span>
           </div>
           {propaganda.filter(p => p.activo).length === 0 ? (
-            <div style={{ textAlign: "center", color: "#475569", padding: 40, fontSize: 14 }}>Sin promociones activas.</div>
+            <div style={{ textAlign: "center", color: "#64748b", padding: 40, fontSize: 14 }}>Sin promociones activas.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {propaganda.filter(p => p.activo).map(p => (
-                <div key={p.id} style={{ background: "#0f172a", border: "1px solid " + p.color + "44", borderLeft: "4px solid " + p.color, borderRadius: 14, padding: 18 }}>
+                <div key={p.id} style={{ background: "#ffffff", border: "1px solid " + p.color + "44", borderLeft: "4px solid " + p.color, borderRadius: 14, padding: 18 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                     <span style={{ fontSize: 28 }}>{p.imagen}</span>
                     <div>
-                      <div style={{ fontWeight: 800, color: "#f1f5f9", fontSize: 15 }}>{p.titulo}</div>
+                      <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>{p.titulo}</div>
                       <Badge text={p.categoria === "promocion" ? "🏷️ Promoción" : p.categoria === "equipos" ? "🖥️ Equipos" : "📷 Cámaras"} color={p.color} />
                     </div>
                   </div>
-                  <p style={{ color: "#94a3b8", fontSize: 14, margin: 0, lineHeight: 1.6 }}>{p.descripcion}</p>
-                  {p.fecha && <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>⏳ Válido hasta: {formatDate(p.fecha)}</div>}
+                  <p style={{ color: "#475569", fontSize: 14, margin: 0, lineHeight: 1.6 }}>{p.descripcion}</p>
+                  {p.fecha && <div style={{ fontSize: 11, color: "#64748b", marginTop: 8 }}>⏳ Válido hasta: {formatDate(p.fecha)}</div>}
                 </div>
               ))}
             </div>
@@ -1222,15 +1394,15 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       {/* Modal crear orden desde ticket */}
       {modalOrden && (
         <div style={{ position: "fixed", inset: 0, background: "#000a", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto" }}>
-            <h3 style={{ color: "#f1f5f9", margin: "0 0 16px", fontSize: 16 }}>🔧 Crear orden de trabajo</h3>
-            <div style={{ background: "#1e293b", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
-              <div style={{ fontWeight: 600, color: "#f1f5f9", fontSize: 14 }}>{modalOrden.titulo}</div>
+          <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto" }}>
+            <h3 style={{ color: "#0f172a", margin: "0 0 16px", fontSize: 16 }}>🔧 Crear orden de trabajo</h3>
+            <div style={{ background: "#e2e8f0", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+              <div style={{ fontWeight: 600, color: "#0f172a", fontSize: 14 }}>{modalOrden.titulo}</div>
               <div style={{ fontSize: 12, color: "#64748b" }}>Cliente: {modalOrden.clienteNombre}</div>
               {(() => { const c = usuarios.find(u => u.id === modalOrden.clienteId); return c ? (
                 <div style={{ marginTop: 6, display: "flex", gap: 12, flexWrap: "wrap" }}>
                   {c.telefono && <span style={{ fontSize: 12, color: "#0ea5e9" }}>📞 {c.telefono}</span>}
-                  {c.direccion && <span style={{ fontSize: 12, color: "#94a3b8" }}>📍 {c.direccion}</span>}
+                  {c.direccion && <span style={{ fontSize: 12, color: "#475569" }}>📍 {c.direccion}</span>}
                 </div>
               ) : null; })()}
             </div>
@@ -1247,12 +1419,12 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             {nuevaOrden.tipo === "Traslado / cambio de domicilio" && (
               <div style={{ background: "#f59e0b11", border: "1px solid #f59e0b33", borderRadius: 12, padding: 14, marginBottom: 14 }}>
                 <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700, marginBottom: 10 }}>🏠 Nueva dirección de destino</div>
-                {(() => { const c = usuarios.find(u => u.id === modalOrden.clienteId); return c?.direccion ? <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 8 }}>Dir. actual: {c.direccion}</div> : null; })()}
+                {(() => { const c = usuarios.find(u => u.id === modalOrden.clienteId); return c?.direccion ? <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Dir. actual: {c.direccion}</div> : null; })()}
                 <Inp value={nuevaOrden.nuevaDireccionTraslado || ""} onChange={e => setNuevaOrden({ ...nuevaOrden, nuevaDireccionTraslado: e.target.value })} placeholder="Nueva dirección a donde se traslada el cliente" />
               </div>
             )}
             <Field label="Descripción / instrucciones">
-              <textarea value={nuevaOrden.descripcion} onChange={e => setNuevaOrden({ ...nuevaOrden, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: "#0a1628", border: "1px solid #334155", borderRadius: 8, color: "#f1f5f9", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
+              <textarea value={nuevaOrden.descripcion} onChange={e => setNuevaOrden({ ...nuevaOrden, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
             </Field>
             <Field label={`Asignar técnico · Zona: ${zonaSecretario?.nombre || ""}`}>
               <Sel value={nuevaOrden.tecnicoId} onChange={e => setNuevaOrden({ ...nuevaOrden, tecnicoId: e.target.value })}>
@@ -1275,8 +1447,8 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       {/* Modal orden manual */}
       {showModalOrdenManual && (
         <div style={{ position: "fixed", inset: 0, background: "#000b", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 16, padding: 24, width: "100%", maxWidth: 500, maxHeight: "92vh", overflowY: "auto" }}>
-            <h3 style={{ color: "#f1f5f9", margin: "0 0 4px", fontSize: 16 }}>➕ Nueva orden manual</h3>
+          <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 16, padding: 24, width: "100%", maxWidth: 500, maxHeight: "92vh", overflowY: "auto" }}>
+            <h3 style={{ color: "#0f172a", margin: "0 0 4px", fontSize: 16 }}>➕ Nueva orden manual</h3>
             <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 16px" }}>Asigna una orden sin necesidad de que exista un ticket</p>
 
             <Field label="Tipo de orden">
@@ -1315,7 +1487,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   <Inp value={ordenManual.nuevaDireccion} onChange={e => setOrdenManual({ ...ordenManual, nuevaDireccion: e.target.value })} placeholder="Calle / Carrera, barrio, municipio" style={{ borderColor: erroresOrdenManual.nuevaDireccion ? "#ef4444" : undefined }} />
                   {erroresOrdenManual.nuevaDireccion && <div style={{ color: "#ef4444", fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
                 </Field>
-                <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>* Campos obligatorios · El correo electrónico es opcional</div>
+                <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>* Campos obligatorios · El correo electrónico es opcional</div>
               </div>
             ) : (
               /* OTROS TIPOS: seleccionar cliente existente */
@@ -1328,9 +1500,9 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 {ordenManual.clienteExistente && (() => {
                   const c = usuarios.find(u => u.id === ordenManual.clienteExistente);
                   return c ? (
-                    <div style={{ background: "#1e293b", borderRadius: 8, padding: "7px 10px", marginTop: 8, fontSize: 12 }}>
-                      {c.telefono && <div style={{ color: "#94a3b8" }}>📞 {c.telefono}</div>}
-                      {c.direccion && <div style={{ color: "#94a3b8" }}>📍 {c.direccion}</div>}
+                    <div style={{ background: "#e2e8f0", borderRadius: 8, padding: "7px 10px", marginTop: 8, fontSize: 12 }}>
+                      {c.telefono && <div style={{ color: "#475569" }}>📞 {c.telefono}</div>}
+                      {c.direccion && <div style={{ color: "#475569" }}>📍 {c.direccion}</div>}
                     </div>
                   ) : null;
                 })()}
@@ -1343,7 +1515,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>🏠 Traslado de domicilio</div>
                 {ordenManual.clienteExistente && (() => {
                   const c = usuarios.find(u => u.id === ordenManual.clienteExistente);
-                  return c?.direccion ? <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 10 }}>📍 Dirección actual: <span style={{ color: "#f1f5f9" }}>{c.direccion}</span></div> : null;
+                  return c?.direccion ? <div style={{ fontSize: 12, color: "#475569", marginBottom: 10 }}>📍 Dirección actual: <span style={{ color: "#0f172a" }}>{c.direccion}</span></div> : null;
                 })()}
                 <Field label="Nueva dirección de destino *">
                   <Inp value={ordenManual.nuevaDireccionTraslado || ""} onChange={e => setOrdenManual({ ...ordenManual, nuevaDireccionTraslado: e.target.value })} placeholder="Calle / Carrera, barrio, municipio del nuevo domicilio" />
@@ -1352,7 +1524,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             )}
 
             <Field label="Descripción / instrucciones">
-              <textarea value={ordenManual.descripcion} onChange={e => setOrdenManual({ ...ordenManual, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: "#0a1628", border: "1px solid #334155", borderRadius: 8, color: "#f1f5f9", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 60, resize: "vertical" }} />
+              <textarea value={ordenManual.descripcion} onChange={e => setOrdenManual({ ...ordenManual, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 60, resize: "vertical" }} />
             </Field>
             <Field label={`Asignar técnico · Zona: ${zonaSecretario?.nombre || ""}`}>
               <Sel value={ordenManual.tecnicoId} onChange={e => setOrdenManual({ ...ordenManual, tecnicoId: e.target.value })} style={{ borderColor: erroresOrdenManual.tecnicoId ? "#ef4444" : undefined }}>
@@ -1417,10 +1589,10 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
       } catch (err) { console.error("Error agregando nota:", err); }
     };
     return (
-      <div style={{ background: "#0f172a", border: "1px solid " + (orden.prioridad === "alta" ? "#8b5cf633" : "#1e293b"), borderLeft: "4px solid " + ORDEN_COLOR[orden.estado], borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
+      <div style={{ background: "#ffffff", border: "1px solid " + (orden.prioridad === "alta" ? "#8b5cf633" : "#e2e8f0"), borderLeft: "4px solid " + ORDEN_COLOR[orden.estado], borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
         <div onClick={() => setAbierta(!abierta)} style={{ padding: "12px 16px", cursor: "pointer" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontWeight: 700, color: "#f1f5f9", flex: 1, fontSize: 14 }}>{orden.tipo}</span>
+            <span style={{ fontWeight: 700, color: "#0f172a", flex: 1, fontSize: 14 }}>{orden.tipo}</span>
             {orden.prioridad === "alta" && <Badge text="🏢 Prioridad" color="#8b5cf6" />}
             <Badge text={orden.estado} color={ORDEN_COLOR[orden.estado]} />
           </div>
@@ -1438,20 +1610,20 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
           {esTraslado ? (
             <div style={{ background: "#f59e0b11", border: "1px solid #f59e0b33", borderRadius: 8, padding: "8px 10px", marginTop: 6, fontSize: 12 }}>
               <div style={{ color: "#f59e0b", fontWeight: 700, marginBottom: 4 }}>🏠 Traslado de domicilio</div>
-              {orden.direccionAnterior && <div style={{ color: "#94a3b8" }}>📍 Dirección anterior: <span style={{ color: "#f1f5f9" }}>{orden.direccionAnterior}</span></div>}
-              {orden.direccionNueva && <div style={{ color: "#94a3b8", marginTop: 3 }}>📍 Nueva dirección: <span style={{ color: "#22c55e", fontWeight: 600 }}>{orden.direccionNueva}</span></div>}
-              {!orden.direccionNueva && orden.direccion && <div style={{ color: "#94a3b8" }}>📍 {orden.direccion}</div>}
+              {orden.direccionAnterior && <div style={{ color: "#475569" }}>📍 Dirección anterior: <span style={{ color: "#0f172a" }}>{orden.direccionAnterior}</span></div>}
+              {orden.direccionNueva && <div style={{ color: "#475569", marginTop: 3 }}>📍 Nueva dirección: <span style={{ color: "#22c55e", fontWeight: 600 }}>{orden.direccionNueva}</span></div>}
+              {!orden.direccionNueva && orden.direccion && <div style={{ color: "#475569" }}>📍 {orden.direccion}</div>}
             </div>
           ) : (
-            orden.direccion && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3 }}>📍 {orden.direccion}</div>
+            orden.direccion && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>📍 {orden.direccion}</div>
           )}
-          {orden.descripcion && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 3 }}>{orden.descripcion}</div>}
+          {orden.descripcion && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>{orden.descripcion}</div>}
           {orden.datosInstalacion && (
             <div style={{ background: "#0ea5e911", border: "1px solid #0ea5e922", borderRadius: 8, padding: "7px 10px", marginTop: 5, fontSize: 12 }}>
               <div style={{ color: "#0ea5e9", fontWeight: 700, marginBottom: 2 }}>📋 Datos instalación nueva</div>
-              <div style={{ color: "#94a3b8" }}>CC: {orden.datosInstalacion.cedula} · Tel: {orden.datosInstalacion.telefono}</div>
-              {orden.datosInstalacion.correo && <div style={{ color: "#94a3b8" }}>✉️ {orden.datosInstalacion.correo}</div>}
-              {orden.datosInstalacion.direccion && <div style={{ color: "#94a3b8" }}>📍 {orden.datosInstalacion.direccion}</div>}
+              <div style={{ color: "#475569" }}>CC: {orden.datosInstalacion.cedula} · Tel: {orden.datosInstalacion.telefono}</div>
+              {orden.datosInstalacion.correo && <div style={{ color: "#475569" }}>✉️ {orden.datosInstalacion.correo}</div>}
+              {orden.datosInstalacion.direccion && <div style={{ color: "#475569" }}>📍 {orden.datosInstalacion.direccion}</div>}
             </div>
           )}
         </div>
@@ -1461,8 +1633,8 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
               <div style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Notas</div>
                 {orden.notas.map((n, i) => (
-                  <div key={i} style={{ background: "#1e293b", borderRadius: 8, padding: "7px 10px", marginBottom: 6, fontSize: 13, color: "#cbd5e1" }}>
-                    {n.texto} <span style={{ color: "#475569", fontSize: 11 }}>· {formatTime(n.ts)}</span>
+                  <div key={i} style={{ background: "#e2e8f0", borderRadius: 8, padding: "7px 10px", marginBottom: 6, fontSize: 13, color: "#475569" }}>
+                    {n.texto} <span style={{ color: "#64748b", fontSize: 11 }}>· {formatTime(n.ts)}</span>
                   </div>
                 ))}
               </div>
@@ -1494,16 +1666,16 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
           <span style={{ color: zonaT.color, fontSize: 13, fontWeight: 700 }}>Zona asignada: {zonaT.nombre}</span>
         </div>
       )}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#0f172a", borderRadius: 10, padding: 4 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#ffffff", borderRadius: 10, padding: 4 }}>
         {[["hoy", "📅 Hoy", ordenesHoy.length], ["todas", "📋 Todas", ordenesActivas.length], ["historial", "✅ Historial", 0]].map(([k, v, badge]) => (
           <button key={k} onClick={() => setTab(k)} style={{ flex: 1, padding: "8px 4px", borderRadius: 8, border: "none", cursor: "pointer", background: tab === k ? "#0ea5e9" : "transparent", color: tab === k ? "#fff" : "#64748b", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
             {v}{badge > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "1px 6px", fontSize: 10, fontWeight: 800 }}>{badge}</span>}
           </button>
         ))}
       </div>
-      {tab === "hoy" && (ordenesHoy.length === 0 ? <div style={{ textAlign: "center", color: "#475569", padding: 50 }}>🎉 Sin órdenes para hoy</div> : ordenesHoy.sort((a, b) => (b.prioridad === "alta" ? 1 : 0) - (a.prioridad === "alta" ? 1 : 0)).map(o => <OrdenCard key={o.id} orden={o} />))}
-      {tab === "todas" && (ordenesActivas.length === 0 ? <div style={{ textAlign: "center", color: "#475569", padding: 50 }}>Sin órdenes activas</div> : ordenesActivas.map(o => <OrdenCard key={o.id} orden={o} />))}
-      {tab === "historial" && (completadas.length === 0 ? <div style={{ textAlign: "center", color: "#475569", padding: 50 }}>Sin órdenes completadas aún</div> : [...completadas].reverse().map(o => <OrdenCard key={o.id} orden={o} />))}
+      {tab === "hoy" && (ordenesHoy.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>🎉 Sin órdenes para hoy</div> : ordenesHoy.sort((a, b) => (b.prioridad === "alta" ? 1 : 0) - (a.prioridad === "alta" ? 1 : 0)).map(o => <OrdenCard key={o.id} orden={o} />))}
+      {tab === "todas" && (ordenesActivas.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>Sin órdenes activas</div> : ordenesActivas.map(o => <OrdenCard key={o.id} orden={o} />))}
+      {tab === "historial" && (completadas.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>Sin órdenes completadas aún</div> : [...completadas].reverse().map(o => <OrdenCard key={o.id} orden={o} />))}
     </div>
   );
 }
@@ -1648,7 +1820,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px" }}>
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#0f172a", borderRadius: 10, padding: 4, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#ffffff", borderRadius: 10, padding: 4, flexWrap: "wrap" }}>
         {tabsAdmin.map(([k, v]) => (
           <button key={k} onClick={() => { setTab(k); setShowForm(false); setFormTipo(null); }} style={{ flex: 1, padding: "9px 4px", borderRadius: 8, border: "none", cursor: "pointer", background: tab === k ? "#8b5cf6" : "transparent", color: tab === k ? "#fff" : "#64748b", fontWeight: 700, fontSize: 12, minWidth: 80 }}>{v}</button>
         ))}
@@ -1657,6 +1829,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {/* ── TAB RESUMEN ── */}
       {tab === "resumen" && (
         <div>
+          <WisproSyncBanner onSync={async () => {
+            try {
+              const u = await db.getUsuarios();
+              setUsuarios(u);
+            } catch (e) { console.error("Error recargando usuarios:", e); }
+          }} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
             {[
               ["👥 Clientes", resumen.clientes, "#0ea5e9"],
@@ -1666,7 +1844,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
               ["📋 Órdenes activas", resumen.ordenesActivas, "#22c55e"],
               ["🗺️ Zonas", resumen.zonas, "#0ea5e9"],
             ].map(([label, val, color]) => (
-              <div key={label} style={{ background: "#0f172a", border: "1px solid " + color + "33", borderRadius: 14, padding: 20, textAlign: "center" }}>
+              <div key={label} style={{ background: "#ffffff", border: "1px solid " + color + "33", borderRadius: 14, padding: 20, textAlign: "center" }}>
                 <div style={{ fontSize: 28, fontWeight: 800, color }}>{val}</div>
                 <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{label}</div>
               </div>
@@ -1679,7 +1857,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
             const tecZ = usuarios.filter(u => u.rol === "tecnico" && u.zonaId === z.id).length;
             const cliZ = usuarios.filter(u => u.rol === "cliente" && u.zonaId === z.id).length;
             return (
-              <div key={z.id} style={{ background: "#0f172a", border: "1px solid " + z.color + "33", borderLeft: "4px solid " + z.color, borderRadius: 12, padding: "12px 16px", marginBottom: 8, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+              <div key={z.id} style={{ background: "#ffffff", border: "1px solid " + z.color + "33", borderLeft: "4px solid " + z.color, borderRadius: 12, padding: "12px 16px", marginBottom: 8, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
                 <span style={{ fontWeight: 700, color: z.color, fontSize: 14, minWidth: 80 }}>📍 {z.nombre}</span>
                 <span style={{ fontSize: 12, color: "#64748b" }}>🗂️ {secZ} secretarios</span>
                 <span style={{ fontSize: 12, color: "#64748b" }}>🔧 {tecZ} técnicos</span>
@@ -1693,11 +1871,11 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {/* ── TAB MI CUENTA ── */}
       {tab === "micuenta" && (
         <div style={{ maxWidth: 480, margin: "0 auto" }}>
-          <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 16, padding: 28 }}>
+          <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 16, padding: 28 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
               <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#8b5cf622", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🔐</div>
               <div>
-                <div style={{ fontWeight: 700, color: "#f1f5f9", fontSize: 16 }}>{sesion?.nombre}</div>
+                <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 16 }}>{sesion?.nombre}</div>
                 <div style={{ fontSize: 12, color: "#64748b" }}>Administrador · @{sesion?.usuario}</div>
               </div>
             </div>
@@ -1748,12 +1926,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {tab === "planes" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ color: "#94a3b8", fontSize: 14 }}>{planes.length} planes configurados</span>
+            <span style={{ color: "#475569", fontSize: 14 }}>{planes.length} planes configurados</span>
             <Btn onClick={() => { setEditPlan({ ...emptyPlan }); setFormTipo("plan"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nuevo plan</Btn>
           </div>
           {showForm && formTipo === "plan" && editPlan && (
-            <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#f1f5f9", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editPlan.id ? "Editar plan" : "Nuevo plan"}</h3>
+            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editPlan.id ? "Editar plan" : "Nuevo plan"}</h3>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                 <Field label="Nombre del plan"><Inp value={editPlan.nombre} onChange={e => setEditPlan({ ...editPlan, nombre: e.target.value })} placeholder="Ej: Premium 100MB" /></Field>
                 <Field label="Precio (COP)"><Inp type="number" value={editPlan.precio} onChange={e => setEditPlan({ ...editPlan, precio: Number(e.target.value) })} placeholder="Ej: 85000" /></Field>
@@ -1769,16 +1947,16 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {planes.map(p => (
-              <div key={p.id} style={{ background: "#0f172a", border: "1px solid #1e293b", borderLeft: "4px solid #0ea5e9", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: p.activo ? 1 : 0.5 }}>
+              <div key={p.id} style={{ background: "#ffffff", border: "1px solid #1e293b", borderLeft: "4px solid #0ea5e9", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: p.activo ? 1 : 0.5 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, color: "#f1f5f9", fontSize: 14 }}>{p.nombre}</div>
+                  <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{p.nombre}</div>
                   <div style={{ fontSize: 12, color: "#64748b" }}>{p.descripcion}</div>
                 </div>
                 <div style={{ fontWeight: 800, color: "#0ea5e9", fontSize: 16 }}>{formatCOP(p.precio)}</div>
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => togglePlan(p.id)} style={{ background: p.activo ? "#22c55e22" : "#1e293b", color: p.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.activo ? "Activo" : "Inactivo"}</button>
-                  <button onClick={() => { setEditPlan(p); setFormTipo("plan"); setShowForm(true); }} style={{ background: "#1e293b", color: "#94a3b8", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                  <button onClick={() => deletePlan(p.id)} style={{ background: "#1e293b", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                  <button onClick={() => togglePlan(p.id)} style={{ background: p.activo ? "#22c55e22" : "#e2e8f0", color: p.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.activo ? "Activo" : "Inactivo"}</button>
+                  <button onClick={() => { setEditPlan(p); setFormTipo("plan"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                  <button onClick={() => deletePlan(p.id)} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                 </div>
               </div>
             ))}
@@ -1790,18 +1968,18 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {tab === "zonas" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ color: "#94a3b8", fontSize: 14 }}>{zonas.length} zonas configuradas</span>
+            <span style={{ color: "#475569", fontSize: 14 }}>{zonas.length} zonas configuradas</span>
             <Btn onClick={() => { setEditZona({ ...emptyZona }); setFormTipo("zona"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nueva zona</Btn>
           </div>
           {showForm && formTipo === "zona" && editZona && (
-            <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#f1f5f9", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editZona.id ? "Editar zona" : "Nueva zona"}</h3>
+            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editZona.id ? "Editar zona" : "Nueva zona"}</h3>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                 <Field label="Nombre de la zona"><Inp value={editZona.nombre} onChange={e => setEditZona({ ...editZona, nombre: e.target.value })} placeholder="Ej: Vijes" /></Field>
                 <Field label="Color identificador">
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <Inp type="color" value={editZona.color} onChange={e => setEditZona({ ...editZona, color: e.target.value })} style={{ width: 50, padding: 4 }} />
-                    <span style={{ fontSize: 13, color: "#94a3b8" }}>{editZona.color}</span>
+                    <span style={{ fontSize: 13, color: "#475569" }}>{editZona.color}</span>
                   </div>
                 </Field>
               </div>
@@ -1818,7 +1996,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
               const tecs = miembros.filter(u => u.rol === "tecnico");
               const clis = miembros.filter(u => u.rol === "cliente");
               return (
-                <div key={z.id} style={{ background: "#0f172a", border: "1px solid " + z.color + "33", borderLeft: "4px solid " + z.color, borderRadius: 12, padding: "14px 16px", opacity: z.activa ? 1 : 0.5 }}>
+                <div key={z.id} style={{ background: "#ffffff", border: "1px solid " + z.color + "33", borderLeft: "4px solid " + z.color, borderRadius: 12, padding: "14px 16px", opacity: z.activa ? 1 : 0.5 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 800, color: z.color, fontSize: 16 }}>📍 {z.nombre}</div>
@@ -1829,7 +2007,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       </div>
                       {/* Nombre de empresa asignado por admin */}
                       <div style={{ marginTop: 8 }}>
-                        <span style={{ fontSize: 11, color: "#475569", marginRight: 6 }}>Nombre empresa en esta zona:</span>
+                        <span style={{ fontSize: 11, color: "#64748b", marginRight: 6 }}>Nombre empresa en esta zona:</span>
                         <Inp
                           value={z.nombreEmpresa || ""}
                           onChange={e => { const v = e.target.value; setZonas(prev => prev.map(x => x.id === z.id ? { ...x, nombreEmpresa: v } : x)); db.patchZonaNombreEmpresa(z.id, v).catch(console.error); }}
@@ -1839,9 +2017,9 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => toggleZona(z.id)} style={{ background: z.activa ? "#22c55e22" : "#1e293b", color: z.activa ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{z.activa ? "Activa" : "Inactiva"}</button>
-                      <button onClick={() => { setEditZona(z); setFormTipo("zona"); setShowForm(true); }} style={{ background: "#1e293b", color: "#94a3b8", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                      <button onClick={() => deleteZona(z.id)} style={{ background: "#1e293b", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                      <button onClick={() => toggleZona(z.id)} style={{ background: z.activa ? "#22c55e22" : "#e2e8f0", color: z.activa ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{z.activa ? "Activa" : "Inactiva"}</button>
+                      <button onClick={() => { setEditZona(z); setFormTipo("zona"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                      <button onClick={() => deleteZona(z.id)} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                     </div>
                   </div>
                 </div>
@@ -1855,18 +2033,18 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {tab === "usuarios" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ color: "#94a3b8", fontSize: 14 }}>{usuarios.length} usuarios</span>
+            <span style={{ color: "#475569", fontSize: 14 }}>{usuarios.length} usuarios</span>
             <Btn onClick={() => { setEditU(emptyU); setFormTipo("usuario"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nuevo usuario</Btn>
           </div>
 
           {showForm && formTipo === "usuario" && editU && (
-            <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#f1f5f9", marginTop: 0, marginBottom: 4, fontSize: 15 }}>{editU.id ? "Editar usuario" : "Nuevo usuario"}</h3>
+            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 4, fontSize: 15 }}>{editU.id ? "Editar usuario" : "Nuevo usuario"}</h3>
               <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 16px" }}>Selecciona el tipo de usuario y configura sus privilegios</p>
 
               {/* PASO 1: Tipo de usuario */}
-              <div style={{ background: "#1e293b", borderRadius: 12, padding: 14, marginBottom: 16 }}>
-                <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>1 · Tipo de usuario</div>
+              <div style={{ background: "#e2e8f0", borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>1 · Tipo de usuario</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
                   {[
                     { val: "admin", emoji: "🛡️", label: "Administrador", desc: "Acceso total al sistema" },
@@ -1875,9 +2053,9 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                     { val: "cliente", emoji: "👤", label: "Cliente", desc: "Acceso al portal del cliente" },
                   ].map(r => (
                     <button key={r.val} onClick={() => setEditU({ ...editU, rol: r.val, privilegios: [] })}
-                      style={{ background: editU.rol === r.val ? ROL_COLOR[r.val] + "33" : "#0f172a", border: "2px solid " + (editU.rol === r.val ? ROL_COLOR[r.val] : "#334155"), borderRadius: 10, padding: "10px 12px", cursor: "pointer", textAlign: "left" }}>
+                      style={{ background: editU.rol === r.val ? ROL_COLOR[r.val] + "33" : "#ffffff", border: "2px solid " + (editU.rol === r.val ? ROL_COLOR[r.val] : "#334155"), borderRadius: 10, padding: "10px 12px", cursor: "pointer", textAlign: "left" }}>
                       <div style={{ fontSize: 18, marginBottom: 3 }}>{r.emoji}</div>
-                      <div style={{ fontWeight: 700, color: editU.rol === r.val ? ROL_COLOR[r.val] : "#f1f5f9", fontSize: 13 }}>{r.label}</div>
+                      <div style={{ fontWeight: 700, color: editU.rol === r.val ? ROL_COLOR[r.val] : "#0f172a", fontSize: 13 }}>{r.label}</div>
                       <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{r.desc}</div>
                     </button>
                   ))}
@@ -1885,8 +2063,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
               </div>
 
               {/* PASO 2: Datos básicos */}
-              <div style={{ background: "#1e293b", borderRadius: 12, padding: 14, marginBottom: 16 }}>
-                <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>2 · Datos básicos</div>
+              <div style={{ background: "#e2e8f0", borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>2 · Datos básicos</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                   <Field label="Nombre completo"><Inp value={editU.nombre} onChange={e => setEditU({ ...editU, nombre: e.target.value })} /></Field>
                   <Field label="Teléfono"><Inp value={editU.telefono || ""} onChange={e => setEditU({ ...editU, telefono: e.target.value })} placeholder="Ej: 3001234567" /></Field>
@@ -1905,8 +2083,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
               {/* PASO 3: Privilegios adicionales (no aplica para admin ni cliente) */}
               {(editU.rol === "secretario" || editU.rol === "tecnico") && (
-                <div style={{ background: "#1e293b", borderRadius: 12, padding: 14, marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>3 · Privilegios adicionales</div>
+                <div style={{ background: "#e2e8f0", borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>3 · Privilegios adicionales</div>
                   <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 12px" }}>Marca los permisos extra que tendrá este usuario por encima de su rol base.</p>
                   {[
                     { id: "crear_ordenes", emoji: "📋", label: "Generar órdenes de trabajo", desc: "Puede crear y asignar órdenes manualmente", aplica: ["secretario", "tecnico"] },
@@ -1920,12 +2098,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       <div key={priv.id} onClick={() => {
                         const privs = editU.privilegios || [];
                         setEditU({ ...editU, privilegios: activo ? privs.filter(p => p !== priv.id) : [...privs, priv.id] });
-                      }} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 12px", borderRadius: 10, marginBottom: 8, cursor: "pointer", background: activo ? "#0ea5e911" : "#0f172a", border: "1px solid " + (activo ? "#0ea5e944" : "#334155") }}>
-                        <div style={{ width: 20, height: 20, borderRadius: 5, border: "2px solid " + (activo ? "#0ea5e9" : "#475569"), background: activo ? "#0ea5e9" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                      }} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "10px 12px", borderRadius: 10, marginBottom: 8, cursor: "pointer", background: activo ? "#0ea5e911" : "#ffffff", border: "1px solid " + (activo ? "#0ea5e944" : "#334155") }}>
+                        <div style={{ width: 20, height: 20, borderRadius: 5, border: "2px solid " + (activo ? "#0ea5e9" : "#64748b"), background: activo ? "#0ea5e9" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
                           {activo && <span style={{ color: "#fff", fontSize: 12, fontWeight: 800 }}>✓</span>}
                         </div>
                         <div>
-                          <div style={{ fontWeight: 600, color: activo ? "#0ea5e9" : "#f1f5f9", fontSize: 13 }}>{priv.emoji} {priv.label}</div>
+                          <div style={{ fontWeight: 600, color: activo ? "#0ea5e9" : "#0f172a", fontSize: 13 }}>{priv.emoji} {priv.label}</div>
                           <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{priv.desc}</div>
                         </div>
                       </div>
@@ -1936,8 +2114,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
               {/* PASO 4: Datos de cliente */}
               {editU.rol === "cliente" && (
-                <div style={{ background: "#1e293b", borderRadius: 12, padding: 14, marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>3 · Datos del servicio</div>
+                <div style={{ background: "#e2e8f0", borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>3 · Datos del servicio</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                     <Field label="Tipo de cliente">
                       <Sel value={editU.tipo || "final"} onChange={e => setEditU({ ...editU, tipo: e.target.value })}>
@@ -1959,7 +2137,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       </Sel>
                       {editU.plan && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4 }}>✓ {editU.plan}</div>}
                     </Field>
-                    <Field label="Monto (COP)"><Inp type="number" value={editU.monto || ""} onChange={e => setEditU({ ...editU, monto: Number(e.target.value) })} style={{ background: "#0a1628", opacity: 0.8 }} /></Field>
+                    <Field label="Monto (COP)"><Inp type="number" value={editU.monto || ""} onChange={e => setEditU({ ...editU, monto: Number(e.target.value) })} style={{ background: "#0f172a", opacity: 0.8 }} /></Field>
                     <Field label="Fecha de pago"><Inp type="date" value={editU.fechaPago || ""} onChange={e => setEditU({ ...editU, fechaPago: e.target.value })} /></Field>
                     <Field label="Estado de cuenta">
                       <Sel value={editU.estado || "Al día"} onChange={e => setEditU({ ...editU, estado: e.target.value })}>
@@ -1988,7 +2166,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
           <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
             <Inp placeholder="🔍  Buscar..." value={busqAdmin} onChange={e => setBusqAdmin(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-            {busqAdmin && <button onClick={() => setBusqAdmin("")} style={{ background: "#334155", color: "#94a3b8", border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
+            {busqAdmin && <button onClick={() => setBusqAdmin("")} style={{ background: "#334155", color: "#475569", border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
             <Sel value={filtroAdminTipo} onChange={e => setFiltroAdminTipo(e.target.value)} style={{ width: "auto", minWidth: 130 }}>
               <option value="todos">Todos los roles</option>
               <option value="cliente_final">Clientes finales</option>
@@ -2000,11 +2178,11 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           {busqAdmin || filtroAdminTipo !== "todos" ? (
             <div>
               {usuariosFiltradosAdmin.length === 0 ? (
-                <div style={{ textAlign: "center", color: "#475569", padding: 30, fontSize: 14 }}>No se encontraron usuarios</div>
+                <div style={{ textAlign: "center", color: "#64748b", padding: 30, fontSize: 14 }}>No se encontraron usuarios</div>
               ) : usuariosFiltradosAdmin.map(u => (
-                <div key={u.id} style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: "12px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: u.activo ? 1 : 0.5 }}>
+                <div key={u.id} style={{ background: "#ffffff", border: "1px solid #1e293b", borderRadius: 12, padding: "12px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: u.activo ? 1 : 0.5 }}>
                   <div style={{ flex: 1, minWidth: 160 }}>
-                    <div style={{ fontWeight: 700, color: "#f1f5f9", fontSize: 14 }}>{u.nombre}</div>
+                    <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{u.nombre}</div>
                     <div style={{ fontSize: 12, color: "#64748b" }}>
                       @{u.usuario}
                       {u.rol !== "admin" && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
@@ -2024,9 +2202,9 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   </div>
                   {u.rol === "cliente" && u.monto && <div style={{ fontSize: 13, color: "#0ea5e9", fontWeight: 700 }}>{formatCOP(u.monto)}</div>}
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#1e293b", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>
-                    <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: "#1e293b", color: "#94a3b8", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                    {u.rol !== "admin" && <button onClick={() => deleteU(u.id)} style={{ background: "#1e293b", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
+                    <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>
+                    <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                    {u.rol !== "admin" && <button onClick={() => deleteU(u.id)} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                   </div>
                 </div>
               ))}
@@ -2040,18 +2218,18 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   <div key={rol} style={{ marginBottom: 20 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                       <Badge text={ROLES[rol]} color={ROL_COLOR[rol]} />
-                      <span style={{ color: "#475569", fontSize: 12 }}>{lista.length}</span>
+                      <span style={{ color: "#64748b", fontSize: 12 }}>{lista.length}</span>
                     </div>
                     {lista.map(u => (
-                      <div key={u.id} style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: "12px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: u.activo ? 1 : 0.5 }}>
+                      <div key={u.id} style={{ background: "#ffffff", border: "1px solid #1e293b", borderRadius: 12, padding: "12px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: u.activo ? 1 : 0.5 }}>
                         <div style={{ flex: 1, minWidth: 160 }}>
-                          <div style={{ fontWeight: 700, color: "#f1f5f9", fontSize: 14 }}>{u.nombre}</div>
+                          <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{u.nombre}</div>
                           <div style={{ fontSize: 12, color: "#64748b" }}>
                             @{u.usuario}
                             {u.rol !== "admin" && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
                             {u.telefono && <span style={{ color: "#0ea5e9", marginLeft: 6 }}>📞 {u.telefono}</span>}
                           </div>
-                          {u.rol === "cliente" && u.direccion && <div style={{ fontSize: 11, color: "#475569" }}>📍 {u.direccion}</div>}
+                          {u.rol === "cliente" && u.direccion && <div style={{ fontSize: 11, color: "#64748b" }}>📍 {u.direccion}</div>}
                           {u.rol === "cliente" && u.claveWifi && <div style={{ fontSize: 11, color: "#0ea5e9" }}>🔑 WiFi: {u.claveWifi}</div>}
                           {u.rol === "cliente" && u.tipo === "empresa" && u.nombreEmpresa && <div style={{ fontSize: 11, color: "#8b5cf6" }}>🏢 {u.nombreEmpresa}</div>}
                           {(u.privilegios || []).length > 0 && (
@@ -2066,9 +2244,9 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                         </div>
                         {u.rol === "cliente" && u.monto && <div style={{ fontSize: 13, color: "#0ea5e9", fontWeight: 700 }}>{formatCOP(u.monto)}</div>}
                         <div style={{ display: "flex", gap: 6 }}>
-                          <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#1e293b", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>
-                          <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: "#1e293b", color: "#94a3b8", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                          {u.rol !== "admin" && <button onClick={() => deleteU(u.id)} style={{ background: "#1e293b", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
+                          <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>
+                          <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                          {u.rol !== "admin" && <button onClick={() => deleteU(u.id)} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                         </div>
                       </div>
                     ))}
@@ -2084,12 +2262,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {tab === "avisos" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ color: "#94a3b8", fontSize: 14 }}>{avisos.length} avisos</span>
+            <span style={{ color: "#475569", fontSize: 14 }}>{avisos.length} avisos</span>
             <Btn onClick={() => { setEditA({ ...emptyA, id: genId() }); setFormTipo("aviso"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nuevo aviso</Btn>
           </div>
           {showForm && formTipo === "aviso" && editA && (
-            <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#f1f5f9", marginTop: 0, marginBottom: 16, fontSize: 15 }}>Nuevo aviso</h3>
+            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>Nuevo aviso</h3>
               <Field label="Tipo">
                 <Sel value={editA.tipo} onChange={e => setEditA({ ...editA, tipo: e.target.value })}>
                   <option>Información</option><option>Mantenimiento</option><option>Falla</option>
@@ -2097,7 +2275,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
               </Field>
               <Field label="Título"><Inp value={editA.titulo} onChange={e => setEditA({ ...editA, titulo: e.target.value })} /></Field>
               <Field label="Mensaje">
-                <textarea value={editA.mensaje} onChange={e => setEditA({ ...editA, mensaje: e.target.value })} style={{ background: "#0a1628", border: "1px solid #334155", borderRadius: 8, color: "#f1f5f9", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
+                <textarea value={editA.mensaje} onChange={e => setEditA({ ...editA, mensaje: e.target.value })} style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
               </Field>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
                 <Field label="Afecta">
@@ -2115,15 +2293,15 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {avisos.map(a => (
-              <div key={a.id} style={{ background: "#0f172a", border: "1px solid " + TIPO_COLOR[a.tipo] + "33", borderLeft: "4px solid " + TIPO_COLOR[a.tipo], borderRadius: 12, padding: "12px 16px" }}>
+              <div key={a.id} style={{ background: "#ffffff", border: "1px solid " + TIPO_COLOR[a.tipo] + "33", borderLeft: "4px solid " + TIPO_COLOR[a.tipo], borderRadius: 12, padding: "12px 16px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <Badge text={a.tipo} color={TIPO_COLOR[a.tipo]} />
-                  <span style={{ fontWeight: 700, color: "#f1f5f9", flex: 1 }}>{a.titulo}</span>
+                  <span style={{ fontWeight: 700, color: "#0f172a", flex: 1 }}>{a.titulo}</span>
                   <span style={{ fontSize: 11, color: "#64748b" }}>Afecta: {a.afecta}</span>
-                  <button onClick={() => toggleA(a.id)} style={{ background: a.activo ? "#22c55e22" : "#1e293b", color: a.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 20, padding: "3px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{a.activo ? "Activo" : "Inactivo"}</button>
+                  <button onClick={() => toggleA(a.id)} style={{ background: a.activo ? "#22c55e22" : "#e2e8f0", color: a.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 20, padding: "3px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{a.activo ? "Activo" : "Inactivo"}</button>
                   <button onClick={() => deleteA(a.id)} style={{ background: "transparent", color: "#ef4444", border: "none", cursor: "pointer", fontSize: 16 }}>🗑️</button>
                 </div>
-                <p style={{ margin: "6px 0 0", color: "#94a3b8", fontSize: 13 }}>{a.mensaje}</p>
+                <p style={{ margin: "6px 0 0", color: "#475569", fontSize: 13 }}>{a.mensaje}</p>
               </div>
             ))}
           </div>
@@ -2134,13 +2312,13 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {tab === "propaganda" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ color: "#94a3b8", fontSize: 14 }}>{propaganda.length} publicaciones · Solo el admin puede gestionar esto</span>
+            <span style={{ color: "#475569", fontSize: 14 }}>{propaganda.length} publicaciones · Solo el admin puede gestionar esto</span>
             <Btn onClick={() => { setEditPropa({ ...emptyPropa, id: genId() }); setFormTipo("propa"); setShowForm(true); }} variant="purple" style={{ fontSize: 13 }}>+ Nueva publicación</Btn>
           </div>
 
           {showForm && formTipo === "propa" && editPropa && (
-            <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#f1f5f9", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editPropa.id && propaganda.find(x => x.id === editPropa.id) ? "Editar publicación" : "Nueva publicación"}</h3>
+            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editPropa.id && propaganda.find(x => x.id === editPropa.id) ? "Editar publicación" : "Nueva publicación"}</h3>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                 <Field label="Categoría">
                   <Sel value={editPropa.categoria} onChange={e => setEditPropa({ ...editPropa, categoria: e.target.value, imagen: e.target.value === "camaras" ? "📷" : e.target.value === "equipos" ? "📶" : "🎁", color: e.target.value === "camaras" ? "#8b5cf6" : e.target.value === "equipos" ? "#22c55e" : "#0ea5e9" })}>
@@ -2155,7 +2333,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <Field label="Color de acento">
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <Inp type="color" value={editPropa.color} onChange={e => setEditPropa({ ...editPropa, color: e.target.value })} style={{ width: 50, padding: 4 }} />
-                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{editPropa.color}</span>
+                    <span style={{ fontSize: 12, color: "#475569" }}>{editPropa.color}</span>
                   </div>
                 </Field>
                 <Field label="Válido hasta (opcional)">
@@ -2166,17 +2344,17 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <Inp value={editPropa.titulo} onChange={e => setEditPropa({ ...editPropa, titulo: e.target.value })} placeholder="Ej: 🎉 Promoción Especial de Abril" />
               </Field>
               <Field label="Descripción / detalle">
-                <textarea value={editPropa.descripcion} onChange={e => setEditPropa({ ...editPropa, descripcion: e.target.value })} placeholder="Describe la promoción, equipo o servicio disponible..." style={{ background: "#0a1628", border: "1px solid #334155", borderRadius: 8, color: "#f1f5f9", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 80, resize: "vertical" }} />
+                <textarea value={editPropa.descripcion} onChange={e => setEditPropa({ ...editPropa, descripcion: e.target.value })} placeholder="Describe la promoción, equipo o servicio disponible..." style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 80, resize: "vertical" }} />
               </Field>
               {/* Vista previa */}
               {editPropa.titulo && (
-                <div style={{ background: "#1e293b", borderRadius: 12, padding: 14, marginBottom: 14, border: "1px solid " + editPropa.color + "44", borderLeft: "4px solid " + editPropa.color }}>
+                <div style={{ background: "#e2e8f0", borderRadius: 12, padding: 14, marginBottom: 14, border: "1px solid " + editPropa.color + "44", borderLeft: "4px solid " + editPropa.color }}>
                   <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Vista previa</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                     <span style={{ fontSize: 26 }}>{editPropa.imagen}</span>
-                    <span style={{ fontWeight: 800, color: "#f1f5f9", fontSize: 14 }}>{editPropa.titulo}</span>
+                    <span style={{ fontWeight: 800, color: "#0f172a", fontSize: 14 }}>{editPropa.titulo}</span>
                   </div>
-                  {editPropa.descripcion && <p style={{ color: "#94a3b8", fontSize: 13, margin: 0 }}>{editPropa.descripcion}</p>}
+                  {editPropa.descripcion && <p style={{ color: "#475569", fontSize: 13, margin: 0 }}>{editPropa.descripcion}</p>}
                 </div>
               )}
               <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -2188,26 +2366,26 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {propaganda.map(p => (
-              <div key={p.id} style={{ background: "#0f172a", border: "1px solid " + p.color + "44", borderLeft: "4px solid " + p.color, borderRadius: 14, padding: "14px 16px", opacity: p.activo ? 1 : 0.5 }}>
+              <div key={p.id} style={{ background: "#ffffff", border: "1px solid " + p.color + "44", borderLeft: "4px solid " + p.color, borderRadius: 14, padding: "14px 16px", opacity: p.activo ? 1 : 0.5 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 24 }}>{p.imagen}</span>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 800, color: "#f1f5f9", fontSize: 14 }}>{p.titulo}</div>
+                    <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 14 }}>{p.titulo}</div>
                     <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                       <Badge text={p.categoria === "promocion" ? "🏷️ Promoción" : p.categoria === "equipos" ? "🖥️ Equipos" : "📷 Cámaras"} color={p.color} />
                       {p.fecha && <span style={{ fontSize: 11, color: "#64748b" }}>⏳ hasta {formatDate(p.fecha)}</span>}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => togglePropa(p.id)} style={{ background: p.activo ? "#22c55e22" : "#1e293b", color: p.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.activo ? "Activo" : "Inactivo"}</button>
-                    <button onClick={() => { setEditPropa(p); setFormTipo("propa"); setShowForm(true); }} style={{ background: "#1e293b", color: "#94a3b8", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                    <button onClick={() => deletePropa(p.id)} style={{ background: "#1e293b", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                    <button onClick={() => togglePropa(p.id)} style={{ background: p.activo ? "#22c55e22" : "#e2e8f0", color: p.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.activo ? "Activo" : "Inactivo"}</button>
+                    <button onClick={() => { setEditPropa(p); setFormTipo("propa"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                    <button onClick={() => deletePropa(p.id)} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                   </div>
                 </div>
-                <p style={{ margin: "8px 0 0", color: "#94a3b8", fontSize: 13, lineHeight: 1.5 }}>{p.descripcion}</p>
+                <p style={{ margin: "8px 0 0", color: "#475569", fontSize: 13, lineHeight: 1.5 }}>{p.descripcion}</p>
               </div>
             ))}
-            {propaganda.length === 0 && <div style={{ textAlign: "center", color: "#475569", padding: 40 }}>Sin publicaciones. Crea la primera.</div>}
+            {propaganda.length === 0 && <div style={{ textAlign: "center", color: "#64748b", padding: 40 }}>Sin publicaciones. Crea la primera.</div>}
           </div>
         </div>
       )}
@@ -2227,11 +2405,23 @@ export default function App() {
   const [zonas, setZonas] = useState([]);
   const [propaganda, setPropaganda] = useState([]);
   const [sesion, setSesion] = useState(null);
-  const [loginUser, setLoginUser] = useState("");
-  const [loginClave, setLoginClave] = useState("");
+  const [loginUser, setLoginUser] = useState(() => {
+    try { return localStorage.getItem("gc_remember_user") || ""; } catch { return ""; }
+  });
+  const [loginClave, setLoginClave] = useState(() => {
+    try { return localStorage.getItem("gc_remember_clave") || ""; } catch { return ""; }
+  });
+  const [loginRecordar, setLoginRecordar] = useState(() => {
+    try { return !!localStorage.getItem("gc_remember_user"); } catch { return false; }
+  });
   const [loginError, setLoginError] = useState("");
   const [cargando, setCargando] = useState(true);
   const [errorBD, setErrorBD] = useState(null);
+  const [showRecuperar, setShowRecuperar] = useState(false);
+  const [recuperarCorreo, setRecuperar] = useState("");
+  const [recuperarMsg, setRecuperarMsg] = useState(null);
+  // Control sesión activa (evita doble sesión con el mismo usuario)
+  const sesionKeyRef = useRef(null);
 
   // ── Carga inicial desde Supabase ──────────────────────────
   useEffect(() => {
@@ -2254,7 +2444,7 @@ export default function App() {
     cargar();
   }, []);
 
-  // Sincronizar sesión cuando cambia el usuario (ej: cambio de clave wifi)
+  // Sincronizar sesión cuando cambia el usuario
   useEffect(() => {
     if (sesion) {
       const actualizado = usuarios.find(u => u.id === sesion.id);
@@ -2263,19 +2453,66 @@ export default function App() {
   }, [usuarios]);
 
   const intentarLogin = () => {
-    const u = usuarios.find(x => x.usuario === loginUser.trim() && x.clave === loginClave.trim() && x.activo);
-    if (u) { setSesion(u); setLoginError(""); }
-    else setLoginError("Usuario o clave incorrectos.");
+    const q = loginUser.trim().toLowerCase();
+    // Buscar por usuario O por correo electrónico
+    const u = usuarios.find(x =>
+      x.activo && x.clave === loginClave.trim() &&
+      (x.usuario.toLowerCase() === q || (x.correo && x.correo.toLowerCase() === q))
+    );
+    if (!u) { setLoginError("Usuario, correo o clave incorrectos."); return; }
+    // Recordar datos si está marcado
+    if (loginRecordar) {
+      try { localStorage.setItem("gc_remember_user", loginUser.trim()); localStorage.setItem("gc_remember_clave", loginClave.trim()); } catch {}
+    } else {
+      try { localStorage.removeItem("gc_remember_user"); localStorage.removeItem("gc_remember_clave"); } catch {}
+    }
+    // Verificar sesión duplicada (misma pestaña/sesión)
+    const tabKey = Date.now().toString();
+    try {
+      const activo = localStorage.getItem("gc_sesion_activa_" + u.id);
+      if (activo) {
+        const diff = Date.now() - parseInt(activo, 10);
+        if (diff < 185000) { // 3 min + 5s de margen
+          setLoginError("Este usuario ya tiene una sesión activa. Cierra la otra sesión primero o espera que expire.");
+          return;
+        }
+      }
+      localStorage.setItem("gc_sesion_activa_" + u.id, tabKey);
+      sesionKeyRef.current = { uid: u.id, key: tabKey };
+    } catch {}
+    setSesion(u);
+    setLoginError("");
   };
 
-  const cerrarSesion = useCallback(() => { setSesion(null); setLoginUser(""); setLoginClave(""); }, []);
+  const cerrarSesion = useCallback(() => {
+    if (sesionKeyRef.current) {
+      try {
+        const stored = localStorage.getItem("gc_sesion_activa_" + sesionKeyRef.current.uid);
+        if (stored === sesionKeyRef.current.key) localStorage.removeItem("gc_sesion_activa_" + sesionKeyRef.current.uid);
+      } catch {}
+      sesionKeyRef.current = null;
+    }
+    setSesion(null); setLoginUser(""); setLoginClave("");
+  }, []);
 
-  // ── Cierre automático por inactividad (1 minuto) ──────────
+  const enviarRecuperacion = () => {
+    const correo = recuperarCorreo.trim().toLowerCase();
+    if (!correo) { setRecuperarMsg({ ok: false, texto: "Por favor ingresa tu correo." }); return; }
+    const u = usuarios.find(x => x.correo && x.correo.toLowerCase() === correo);
+    if (!u) {
+      setRecuperarMsg({ ok: false, texto: "Este correo no está registrado. Comunícate con la oficina o llama a atención al cliente." });
+    } else {
+      // En producción aquí iría el envío real del correo via Supabase/SMTP
+      setRecuperarMsg({ ok: true, texto: `Se ha enviado un enlace de recuperación a ${correo}. Revisa tu bandeja de entrada.` });
+    }
+  };
+
+  // ── Cierre automático por inactividad (3 minutos) ─────────
   const timerRef = useRef(null);
   const resetTimer = useCallback(() => {
     if (!sesion) return;
     clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => { cerrarSesion(); }, 60000);
+    timerRef.current = setTimeout(() => { cerrarSesion(); }, 180000);
   }, [sesion, cerrarSesion]);
 
   useEffect(() => {
@@ -2297,22 +2534,22 @@ export default function App() {
 
   // Pantalla de carga
   if (cargando) return (
-    <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, fontFamily: "'Sora','Segoe UI',sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, fontFamily: "'Sora','Segoe UI',sans-serif" }}>
       <div style={{ fontSize: 48 }}>📡</div>
       <div style={{ color: "#0ea5e9", fontWeight: 700, fontSize: 16 }}>Conectando con la base de datos…</div>
-      <div style={{ color: "#475569", fontSize: 13 }}>GC HOGAR.NET</div>
+      <div style={{ color: "#64748b", fontSize: 13 }}>GC HOGAR.NET</div>
     </div>
   );
 
   // Pantalla de error de conexión
   if (errorBD) return (
-    <div style={{ minHeight: "100vh", background: "#020817", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Sora','Segoe UI',sans-serif" }}>
-      <div style={{ background: "#0f172a", border: "1px solid #ef444444", borderRadius: 16, padding: 32, maxWidth: 480, textAlign: "center" }}>
+    <div style={{ minHeight: "100vh", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Sora','Segoe UI',sans-serif" }}>
+      <div style={{ background: "#ffffff", border: "1px solid #ef444444", borderRadius: 16, padding: 32, maxWidth: 480, textAlign: "center" }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>⚠️</div>
         <h2 style={{ color: "#ef4444", marginBottom: 12 }}>Error de conexión</h2>
-        <p style={{ color: "#94a3b8", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>{errorBD}</p>
-        <div style={{ background: "#1e293b", borderRadius: 10, padding: 14, textAlign: "left", fontSize: 12, color: "#64748b", lineHeight: 1.8 }}>
-          <div>1. Abre el archivo <strong style={{color:"#f1f5f9"}}>servicios-app-v6.jsx</strong></div>
+        <p style={{ color: "#475569", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>{errorBD}</p>
+        <div style={{ background: "#e2e8f0", borderRadius: 10, padding: 14, textAlign: "left", fontSize: 12, color: "#64748b", lineHeight: 1.8 }}>
+          <div>1. Abre el archivo <strong style={{color:"#0f172a"}}>servicios-app-v6.jsx</strong></div>
           <div>2. Edita las constantes <strong style={{color:"#0ea5e9"}}>SUPABASE_URL</strong> y <strong style={{color:"#0ea5e9"}}>SUPABASE_ANON</strong></div>
           <div>3. Ejecuta el schema SQL en Supabase → SQL Editor</div>
         </div>
@@ -2321,17 +2558,17 @@ export default function App() {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#020817", color: "#f1f5f9", fontFamily: "'Sora', 'Segoe UI', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#f8fafc", color: "#0f172a", fontFamily: "'Sora', 'Segoe UI', sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap');
         * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #0f172a; } ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #f1f5f9; } ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
         input:focus, select:focus, textarea:focus { border-color: #0ea5e9 !important; }
         button { transition: opacity 0.15s; } button:hover { opacity: 0.85; }
       `}</style>
 
       {/* HEADER */}
-      <header style={{ borderBottom: "1px solid #1e293b", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "#020817ee", zIndex: 10, backdropFilter: "blur(10px)" }}>
+      <header style={{ borderBottom: "1px solid #1e293b", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "rgba(248,250,252,0.95)", zIndex: 10, backdropFilter: "blur(10px)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {LOGO_URL ? (
             <img src={LOGO_URL} alt="Logo" style={{ width: 32, height: 32, objectFit: "contain", borderRadius: 8 }} />
@@ -2339,7 +2576,7 @@ export default function App() {
             <span style={{ fontSize: 24 }}>📡</span>
           )}
           <div>
-            <div style={{ fontWeight: 800, fontSize: 15, color: "#f1f5f9", letterSpacing: -0.5 }}>{nombreEmpresaHeader}</div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: "#0f172a", letterSpacing: -0.5 }}>{nombreEmpresaHeader}</div>
             <div style={{ fontSize: 10, color: "#64748b" }}>
               Gestión de servicios{zonaHeader ? ` · Zona ${zonaHeader.nombre}` : ""}
             </div>
@@ -2348,12 +2585,12 @@ export default function App() {
         {sesion && (
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>{sesion.nombre.split(" ")[0]}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{sesion.nombre.split(" ")[0]}</div>
               <Badge text={ROLES[sesion.rol]} color={ROL_COLOR[sesion.rol]} />
             </div>
             {sesion.rol === "tecnico" && ordenesHoyTecnico > 0 && <span style={{ background: "#f59e0b", color: "#000", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800 }}>{ordenesHoyTecnico} hoy</span>}
             {sesion.rol === "secretario" && ticketsNuevos > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800 }}>{ticketsNuevos} nuevos</span>}
-            <button onClick={cerrarSesion} style={{ background: "#1e293b", color: "#94a3b8", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12 }}>Salir</button>
+            <button onClick={cerrarSesion} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12 }}>Salir</button>
           </div>
         )}
       </header>
@@ -2361,8 +2598,8 @@ export default function App() {
       {/* LOGIN */}
       {!sesion && (
         <div style={{ maxWidth: 400, margin: "60px auto", padding: 16 }}>
-          <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 24, overflow: "hidden", boxShadow: "0 25px 60px #00000066" }}>
-            {/* Bloque superior con logo */}
+          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 24, overflow: "hidden", boxShadow: "0 10px 40px #00000014" }}>
+            {/* Logo */}
             <div style={{ background: "#ffffff", borderBottom: "1px solid #e2e8f0", padding: "32px 32px 24px", textAlign: "center" }}>
               {LOGO_URL ? (
                 <img src={LOGO_URL} alt="Logo" style={{ width: "100%", maxWidth: 240, height: 170, objectFit: "contain" }} />
@@ -2370,16 +2607,40 @@ export default function App() {
                 <div style={{ fontSize: 64 }}>📡</div>
               )}
             </div>
-            {/* Bloque inferior con formulario */}
+            {/* Formulario */}
             <div style={{ padding: "28px 32px 32px" }}>
-              <h2 style={{ color: "#f1f5f9", marginBottom: 4, fontSize: 22, fontWeight: 800, textAlign: "center" }}>GC HOGAR.NET</h2>
-              <p style={{ color: "#64748b", marginBottom: 24, fontSize: 13, textAlign: "center" }}>Ingresa con tu usuario y clave</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 18 }}>
-                <Inp value={loginUser} onChange={e => setLoginUser(e.target.value)} placeholder="Usuario" onKeyDown={e => e.key === "Enter" && intentarLogin()} />
-                <Inp type="password" value={loginClave} onChange={e => setLoginClave(e.target.value)} placeholder="Clave" onKeyDown={e => e.key === "Enter" && intentarLogin()} />
-              </div>
-              <Btn onClick={intentarLogin} style={{ width: "100%", padding: "13px 0", fontSize: 15, borderRadius: 12 }}>Ingresar</Btn>
-              {loginError && <p style={{ color: "#ef4444", marginTop: 12, fontSize: 13, textAlign: "center" }}>{loginError}</p>}
+              {!showRecuperar ? (
+                <>
+                  <h2 style={{ color: "#0f172a", marginBottom: 4, fontSize: 22, fontWeight: 800, textAlign: "center" }}>GC HOGAR.NET</h2>
+                  <p style={{ color: "#64748b", marginBottom: 24, fontSize: 13, textAlign: "center" }}>Ingresa con tu usuario o correo y clave</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
+                    <Inp value={loginUser} onChange={e => setLoginUser(e.target.value)} placeholder="Usuario o correo electrónico" onKeyDown={e => e.key === "Enter" && intentarLogin()} />
+                    <Inp type="password" value={loginClave} onChange={e => setLoginClave(e.target.value)} placeholder="Clave" onKeyDown={e => e.key === "Enter" && intentarLogin()} />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
+                    <input type="checkbox" id="recordar" checked={loginRecordar} onChange={e => setLoginRecordar(e.target.checked)} style={{ width: 16, height: 16, accentColor: "#0ea5e9", cursor: "pointer" }} />
+                    <label htmlFor="recordar" style={{ fontSize: 13, color: "#64748b", cursor: "pointer" }}>Recordar mis datos</label>
+                    <button onClick={() => { setShowRecuperar(true); setRecuperar(""); setRecuperarMsg(null); }} style={{ marginLeft: "auto", background: "none", border: "none", color: "#0ea5e9", fontSize: 13, cursor: "pointer", padding: 0, fontWeight: 600 }}>
+                      ¿Olvidé mi clave?
+                    </button>
+                  </div>
+                  <Btn onClick={intentarLogin} style={{ width: "100%", padding: "13px 0", fontSize: 15, borderRadius: 12 }}>Ingresar</Btn>
+                  {loginError && <p style={{ color: "#ef4444", marginTop: 12, fontSize: 13, textAlign: "center" }}>{loginError}</p>}
+                </>
+              ) : (
+                <>
+                  <button onClick={() => { setShowRecuperar(false); setRecuperarMsg(null); }} style={{ background: "none", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 13, marginBottom: 16, padding: 0 }}>← Volver</button>
+                  <h3 style={{ color: "#0f172a", marginBottom: 6, fontSize: 18, fontWeight: 800 }}>🔐 Recuperar contraseña</h3>
+                  <p style={{ color: "#64748b", fontSize: 13, marginBottom: 20 }}>Ingresa el correo electrónico de tu cuenta y te enviaremos un enlace de recuperación.</p>
+                  <Inp type="email" value={recuperarCorreo} onChange={e => setRecuperar(e.target.value)} placeholder="tucorreo@ejemplo.com" onKeyDown={e => e.key === "Enter" && enviarRecuperacion()} style={{ marginBottom: 14 }} />
+                  <Btn onClick={enviarRecuperacion} style={{ width: "100%", padding: "12px 0", fontSize: 14, borderRadius: 12 }}>Enviar enlace de recuperación</Btn>
+                  {recuperarMsg && (
+                    <div style={{ marginTop: 14, background: recuperarMsg.ok ? "#f0fdf4" : "#fef2f2", border: "1px solid " + (recuperarMsg.ok ? "#bbf7d0" : "#fecaca"), borderRadius: 10, padding: "12px 14px", fontSize: 13, color: recuperarMsg.ok ? "#16a34a" : "#dc2626", lineHeight: 1.5 }}>
+                      {recuperarMsg.ok ? "✅ " : "⚠️ "}{recuperarMsg.texto}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
