@@ -2303,29 +2303,26 @@ export default function App() {
 
       {/* LOGIN */}
       {!sesion && (
-        <div style={{ maxWidth: 380, margin: "70px auto", padding: 16 }}>
-          <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 18, padding: 32, textAlign: "center" }}>
-            {LOGO_URL ? (
-              <img src={LOGO_URL} alt="Logo" style={{ width: 100, height: 100, objectFit: "contain", marginBottom: 12, borderRadius: 16, mixBlendMode: "multiply", filter: "contrast(1.1)" }} />
-            ) : (
-              <div style={{ fontSize: 52, marginBottom: 12 }}>📡</div>
-            )}
-            <h2 style={{ color: "#f1f5f9", marginBottom: 4, fontSize: 20 }}>GC HOGAR.NET</h2>
-            <p style={{ color: "#64748b", marginBottom: 24, fontSize: 13 }}>Ingresa con tu usuario y clave</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-              <Inp value={loginUser} onChange={e => setLoginUser(e.target.value)} placeholder="Usuario" onKeyDown={e => e.key === "Enter" && intentarLogin()} />
-              <Inp type="password" value={loginClave} onChange={e => setLoginClave(e.target.value)} placeholder="Clave" onKeyDown={e => e.key === "Enter" && intentarLogin()} />
+        <div style={{ maxWidth: 400, margin: "60px auto", padding: 16 }}>
+          <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 24, overflow: "hidden", boxShadow: "0 25px 60px #00000066" }}>
+            {/* Bloque superior con logo */}
+            <div style={{ background: "linear-gradient(135deg, #0ea5e915 0%, #0f172a 100%)", borderBottom: "1px solid #1e293b", padding: "36px 32px 28px", textAlign: "center" }}>
+              {LOGO_URL ? (
+                <img src={LOGO_URL} alt="Logo" style={{ width: "100%", maxWidth: 220, height: 160, objectFit: "contain", mixBlendMode: "multiply", filter: "contrast(1.05)" }} />
+              ) : (
+                <div style={{ fontSize: 64, marginBottom: 8 }}>📡</div>
+              )}
             </div>
-            <Btn onClick={intentarLogin} style={{ width: "100%", padding: "12px 0", fontSize: 15 }}>Ingresar</Btn>
-            {loginError && <p style={{ color: "#ef4444", marginTop: 12, fontSize: 13 }}>{loginError}</p>}
-            <div style={{ marginTop: 20, background: "#1e293b", borderRadius: 10, padding: 12, textAlign: "left" }}>
-              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>Usuarios demo</div>
-              {[["admin", "admin123", "admin"], ["secretaria1", "sec123", "secretario"], ["tecnico1", "tec123", "tecnico"], ["12345678", "1234", "cliente"], ["empresa1", "emp123", "empresa"]].map(([u, c, r]) => (
-                <div key={u} onClick={() => { setLoginUser(u); setLoginClave(c); }} style={{ cursor: "pointer", padding: "4px 0", display: "flex", alignItems: "center", gap: 6 }}>
-                  <Badge text={r} color={ROL_COLOR[r === "empresa" ? "cliente" : r]} />
-                  <span style={{ fontSize: 12, color: "#94a3b8" }}>{u} / {c}</span>
-                </div>
-              ))}
+            {/* Bloque inferior con formulario */}
+            <div style={{ padding: "28px 32px 32px" }}>
+              <h2 style={{ color: "#f1f5f9", marginBottom: 4, fontSize: 22, fontWeight: 800, textAlign: "center" }}>GC HOGAR.NET</h2>
+              <p style={{ color: "#64748b", marginBottom: 24, fontSize: 13, textAlign: "center" }}>Ingresa con tu usuario y clave</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 18 }}>
+                <Inp value={loginUser} onChange={e => setLoginUser(e.target.value)} placeholder="Usuario" onKeyDown={e => e.key === "Enter" && intentarLogin()} />
+                <Inp type="password" value={loginClave} onChange={e => setLoginClave(e.target.value)} placeholder="Clave" onKeyDown={e => e.key === "Enter" && intentarLogin()} />
+              </div>
+              <Btn onClick={intentarLogin} style={{ width: "100%", padding: "13px 0", fontSize: 15, borderRadius: 12 }}>Ingresar</Btn>
+              {loginError && <p style={{ color: "#ef4444", marginTop: 12, fontSize: 13, textAlign: "center" }}>{loginError}</p>}
             </div>
           </div>
         </div>
