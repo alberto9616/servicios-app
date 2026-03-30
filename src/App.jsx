@@ -738,8 +738,9 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                   })}
                   {/* Modal confirmación eliminar */}
                   {confirmDeleteTicket && (
-                    <div style={{ position: "fixed", inset: 0, background: "#000a", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-                      <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 16, padding: 28, maxWidth: 360, textAlign: "center" }}>
+                    <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => { if (e.target === e.currentTarget) setConfirmDeleteTicket(null); }}>
+                      <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 28, maxWidth: 360, textAlign: "center", position: "relative" }}>
+                        <button onClick={() => setConfirmDeleteTicket(null)} style={{ position: "absolute", top: 12, right: 12, background: "#f1f5f9", border: "none", borderRadius: 8, width: 30, height: 30, cursor: "pointer", fontSize: 18, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
                         <div style={{ fontSize: 36, marginBottom: 10 }}>🗑️</div>
                         <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 8 }}>¿Eliminar esta solicitud?</div>
                         <div style={{ color: "#475569", fontSize: 13, marginBottom: 20 }}>Esta acción no se puede deshacer.</div>
@@ -1185,38 +1186,125 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
         </div>
       )}
 
-      {tab === "ordenes" && (
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <div style={{ color: "#64748b", fontSize: 13 }}>{misOrdenes.length} órdenes creadas por ti</div>
-            <Btn onClick={() => setShowModalOrdenManual(true)} style={{ fontSize: 13, padding: "8px 14px" }}>➕ Nueva orden manual</Btn>
-          </div>
-          {misOrdenes.length === 0 ? <div style={{ color: "#475569", textAlign: "center", padding: 40 }}>Aún no has creado órdenes.<br /><span style={{ fontSize: 13 }}>Usa "Nueva orden manual" o abre un ticket y presiona "Crear orden".</span></div> : [...misOrdenes].reverse().map(o => {
-            const tecnico = usuarios.find(u => u.id === o.tecnicoId);
-            return (
-              <div key={o.id} style={{ background: "#ffffff", border: "1px solid " + (o.prioridad === "alta" ? "#8b5cf633" : "#e2e8f0"), borderLeft: "4px solid " + ORDEN_COLOR[o.estado], borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontWeight: 700, color: "#0f172a", flex: 1 }}>{o.tipo}</span>
-                  {o.esManual && <Badge text="✍️ Manual" color="#f59e0b" />}
-                  {o.prioridad === "alta" && <Badge text="🏢 Empresa" color="#8b5cf6" />}
-                  <Badge text={o.estado} color={ORDEN_COLOR[o.estado]} />
-                </div>
-                <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                  👤 {o.clienteNombre} · 🔧 {tecnico?.nombre || "Sin asignar"} · 📅 {o.fecha} {o.hora}
-                </div>
-                {o.direccion && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>📍 {o.direccion}</div>}
-                {o.descripcion && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>{o.descripcion}</div>}
-                {o.datosInstalacion && (
-                  <div style={{ background: "#0ea5e911", border: "1px solid #0ea5e922", borderRadius: 8, padding: "8px 10px", marginTop: 6, fontSize: 12 }}>
-                    <span style={{ color: "#0ea5e9", fontWeight: 700 }}>📋 Datos instalación nueva: </span>
-                    <span style={{ color: "#475569" }}>CC: {o.datosInstalacion.cedula} · Tel: {o.datosInstalacion.telefono}{o.datosInstalacion.correo ? " · " + o.datosInstalacion.correo : ""}</span>
-                  </div>
-                )}
+      {tab === "ordenes" && (() => {
+        const hoy = new Date().toISOString().split("T")[0];
+        const manana = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+        // Sub-tabs internos de órdenes
+        const [subTab, setSubTab] = React.useState("activas");
+        const [filtroFecha, setFiltroFecha] = React.useState("");
+        const [filtroTecnico, setFiltroTecnico] = React.useState("");
+
+        const ordenarPorFecha = arr => [...arr].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "") || (a.hora || "").localeCompare(b.hora || ""));
+
+        const ordenesActivas = misOrdenes.filter(o => o.estado !== "Completada" && o.estado !== "Cancelada");
+        const ordenesProgramadas = misOrdenes.filter(o => o.fecha > hoy && o.estado === "Pendiente");
+        const ordenesHoy = misOrdenes.filter(o => o.fecha === hoy && o.estado !== "Completada" && o.estado !== "Cancelada");
+        const ordenesHistorial = misOrdenes.filter(o => o.estado === "Completada" || o.estado === "Cancelada");
+
+        const aplicarFiltros = (lista) => {
+          let r = lista;
+          if (filtroFecha) r = r.filter(o => o.fecha === filtroFecha);
+          if (filtroTecnico) r = r.filter(o => o.tecnicoId === filtroTecnico);
+          return r;
+        };
+
+        const listaActual =
+          subTab === "hoy"        ? aplicarFiltros(ordenesHoy) :
+          subTab === "programadas"? aplicarFiltros(ordenarPorFecha(ordenesProgramadas)) :
+          subTab === "historial"  ? aplicarFiltros(ordenesHistorial) :
+                                    aplicarFiltros(ordenarPorFecha(ordenesActivas));
+
+        const OrdenCardSec = ({ o }) => {
+          const tecnico = usuarios.find(u => u.id === o.tecnicoId);
+          const esFutura = o.fecha > hoy;
+          return (
+            <div style={{ background: "#ffffff", border: "1px solid " + (o.prioridad === "alta" ? "#c4b5fd" : "#e2e8f0"), borderLeft: "4px solid " + (esFutura ? "#0ea5e9" : ORDEN_COLOR[o.estado]), borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 700, color: "#0f172a", flex: 1 }}>{o.tipo}</span>
+                {esFutura && o.estado === "Pendiente" && <Badge text="📅 Programada" color="#0ea5e9" />}
+                {o.esManual && <Badge text="✍️ Manual" color="#f59e0b" />}
+                {o.prioridad === "alta" && <Badge text="🏢 Empresa" color="#8b5cf6" />}
+                <Badge text={o.estado} color={ORDEN_COLOR[o.estado]} />
               </div>
-            );
-          })}
-        </div>
-      )}
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 5, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <span>👤 {o.clienteNombre}</span>
+                <span>🔧 {tecnico?.nombre || "Sin asignar"}</span>
+                <span style={{ fontWeight: esFutura ? 700 : 400, color: esFutura ? "#0ea5e9" : "#64748b" }}>📅 {o.fecha} {o.hora}</span>
+              </div>
+              {o.telefonoCliente && <div style={{ fontSize: 12, color: "#0ea5e9", marginTop: 3 }}>📞 {o.telefonoCliente}</div>}
+              {o.direccion && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>📍 {o.direccion}</div>}
+              {o.descripcion && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>{o.descripcion}</div>}
+              {o.datosInstalacion && (
+                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 10px", marginTop: 6, fontSize: 12 }}>
+                  <span style={{ color: "#0ea5e9", fontWeight: 700 }}>📋 Datos instalación nueva: </span>
+                  <span style={{ color: "#475569" }}>CC: {o.datosInstalacion.cedula} · Tel: {o.datosInstalacion.telefono}{o.datosInstalacion.correo ? " · " + o.datosInstalacion.correo : ""}</span>
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        return (
+          <div>
+            {/* Header con botón nueva orden */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ color: "#64748b", fontSize: 13 }}>
+                {misOrdenes.length} órdenes en total · <span style={{ color: "#0ea5e9", fontWeight: 700 }}>{ordenesProgramadas.length} programadas</span>
+              </div>
+              <Btn onClick={() => setShowModalOrdenManual(true)} style={{ fontSize: 13, padding: "8px 14px" }}>➕ Nueva orden</Btn>
+            </div>
+
+            {/* Sub-tabs internos */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 14, background: "#f1f5f9", borderRadius: 10, padding: 4 }}>
+              {[
+                ["activas", "📋 Activas", ordenesActivas.length],
+                ["hoy",     "📅 Hoy",     ordenesHoy.length],
+                ["programadas", "🗓️ Programadas", ordenesProgramadas.length],
+                ["historial",   "✅ Historial", 0],
+              ].map(([k, v, badge]) => (
+                <button key={k} onClick={() => { setSubTab(k); setFiltroFecha(""); setFiltroTecnico(""); }}
+                  style={{ flex: 1, padding: "7px 4px", borderRadius: 8, border: "none", cursor: "pointer",
+                    background: subTab === k ? "#0ea5e9" : "transparent",
+                    color: subTab === k ? "#fff" : "#64748b",
+                    fontWeight: 700, fontSize: 11,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                  {v}
+                  {badge > 0 && <span style={{ background: subTab === k ? "rgba(255,255,255,0.3)" : "#e2e8f0", color: subTab === k ? "#fff" : "#64748b", borderRadius: 20, padding: "1px 6px", fontSize: 10, fontWeight: 800 }}>{badge}</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* Filtros */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <Inp type="date" value={filtroFecha} onChange={e => setFiltroFecha(e.target.value)} style={{ flex: 1, minWidth: 150 }} placeholder="Filtrar por fecha" />
+              <Sel value={filtroTecnico} onChange={e => setFiltroTecnico(e.target.value)} style={{ flex: 1, minWidth: 150 }}>
+                <option value="">Todos los técnicos</option>
+                {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+              </Sel>
+              {(filtroFecha || filtroTecnico) && (
+                <button onClick={() => { setFiltroFecha(""); setFiltroTecnico(""); }} style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✕ Limpiar</button>
+              )}
+            </div>
+
+            {/* Info sub-tab programadas */}
+            {subTab === "programadas" && (
+              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderLeft: "4px solid #0ea5e9", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "#1e40af" }}>
+                🗓️ Órdenes <strong>programadas para fechas futuras</strong> (aún no aparecen en el portal del técnico). Se activarán automáticamente en la fecha asignada.
+              </div>
+            )}
+
+            {/* Lista */}
+            {listaActual.length === 0 ? (
+              <div style={{ textAlign: "center", color: "#94a3b8", padding: 40, fontSize: 14 }}>
+                {subTab === "programadas" ? "📅 Sin órdenes programadas para fechas futuras." :
+                 subTab === "hoy" ? "🎉 Sin órdenes para hoy." :
+                 subTab === "historial" ? "Sin órdenes completadas aún." :
+                 "Sin órdenes activas."}
+              </div>
+            ) : listaActual.map(o => <OrdenCardSec key={o.id} o={o} />)}
+          </div>
+        );
+      })()}
 
       {tab === "clientes" && (
         <div>
@@ -1331,7 +1419,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
               </Field>
               <Field label="Título"><Inp value={editAviso.titulo} onChange={e => setEditAviso({ ...editAviso, titulo: e.target.value })} /></Field>
               <Field label="Mensaje">
-                <textarea value={editAviso.mensaje} onChange={e => setEditAviso({ ...editAviso, mensaje: e.target.value })} style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
+                <textarea value={editAviso.mensaje} onChange={e => setEditAviso({ ...editAviso, mensaje: e.target.value })} style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
               </Field>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
                 <Field label="Afecta">
@@ -1393,8 +1481,9 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
 
       {/* Modal crear orden desde ticket */}
       {modalOrden && (
-        <div style={{ position: "fixed", inset: 0, background: "#000a", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => { if (e.target === e.currentTarget) setModalOrden(null); }}>
+          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
+            <button onClick={() => setModalOrden(null)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>×</button>
             <h3 style={{ color: "#0f172a", margin: "0 0 16px", fontSize: 16 }}>🔧 Crear orden de trabajo</h3>
             <div style={{ background: "#e2e8f0", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
               <div style={{ fontWeight: 600, color: "#0f172a", fontSize: 14 }}>{modalOrden.titulo}</div>
@@ -1424,7 +1513,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
               </div>
             )}
             <Field label="Descripción / instrucciones">
-              <textarea value={nuevaOrden.descripcion} onChange={e => setNuevaOrden({ ...nuevaOrden, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
+              <textarea value={nuevaOrden.descripcion} onChange={e => setNuevaOrden({ ...nuevaOrden, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
             </Field>
             <Field label={`Asignar técnico · Zona: ${zonaSecretario?.nombre || ""}`}>
               <Sel value={nuevaOrden.tecnicoId} onChange={e => setNuevaOrden({ ...nuevaOrden, tecnicoId: e.target.value })}>
@@ -1446,8 +1535,9 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
 
       {/* Modal orden manual */}
       {showModalOrdenManual && (
-        <div style={{ position: "fixed", inset: 0, background: "#000b", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 16, padding: 24, width: "100%", maxWidth: 500, maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => { if (e.target === e.currentTarget) { setShowModalOrdenManual(false); setErroresOrdenManual({}); } }}>
+          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24, width: "100%", maxWidth: 500, maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
+            <button onClick={() => { setShowModalOrdenManual(false); setErroresOrdenManual({}); }} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>×</button>
             <h3 style={{ color: "#0f172a", margin: "0 0 4px", fontSize: 16 }}>➕ Nueva orden manual</h3>
             <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 16px" }}>Asigna una orden sin necesidad de que exista un ticket</p>
 
@@ -1524,7 +1614,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             )}
 
             <Field label="Descripción / instrucciones">
-              <textarea value={ordenManual.descripcion} onChange={e => setOrdenManual({ ...ordenManual, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 60, resize: "vertical" }} />
+              <textarea value={ordenManual.descripcion} onChange={e => setOrdenManual({ ...ordenManual, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 60, resize: "vertical" }} />
             </Field>
             <Field label={`Asignar técnico · Zona: ${zonaSecretario?.nombre || ""}`}>
               <Sel value={ordenManual.tecnicoId} onChange={e => setOrdenManual({ ...ordenManual, tecnicoId: e.target.value })} style={{ borderColor: erroresOrdenManual.tecnicoId ? "#ef4444" : undefined }}>
@@ -1554,9 +1644,11 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
   const zonaT = zonas.find(z => z.id === usuario.zonaId);
   const hoy = new Date().toISOString().split("T")[0];
   const misOrdenes = ordenes.filter(o => o.tecnicoId === usuario.id);
-  const ordenesHoy = misOrdenes.filter(o => o.fecha === hoy && o.estado !== "Completada" && o.estado !== "Cancelada");
-  const ordenesActivas = misOrdenes.filter(o => o.estado !== "Completada" && o.estado !== "Cancelada");
-  const completadas = misOrdenes.filter(o => o.estado === "Completada");
+  // El técnico solo ve órdenes de hoy o anteriores (las futuras son "programadas" y las maneja el secretario)
+  const misOrdenesVisibles = misOrdenes.filter(o => !o.fecha || o.fecha <= hoy);
+  const ordenesHoy = misOrdenesVisibles.filter(o => o.fecha === hoy && o.estado !== "Completada" && o.estado !== "Cancelada");
+  const ordenesActivas = misOrdenesVisibles.filter(o => o.estado !== "Completada" && o.estado !== "Cancelada");
+  const completadas = misOrdenesVisibles.filter(o => o.estado === "Completada");
 
   const cambiarEstado = async (ordenId, estado) => {
     try {
@@ -2275,7 +2367,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
               </Field>
               <Field label="Título"><Inp value={editA.titulo} onChange={e => setEditA({ ...editA, titulo: e.target.value })} /></Field>
               <Field label="Mensaje">
-                <textarea value={editA.mensaje} onChange={e => setEditA({ ...editA, mensaje: e.target.value })} style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
+                <textarea value={editA.mensaje} onChange={e => setEditA({ ...editA, mensaje: e.target.value })} style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
               </Field>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
                 <Field label="Afecta">
@@ -2344,7 +2436,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <Inp value={editPropa.titulo} onChange={e => setEditPropa({ ...editPropa, titulo: e.target.value })} placeholder="Ej: 🎉 Promoción Especial de Abril" />
               </Field>
               <Field label="Descripción / detalle">
-                <textarea value={editPropa.descripcion} onChange={e => setEditPropa({ ...editPropa, descripcion: e.target.value })} placeholder="Describe la promoción, equipo o servicio disponible..." style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 80, resize: "vertical" }} />
+                <textarea value={editPropa.descripcion} onChange={e => setEditPropa({ ...editPropa, descripcion: e.target.value })} placeholder="Describe la promoción, equipo o servicio disponible..." style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 80, resize: "vertical" }} />
               </Field>
               {/* Vista previa */}
               {editPropa.titulo && (
@@ -2404,7 +2496,7 @@ export default function App() {
   const [planes, setPlanes] = useState([]);
   const [zonas, setZonas] = useState([]);
   const [propaganda, setPropaganda] = useState([]);
-  const [sesion, setSesion] = useState(null);
+  const [sesion, setSesionRaw] = useState(null);
   const [loginUser, setLoginUser] = useState(() => {
     try { return localStorage.getItem("gc_remember_user") || ""; } catch { return ""; }
   });
@@ -2420,8 +2512,17 @@ export default function App() {
   const [showRecuperar, setShowRecuperar] = useState(false);
   const [recuperarCorreo, setRecuperar] = useState("");
   const [recuperarMsg, setRecuperarMsg] = useState(null);
-  // Control sesión activa (evita doble sesión con el mismo usuario)
   const sesionKeyRef = useRef(null);
+
+  // Wrapper para guardar sesión en localStorage
+  const setSesion = useCallback((u) => {
+    setSesionRaw(u);
+    if (u) {
+      try { localStorage.setItem("gc_sesion_id", u.id); } catch {}
+    } else {
+      try { localStorage.removeItem("gc_sesion_id"); } catch {}
+    }
+  }, []);
 
   // ── Carga inicial desde Supabase ──────────────────────────
   useEffect(() => {
@@ -2434,6 +2535,17 @@ export default function App() {
         ]);
         setZonas(z); setPlanes(pl); setUsuarios(u);
         setAvisos(a); setTickets(t); setOrdenes(o); setPropaganda(pr);
+        // Restaurar sesión guardada al recargar la página
+        try {
+          const savedId = localStorage.getItem("gc_sesion_id");
+          if (savedId) {
+            const usuarioGuardado = u.find(x => x.id === savedId && x.activo);
+            if (usuarioGuardado) {
+              setSesionRaw(usuarioGuardado);
+              sesionKeyRef.current = { uid: usuarioGuardado.id, key: "restored" };
+            }
+          }
+        } catch {}
       } catch (err) {
         console.error("Error cargando datos:", err);
         setErrorBD("No se pudo conectar con la base de datos. Verifica tu SUPABASE_URL y SUPABASE_ANON.");
