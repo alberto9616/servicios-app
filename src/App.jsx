@@ -1511,7 +1511,7 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
 // ══════════════════════════════════════════════════════════════
 // PORTAL ADMIN
 // ══════════════════════════════════════════════════════════════
-function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, zonas, setZonas, propaganda, setPropaganda }) {
+function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion }) {
   const [tab, setTab] = useState("usuarios");
   const [editU, setEditU] = useState(null);
   const [editA, setEditA] = useState(null);
@@ -1521,7 +1521,10 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const [showForm, setShowForm] = useState(false);
   const [busqAdmin, setBusqAdmin] = useState("");
   const [filtroAdminTipo, setFiltroAdminTipo] = useState("todos");
-  const [formTipo, setFormTipo] = useState(null); // "usuario" | "aviso" | "plan" | "zona" | "propa"
+  const [formTipo, setFormTipo] = useState(null);
+  // Mi cuenta
+  const [miCuenta, setMiCuenta] = useState({ usuario: sesion?.usuario || "", clave: "", claveNueva: "", claveConfirm: "" });
+  const [miCuentaMsg, setMiCuentaMsg] = useState(null);
 
   const usuariosFiltradosAdmin = (() => {
     const q = busqAdmin.toLowerCase().trim();
@@ -1639,7 +1642,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     zonas: zonas.length,
   };
 
-  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["zonas", "🗺️ Zonas"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["resumen", "📊 Resumen"]];
+  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["zonas", "🗺️ Zonas"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
 
   const getNombreZona = (zonaId) => zonas.find(z => z.id === zonaId)?.nombre || "Sin zona";
 
@@ -1684,6 +1687,60 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── TAB MI CUENTA ── */}
+      {tab === "micuenta" && (
+        <div style={{ maxWidth: 480, margin: "0 auto" }}>
+          <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 16, padding: 28 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
+              <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#8b5cf622", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🔐</div>
+              <div>
+                <div style={{ fontWeight: 700, color: "#f1f5f9", fontSize: 16 }}>{sesion?.nombre}</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>Administrador · @{sesion?.usuario}</div>
+              </div>
+            </div>
+
+            <Field label="Nuevo usuario">
+              <Inp value={miCuenta.usuario} onChange={e => setMiCuenta({ ...miCuenta, usuario: e.target.value })} placeholder="Nuevo nombre de usuario" />
+            </Field>
+            <Field label="Clave actual">
+              <Inp type="password" value={miCuenta.clave} onChange={e => setMiCuenta({ ...miCuenta, clave: e.target.value })} placeholder="Tu clave actual" />
+            </Field>
+            <Field label="Nueva clave">
+              <Inp type="password" value={miCuenta.claveNueva} onChange={e => setMiCuenta({ ...miCuenta, claveNueva: e.target.value })} placeholder="Nueva clave (mínimo 4 caracteres)" />
+            </Field>
+            <Field label="Confirmar nueva clave">
+              <Inp type="password" value={miCuenta.claveConfirm} onChange={e => setMiCuenta({ ...miCuenta, claveConfirm: e.target.value })} placeholder="Repite la nueva clave" />
+            </Field>
+
+            {miCuentaMsg && (
+              <div style={{ background: miCuentaMsg.ok ? "#22c55e22" : "#ef444422", border: "1px solid " + (miCuentaMsg.ok ? "#22c55e44" : "#ef444444"), borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: miCuentaMsg.ok ? "#22c55e" : "#ef4444" }}>
+                {miCuentaMsg.texto}
+              </div>
+            )}
+
+            <Btn onClick={async () => {
+              setMiCuentaMsg(null);
+              const admin = usuarios.find(u => u.id === sesion.id);
+              if (!admin) return;
+              if (miCuenta.clave !== admin.clave) { setMiCuentaMsg({ ok: false, texto: "❌ La clave actual es incorrecta." }); return; }
+              if (miCuenta.claveNueva.length < 4) { setMiCuentaMsg({ ok: false, texto: "❌ La nueva clave debe tener mínimo 4 caracteres." }); return; }
+              if (miCuenta.claveNueva !== miCuenta.claveConfirm) { setMiCuentaMsg({ ok: false, texto: "❌ Las claves nuevas no coinciden." }); return; }
+              if (!miCuenta.usuario.trim()) { setMiCuentaMsg({ ok: false, texto: "❌ El usuario no puede estar vacío." }); return; }
+              try {
+                const actualizado = { ...admin, usuario: miCuenta.usuario.trim(), clave: miCuenta.claveNueva };
+                await db.upsertUsuario(actualizado);
+                setUsuarios(p => p.map(u => u.id === admin.id ? actualizado : u));
+                setSesion(actualizado);
+                setMiCuenta({ usuario: miCuenta.usuario.trim(), clave: "", claveNueva: "", claveConfirm: "" });
+                setMiCuentaMsg({ ok: true, texto: "✅ Usuario y clave actualizados correctamente." });
+              } catch (err) { setMiCuentaMsg({ ok: false, texto: "❌ Error al guardar: " + err.message }); }
+            }} style={{ width: "100%", padding: "12px 0" }}>
+              Guardar cambios
+            </Btn>
+          </div>
         </div>
       )}
 
@@ -2339,7 +2396,7 @@ export default function App() {
         <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} />
       )}
       {sesion && sesion.rol === "admin" && (
-        <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} />
+        <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} />
       )}
     </div>
   );
