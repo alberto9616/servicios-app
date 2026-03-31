@@ -56,6 +56,26 @@ const mapOrden = r => r ? ({
 }) : null;
 const mapPropaganda = r => r ? ({ id: r.id, categoria: r.categoria, titulo: r.titulo, descripcion: r.descripcion, activo: r.activo, fecha: r.fecha, imagen: r.imagen, color: r.color }) : null;
 
+// Mapper facturación
+const mapFactura = r => r ? ({
+  id: r.id, clienteId: r.cliente_id, clienteNombre: r.cliente_nombre,
+  clienteCedula: r.cliente_cedula, clienteDireccion: r.cliente_direccion,
+  zonaId: r.zona_id, mes: r.mes, anio: r.anio,
+  concepto: r.concepto, monto: r.monto ? Number(r.monto) : 0,
+  saldoPendiente: r.saldo_pendiente ? Number(r.saldo_pendiente) : 0,
+  estado: r.estado, metodoPago: r.metodo_pago,
+  fechaEmision: r.fecha_emision, fechaPago: r.fecha_pago,
+  notas: r.notas || "", creadoPor: r.creado_por,
+  numeroRecibo: r.numero_recibo,
+}) : null;
+
+const mapAbono = r => r ? ({
+  id: r.id, facturaId: r.factura_id, monto: Number(r.monto),
+  metodoPago: r.metodo_pago, fecha: r.fecha,
+  observacion: r.observacion || "", registradoPor: r.registrado_por,
+  creadoEn: r.created_at,
+}) : null;
+
 // ──────────────────────────────────────────────────────────
 // CAPA DE DATOS — todas las operaciones con Supabase
 // ──────────────────────────────────────────────────────────
@@ -124,6 +144,51 @@ const db = {
   async upsertPropaganda(p) { const { data, error } = await sb.from("propaganda").upsert({ id: p.id||undefined, categoria: p.categoria, titulo: p.titulo, descripcion: p.descripcion, activo: p.activo, fecha: p.fecha||null, imagen: p.imagen, color: p.color }).select().single(); if (error) throw error; return mapPropaganda(data); },
   async deletePropaganda(id) { const { error } = await sb.from("propaganda").delete().eq("id", id); if (error) throw error; },
   async togglePropaganda(id, activo) { const { error } = await sb.from("propaganda").update({ activo }).eq("id", id); if (error) throw error; },
+
+  // FACTURACIÓN
+  async getFacturas() {
+    const { data, error } = await sb.from("facturas").select("*").order("fecha_emision", { ascending: false });
+    if (error) throw error;
+    return data.map(mapFactura);
+  },
+  async getFacturasByCliente(clienteId) {
+    const { data, error } = await sb.from("facturas").select("*").eq("cliente_id", clienteId).order("fecha_emision", { ascending: false });
+    if (error) throw error;
+    return data.map(mapFactura);
+  },
+  async crearFactura(f) {
+    const { data, error } = await sb.from("facturas").insert({
+      cliente_id: f.clienteId, cliente_nombre: f.clienteNombre,
+      cliente_cedula: f.clienteCedula, cliente_direccion: f.clienteDireccion,
+      zona_id: f.zonaId, mes: f.mes, anio: f.anio,
+      concepto: f.concepto, monto: f.monto,
+      saldo_pendiente: f.monto, estado: "Pendiente",
+      fecha_emision: f.fechaEmision || new Date().toISOString().split("T")[0],
+      notas: f.notas || "", creado_por: f.creadoPor || null,
+      numero_recibo: f.numeroRecibo || null,
+    }).select().single();
+    if (error) throw error;
+    return mapFactura(data);
+  },
+  async actualizarFactura(id, campos) { const { error } = await sb.from("facturas").update(campos).eq("id", id); if (error) throw error; },
+  async getAbonos(facturaId) {
+    const { data, error } = await sb.from("abonos").select("*").eq("factura_id", facturaId).order("fecha", { ascending: false });
+    if (error) throw error;
+    return data.map(mapAbono);
+  },
+  async registrarAbono(a) {
+    const { data, error } = await sb.from("abonos").insert({
+      factura_id: a.facturaId, monto: a.monto,
+      metodo_pago: a.metodoPago, fecha: a.fecha || new Date().toISOString().split("T")[0],
+      observacion: a.observacion || "", registrado_por: a.registradoPor || null,
+    }).select().single();
+    if (error) throw error;
+    return mapAbono(data);
+  },
+  async getSiguienteNumeroRecibo() {
+    const { data } = await sb.from("facturas").select("numero_recibo").not("numero_recibo", "is", null).order("numero_recibo", { ascending: false }).limit(1).single();
+    return data ? (Number(data.numero_recibo) + 1) : 68849;
+  },
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -601,13 +666,17 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
       )}
 
       <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "#ffffff", borderRadius: 10, padding: 4 }}>
-        {[["info", "📋 Mi cuenta"], ["soporte", "🛠️ Soporte"], ["promo", "🎁 Promociones"]].map(([k, v]) => (
+        {[["info", "📋 Mi cuenta"], ["soporte", "🛠️ Soporte"], ["pagos", "💳 Mis pagos"], ["promo", "🎁 Promociones"]].map(([k, v]) => (
           <button key={k} onClick={() => { setTab(k); resetChat(); }} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", background: tab === k ? "#0ea5e9" : "transparent", color: tab === k ? "#fff" : "#64748b", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             {v}
             {k === "soporte" && conRespuesta > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "1px 7px", fontSize: 10, fontWeight: 800 }}>{conRespuesta}</span>}
           </button>
         ))}
       </div>
+
+      {tab === "pagos" && (
+        <FacturacionCliente usuario={usuario} />
+      )}
 
       {tab === "promo" && (
         <div>
@@ -1146,7 +1215,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
         </div>
       )}
       <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#ffffff", borderRadius: 10, padding: 4, flexWrap: "wrap" }}>
-        {[["tickets", "🎫 Tickets", pendientes.length], ["ordenes", "📋 Órdenes", 0], ["clientes", "👥 Clientes", 0], ["avisos", "📢 Avisos", 0], ["promo", "🎁 Promos", 0]].map(([k, v, badge]) => (
+        {[["tickets", "🎫 Tickets", pendientes.length], ["ordenes", "📋 Órdenes", 0], ["clientes", "👥 Clientes", 0], ["facturacion", "🧾 Cobros", 0], ["avisos", "📢 Avisos", 0], ["promo", "🎁 Promos", 0]].map(([k, v, badge]) => (
           <button key={k} onClick={() => { setTab(k); setShowFormCliente(false); setShowFormAviso(false); }} style={{ flex: 1, padding: "8px 4px", borderRadius: 8, border: "none", cursor: "pointer", background: tab === k ? "#0ea5e9" : "transparent", color: tab === k ? "#fff" : "#64748b", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, minWidth: 60 }}>
             {v}{badge > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "1px 7px", fontSize: 10, fontWeight: 800 }}>{badge}</span>}
           </button>
@@ -1401,6 +1470,10 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             ))}
           </div>
         </div>
+      )}
+
+      {tab === "facturacion" && (
+        <ModuloFacturacion usuario={usuario} usuarios={usuarios} zonas={zonas} planes={planes} />
       )}
 
       {tab === "avisos" && (
@@ -1775,6 +1848,549 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
 // ══════════════════════════════════════════════════════════════
 // PORTAL ADMIN
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// HELPERS FACTURACIÓN
+// ══════════════════════════════════════════════════════════════
+const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const numeroALetras = (n) => {
+  const u = ["","uno","dos","tres","cuatro","cinco","seis","siete","ocho","nueve","diez","once","doce","trece","catorce","quince","dieciséis","diecisiete","dieciocho","diecinueve","veinte","veintiuno","veintidós","veintitrés","veinticuatro","veinticinco","veintiséis","veintisiete","veintiocho","veintinueve"];
+  const d = ["","","veinte","treinta","cuarenta","cincuenta","sesenta","setenta","ochenta","noventa"];
+  const c = ["","cien","doscientos","trescientos","cuatrocientos","quinientos","seiscientos","setecientos","ochocientos","novecientos"];
+  if (n === 0) return "cero";
+  if (n < 0) return "menos " + numeroALetras(-n);
+  let res = "";
+  if (n >= 1000000) { res += numeroALetras(Math.floor(n/1000000)) + " millón "; n %= 1000000; }
+  if (n >= 1000) { const m = Math.floor(n/1000); res += (m === 1 ? "mil" : numeroALetras(m) + " mil") + " "; n %= 1000; }
+  if (n >= 100) { res += (n === 100 ? "cien" : c[Math.floor(n/100)]) + " "; n %= 100; }
+  if (n > 0 && n < 30) { res += u[n]; }
+  else if (n >= 30) { res += d[Math.floor(n/10)] + (n % 10 ? " y " + u[n % 10] : ""); }
+  return res.trim().toUpperCase() + " PESOS";
+};
+
+// ── Componente Recibo de Pago (imprimible) ────────────────
+function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose }) {
+  const totalAbonado = abonos.reduce((s, a) => s + a.monto, 0);
+  const saldo = factura.monto - totalAbonado;
+  const pagado = saldo <= 0;
+
+  const imprimir = () => window.print();
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#00000077", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 0, width: "100%", maxWidth: 420, maxHeight: "95vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
+        {/* Botones acción */}
+        <div style={{ display: "flex", gap: 8, padding: "14px 16px", borderBottom: "1px solid #e2e8f0" }}>
+          <Btn onClick={imprimir} style={{ flex: 1, fontSize: 13 }}>🖨️ Imprimir</Btn>
+          <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#64748b" }}>Cerrar</button>
+        </div>
+        {/* Cuerpo del recibo */}
+        <div id="recibo-print" style={{ padding: "24px 28px", fontFamily: "monospace", fontSize: 13, color: "#0f172a" }}>
+          <div style={{ textAlign: "center", marginBottom: 16 }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>{nombreEmpresa || "GC HOGAR.NET SAS"}</div>
+            <div style={{ fontSize: 12 }}>OFICINA VIJES</div>
+            <div style={{ fontSize: 12 }}>Tel.: {telefono || "318-8255601"}</div>
+          </div>
+          <div style={{ borderTop: "1px dashed #94a3b8", borderBottom: "1px dashed #94a3b8", padding: "10px 0", marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>Recibo No.:</span><strong>{String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0")}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>Fecha:</span><span>{factura.fechaEmision || new Date().toISOString().split("T")[0]}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span>Cod. Usuario:</span><span>{factura.clienteCedula || "—"}</span>
+            </div>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontWeight: 700 }}>{factura.clienteNombre}</div>
+            <div style={{ fontSize: 12, color: "#475569" }}>{factura.clienteDireccion || "—"}</div>
+          </div>
+          <div style={{ borderTop: "1px dashed #94a3b8", padding: "10px 0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontWeight: 700, fontSize: 11, color: "#64748b" }}>
+              <span>CONCEPTO</span><span>VALOR</span>
+            </div>
+            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>{factura.concepto}</span>
+                <strong>{formatCOP(factura.monto)}</strong>
+              </div>
+            </div>
+          </div>
+          {abonos.length > 0 && (
+            <div style={{ borderTop: "1px dashed #94a3b8", padding: "8px 0" }}>
+              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4, fontWeight: 700 }}>ABONOS REGISTRADOS</div>
+              {abonos.map((a, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                  <span>{a.fecha} · {a.metodoPago}</span>
+                  <span>- {formatCOP(a.monto)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ borderTop: "1px dashed #94a3b8", padding: "10px 0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+              <span>Total factura:</span><span>{formatCOP(factura.monto)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+              <span>Total abonado:</span><span>{formatCOP(totalAbonado)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 14, marginTop: 6, borderTop: "1px solid #0f172a", paddingTop: 6 }}>
+              <span>{pagado ? "CANCELADO" : "SALDO PENDIENTE"}:</span>
+              <span style={{ color: pagado ? "#16a34a" : "#dc2626" }}>{formatCOP(Math.max(0, saldo))}</span>
+            </div>
+          </div>
+          <div style={{ borderTop: "1px dashed #94a3b8", marginTop: 8, paddingTop: 12, fontSize: 12, textAlign: "center" }}>
+            <div style={{ marginBottom: 16, fontStyle: "italic" }}>{numeroALetras(factura.monto)}</div>
+            <div>Firma: _______________________</div>
+          </div>
+          {factura.notas && <div style={{ marginTop: 10, fontSize: 11, color: "#64748b", textAlign: "center" }}>{factura.notas}</div>}
+        </div>
+        <style>{`@media print { body * { visibility: hidden; } #recibo-print, #recibo-print * { visibility: visible; } #recibo-print { position: fixed; inset: 0; padding: 24px; } }`}</style>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// MÓDULO FACTURACIÓN — Admin y Secretario
+// ══════════════════════════════════════════════════════════════
+function ModuloFacturacion({ usuario, usuarios, zonas, planes }) {
+  const [facturas, setFacturas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [subTab, setSubTab] = useState("cobros");
+  const [busq, setBusq] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [filtroMes, setFiltroMes] = useState(new Date().getMonth() + 1);
+  const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
+  const [modalFactura, setModalFactura] = useState(null); // factura seleccionada para ver detalle
+  const [modalAbono, setModalAbono] = useState(null); // factura para registrar abono
+  const [modalRecibo, setModalRecibo] = useState(null); // {factura, abonos}
+  const [abonosModal, setAbonosModal] = useState([]);
+  const [showGenerarMasivo, setShowGenerarMasivo] = useState(false);
+  const [generandoMasivo, setGenerandoMasivo] = useState(false);
+  const [nuevoAbono, setNuevoAbono] = useState({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: new Date().toISOString().split("T")[0] });
+  const [errAbono, setErrAbono] = useState("");
+  const [showFormManual, setShowFormManual] = useState(false);
+  const [facturaManual, setFacturaManual] = useState({ clienteId: "", concepto: "", monto: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "" });
+
+  const esAdmin = usuario.rol === "admin";
+  const zonaId = usuario.zonaId;
+
+  // Clientes visibles según rol
+  const clientesVisibles = usuarios.filter(u => u.rol === "cliente" && u.activo && (esAdmin || u.zonaId === zonaId));
+  const zonaUsuario = zonas.find(z => z.id === zonaId);
+  const nombreEmpresa = zonaUsuario?.nombreEmpresa || "GC HOGAR.NET SAS";
+
+  useEffect(() => {
+    const cargar = async () => {
+      setCargando(true);
+      try {
+        const data = await db.getFacturas();
+        setFacturas(esAdmin ? data : data.filter(f => {
+          const cliente = usuarios.find(u => u.id === f.clienteId);
+          return cliente?.zonaId === zonaId;
+        }));
+      } catch (e) { console.error(e); }
+      finally { setCargando(false); }
+    };
+    cargar();
+  }, []);
+
+  // Filtros
+  const facturasFiltradas = facturas.filter(f => {
+    const q = busq.toLowerCase().trim();
+    const matchQ = !q || f.clienteNombre?.toLowerCase().includes(q) || f.clienteCedula?.toLowerCase().includes(q) || String(f.numeroRecibo).includes(q);
+    const matchEstado = filtroEstado === "todos" || f.estado === filtroEstado;
+    const matchMes = f.mes === filtroMes && f.anio === filtroAnio;
+    return matchQ && matchEstado && matchMes;
+  });
+
+  // Estadísticas del mes
+  const totalMes = facturasFiltradas.reduce((s, f) => s + f.monto, 0);
+  const totalRecaudado = facturasFiltradas.filter(f => f.estado === "Pagado").reduce((s, f) => s + f.monto, 0);
+  const totalPendiente = facturasFiltradas.filter(f => f.estado !== "Pagado").reduce((s, f) => s + f.saldoPendiente, 0);
+  const morosos = facturasFiltradas.filter(f => f.estado === "Vencido").length;
+
+  // Generar facturación masiva del mes
+  const generarFacturasMasivas = async () => {
+    setGenerandoMasivo(true);
+    let creadas = 0;
+    try {
+      const nextNum = await db.getSiguienteNumeroRecibo();
+      for (let i = 0; i < clientesVisibles.length; i++) {
+        const c = clientesVisibles[i];
+        // Verificar que no exista ya factura para este mes/año
+        const yaExiste = facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio);
+        if (yaExiste || !c.monto) continue;
+        const mesNombre = MESES[filtroMes - 1];
+        const nueva = await db.crearFactura({
+          clienteId: c.id, clienteNombre: c.nombre,
+          clienteCedula: c.cedula, clienteDireccion: c.direccion,
+          zonaId: c.zonaId, mes: filtroMes, anio: filtroAnio,
+          concepto: `${c.servicio || "Internet"} ${mesNombre} ${filtroAnio}`,
+          monto: c.monto, fechaEmision: new Date().toISOString().split("T")[0],
+          creadoPor: usuario.id, numeroRecibo: nextNum + creadas,
+        });
+        setFacturas(prev => [nueva, ...prev]);
+        creadas++;
+      }
+      alert(`✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.`);
+    } catch (e) { alert("Error generando facturas: " + e.message); }
+    finally { setGenerandoMasivo(false); setShowGenerarMasivo(false); }
+  };
+
+  // Registrar abono
+  const registrarAbono = async () => {
+    setErrAbono("");
+    const monto = Number(nuevoAbono.monto);
+    if (!monto || monto <= 0) { setErrAbono("Ingresa un monto válido."); return; }
+    if (monto > modalAbono.saldoPendiente) { setErrAbono(`El abono no puede superar el saldo pendiente (${formatCOP(modalAbono.saldoPendiente)})`); return; }
+    try {
+      const abono = await db.registrarAbono({ ...nuevoAbono, monto, facturaId: modalAbono.id, registradoPor: usuario.id });
+      const nuevoSaldo = modalAbono.saldoPendiente - monto;
+      const nuevoEstado = nuevoSaldo <= 0 ? "Pagado" : "Abono parcial";
+      await db.actualizarFactura(modalAbono.id, { saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: nuevoAbono.metodoPago, fecha_pago: nuevoSaldo <= 0 ? nuevoAbono.fecha : null });
+      setFacturas(prev => prev.map(f => f.id === modalAbono.id ? { ...f, saldoPendiente: nuevoSaldo, estado: nuevoEstado, metodoPago: nuevoAbono.metodoPago } : f));
+      setAbonosModal(prev => [abono, ...prev]);
+      setModalAbono(prev => ({ ...prev, saldoPendiente: nuevoSaldo, estado: nuevoEstado }));
+      setNuevoAbono({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: new Date().toISOString().split("T")[0] });
+      // Si quedó en 0, también actualizar estado del usuario
+      if (nuevoSaldo <= 0) {
+        await db.toggleUsuario && db.actualizarFactura && null;
+      }
+    } catch (e) { setErrAbono("Error: " + e.message); }
+  };
+
+  // Abrir detalle con abonos
+  const abrirDetalle = async (f) => {
+    setModalAbono(f);
+    setAbonosModal([]);
+    try { const abs = await db.getAbonos(f.id); setAbonosModal(abs); } catch {}
+  };
+
+  // Crear factura manual
+  const crearFacturaManual = async () => {
+    const cliente = usuarios.find(u => u.id === facturaManual.clienteId);
+    if (!cliente) { alert("Selecciona un cliente."); return; }
+    if (!facturaManual.monto || Number(facturaManual.monto) <= 0) { alert("Ingresa un monto válido."); return; }
+    try {
+      const nextNum = await db.getSiguienteNumeroRecibo();
+      const mesNombre = MESES[facturaManual.mes - 1];
+      const nueva = await db.crearFactura({
+        clienteId: cliente.id, clienteNombre: cliente.nombre,
+        clienteCedula: cliente.cedula, clienteDireccion: cliente.direccion,
+        zonaId: cliente.zonaId, mes: facturaManual.mes, anio: facturaManual.anio,
+        concepto: facturaManual.concepto || `${cliente.servicio || "Internet"} ${mesNombre} ${facturaManual.anio}`,
+        monto: Number(facturaManual.monto), fechaEmision: new Date().toISOString().split("T")[0],
+        creadoPor: usuario.id, numeroRecibo: nextNum, notas: facturaManual.notas,
+      });
+      setFacturas(prev => [nueva, ...prev]);
+      setShowFormManual(false);
+      setFacturaManual({ clienteId: "", concepto: "", monto: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "" });
+    } catch (e) { alert("Error: " + e.message); }
+  };
+
+  const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444" };
+
+  return (
+    <div>
+      {/* Selector mes/año */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+        <Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))} style={{ width: "auto", minWidth: 130 }}>
+          {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+        </Sel>
+        <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))} style={{ width: "auto", minWidth: 90 }}>
+          {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
+        </Sel>
+        <div style={{ flex: 1 }} />
+        <Btn onClick={() => setShowFormManual(true)} variant="ghost" style={{ fontSize: 13 }}>+ Factura manual</Btn>
+        <Btn onClick={() => setShowGenerarMasivo(true)} style={{ fontSize: 13 }}>⚡ Generar todas</Btn>
+      </div>
+
+      {/* Resumen */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px,1fr))", gap: 10, marginBottom: 18 }}>
+        {[
+          ["💰 Total mes", formatCOP(totalMes), "#0ea5e9"],
+          ["✅ Recaudado", formatCOP(totalRecaudado), "#22c55e"],
+          ["⏳ Pendiente", formatCOP(totalPendiente), "#f59e0b"],
+          ["🔴 Morosos", morosos + " clientes", "#ef4444"],
+        ].map(([label, val, color]) => (
+          <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>{label}</div>
+            <div style={{ fontWeight: 800, color, fontSize: 15 }}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Búsqueda y filtros */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <Inp placeholder="🔍 Buscar cliente, cédula, N° recibo..." value={busq} onChange={e => setBusq(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+        <Sel value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} style={{ width: "auto", minWidth: 140 }}>
+          <option value="todos">Todos los estados</option>
+          <option value="Pendiente">Pendiente</option>
+          <option value="Abono parcial">Abono parcial</option>
+          <option value="Pagado">Pagado</option>
+          <option value="Vencido">Vencido</option>
+        </Sel>
+      </div>
+
+      {/* Lista facturas */}
+      {cargando ? (
+        <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>Cargando facturas...</div>
+      ) : facturasFiltradas.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 50 }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>🧾</div>
+          <div style={{ color: "#64748b", fontSize: 14 }}>No hay facturas para {MESES[filtroMes-1]} {filtroAnio}</div>
+          <div style={{ color: "#94a3b8", fontSize: 13, marginTop: 6 }}>Usa "Generar todas" para crear las facturas del mes en un clic.</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {facturasFiltradas.map(f => (
+            <div key={f.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderLeft: "4px solid " + (COLOR_ESTADO[f.estado] || "#e2e8f0"), borderRadius: 12, padding: "12px 16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>
+                    {f.clienteNombre}
+                    {f.numeroRecibo && <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 8 }}>#{f.numeroRecibo}</span>}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>{f.concepto}</div>
+                  {f.clienteDireccion && <div style={{ fontSize: 11, color: "#94a3b8" }}>📍 {f.clienteDireccion}</div>}
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>{formatCOP(f.monto)}</div>
+                  {f.saldoPendiente > 0 && f.saldoPendiente < f.monto && (
+                    <div style={{ fontSize: 12, color: "#f59e0b" }}>Saldo: {formatCOP(f.saldoPendiente)}</div>
+                  )}
+                </div>
+                <Badge text={f.estado} color={COLOR_ESTADO[f.estado] || "#64748b"} />
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => abrirDetalle(f)} style={{ background: "#eff6ff", color: "#0ea5e9", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                    {f.estado === "Pagado" ? "👁️ Ver" : "💵 Registrar pago"}
+                  </button>
+                  <button onClick={async () => {
+                    const abs = await db.getAbonos(f.id).catch(() => []);
+                    setModalRecibo({ factura: f, abonos: abs });
+                  }} style={{ background: "#f0fdf4", color: "#16a34a", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                    🖨️
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Modal detalle / registrar abono ── */}
+      {modalAbono && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => { if (e.target === e.currentTarget) { setModalAbono(null); setErrAbono(""); } }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
+            <button onClick={() => { setModalAbono(null); setErrAbono(""); }} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+            <h3 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: 16 }}>💵 Pago / Abono</h3>
+            <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: 13 }}>{modalAbono.clienteNombre} · {modalAbono.concepto}</p>
+
+            {/* Resumen */}
+            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 13, color: "#64748b" }}>Total factura:</span>
+                <strong>{formatCOP(modalAbono.monto)}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 13, color: "#64748b" }}>Total abonado:</span>
+                <span style={{ color: "#22c55e" }}>{formatCOP(modalAbono.monto - modalAbono.saldoPendiente)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #e2e8f0", paddingTop: 6, marginTop: 4 }}>
+                <span style={{ fontSize: 14, fontWeight: 700 }}>Saldo pendiente:</span>
+                <strong style={{ color: modalAbono.saldoPendiente > 0 ? "#ef4444" : "#22c55e", fontSize: 16 }}>{formatCOP(modalAbono.saldoPendiente)}</strong>
+              </div>
+            </div>
+
+            {/* Historial de abonos */}
+            {abonosModal.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Abonos anteriores</div>
+                {abonosModal.map((a, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 12px", marginBottom: 6, fontSize: 13 }}>
+                    <div>
+                      <span style={{ fontWeight: 600, color: "#16a34a" }}>{formatCOP(a.monto)}</span>
+                      <span style={{ color: "#64748b", marginLeft: 8 }}>{a.metodoPago}</span>
+                    </div>
+                    <span style={{ color: "#94a3b8", fontSize: 12 }}>{a.fecha}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Formulario nuevo abono */}
+            {modalAbono.saldoPendiente > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>Registrar pago / abono</div>
+                <Field label="Monto a registrar (COP)">
+                  <Inp type="number" value={nuevoAbono.monto} onChange={e => setNuevoAbono({ ...nuevoAbono, monto: e.target.value })} placeholder={`Máx: ${formatCOP(modalAbono.saldoPendiente)}`} />
+                  <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                    {[modalAbono.saldoPendiente, Math.round(modalAbono.saldoPendiente / 2)].filter(v => v > 0).map(v => (
+                      <button key={v} onClick={() => setNuevoAbono({ ...nuevoAbono, monto: String(v) })} style={{ background: "#eff6ff", color: "#0ea5e9", border: "1px solid #bfdbfe", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                        {v === modalAbono.saldoPendiente ? "Pago completo" : "50%"} ({formatCOP(v)})
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="Método de pago">
+                  <Sel value={nuevoAbono.metodoPago} onChange={e => setNuevoAbono({ ...nuevoAbono, metodoPago: e.target.value })}>
+                    <option>Efectivo</option>
+                    <option>Transferencia</option>
+                    <option>Nequi</option>
+                    <option>Daviplata</option>
+                    <option>Pago en oficina</option>
+                  </Sel>
+                </Field>
+                <Field label="Fecha de pago">
+                  <Inp type="date" value={nuevoAbono.fecha} onChange={e => setNuevoAbono({ ...nuevoAbono, fecha: e.target.value })} />
+                </Field>
+                <Field label="Observación (opcional)">
+                  <Inp value={nuevoAbono.observacion} onChange={e => setNuevoAbono({ ...nuevoAbono, observacion: e.target.value })} placeholder="Ej: Pago a domicilio" />
+                </Field>
+                {errAbono && <div style={{ color: "#ef4444", fontSize: 13, marginBottom: 10 }}>⚠️ {errAbono}</div>}
+                <Btn onClick={registrarAbono} style={{ width: "100%", padding: "12px 0", fontSize: 15 }}>✅ Registrar pago</Btn>
+              </div>
+            )}
+            {modalAbono.saldoPendiente <= 0 && (
+              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 28, marginBottom: 6 }}>✅</div>
+                <div style={{ fontWeight: 700, color: "#16a34a" }}>Factura cancelada en su totalidad</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal generar masivo ── */}
+      {showGenerarMasivo && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowGenerarMasivo(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 28, maxWidth: 400, width: "100%", textAlign: "center", position: "relative" }}>
+            <button onClick={() => setShowGenerarMasivo(false)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>⚡</div>
+            <h3 style={{ color: "#0f172a", marginBottom: 8 }}>Generar facturas masivas</h3>
+            <p style={{ color: "#64748b", fontSize: 14, marginBottom: 16 }}>
+              Se crearán facturas para todos los clientes activos de {MESES[filtroMes-1]} {filtroAnio} que aún no tengan factura. Se omitirán los que ya tienen factura para ese mes.
+            </p>
+            <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: 13, color: "#92400e" }}>
+              ⚠️ Esta acción generará facturas para <strong>{clientesVisibles.filter(c => c.monto && !facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio)).length} clientes</strong> con monto registrado.
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <Btn onClick={generarFacturasMasivas} disabled={generandoMasivo} style={{ minWidth: 140 }}>
+                {generandoMasivo ? "Generando..." : "✅ Confirmar"}
+              </Btn>
+              <Btn variant="ghost" onClick={() => setShowGenerarMasivo(false)}>Cancelar</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal factura manual ── */}
+      {showFormManual && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowFormManual(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 440, position: "relative" }}>
+            <button onClick={() => setShowFormManual(false)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+            <h3 style={{ margin: "0 0 16px", color: "#0f172a" }}>🧾 Nueva factura manual</h3>
+            <Field label="Cliente">
+              <Sel value={facturaManual.clienteId} onChange={e => {
+                const c = usuarios.find(u => u.id === e.target.value);
+                setFacturaManual({ ...facturaManual, clienteId: e.target.value, monto: c?.monto || facturaManual.monto });
+              }}>
+                <option value="">— Seleccionar cliente —</option>
+                {clientesVisibles.map(c => <option key={c.id} value={c.id}>{c.nombre} · {c.cedula}</option>)}
+              </Sel>
+            </Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+              <Field label="Mes">
+                <Sel value={facturaManual.mes} onChange={e => setFacturaManual({ ...facturaManual, mes: Number(e.target.value) })}>
+                  {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+                </Sel>
+              </Field>
+              <Field label="Año">
+                <Sel value={facturaManual.anio} onChange={e => setFacturaManual({ ...facturaManual, anio: Number(e.target.value) })}>
+                  {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
+                </Sel>
+              </Field>
+            </div>
+            <Field label="Concepto">
+              <Inp value={facturaManual.concepto} onChange={e => setFacturaManual({ ...facturaManual, concepto: e.target.value })} placeholder="Ej: Internet Marzo 2026" />
+            </Field>
+            <Field label="Monto (COP)">
+              <Inp type="number" value={facturaManual.monto} onChange={e => setFacturaManual({ ...facturaManual, monto: e.target.value })} placeholder="Ej: 60000" />
+            </Field>
+            <Field label="Notas (opcional)">
+              <Inp value={facturaManual.notas} onChange={e => setFacturaManual({ ...facturaManual, notas: e.target.value })} placeholder="Ej: Mes de prueba" />
+            </Field>
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <Btn onClick={crearFacturaManual} style={{ flex: 1 }}>Crear factura</Btn>
+              <Btn variant="ghost" onClick={() => setShowFormManual(false)}>Cancelar</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal recibo imprimible ── */}
+      {modalRecibo && (
+        <ReciboImprimible
+          factura={modalRecibo.factura}
+          abonos={modalRecibo.abonos}
+          nombreEmpresa={nombreEmpresa}
+          telefono="318-8255601"
+          onClose={() => setModalRecibo(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Vista facturación para el CLIENTE ─────────────────────────
+function FacturacionCliente({ usuario }) {
+  const [facturas, setFacturas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444" };
+
+  useEffect(() => {
+    db.getFacturasByCliente(usuario.id).then(setFacturas).catch(console.error).finally(() => setCargando(false));
+  }, []);
+
+  const totalPendiente = facturas.filter(f => f.estado !== "Pagado").reduce((s, f) => s + f.saldoPendiente, 0);
+
+  return (
+    <div>
+      {totalPendiente > 0 && (
+        <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderLeft: "4px solid #ef4444", borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, color: "#dc2626", fontSize: 14 }}>⚠️ Tienes saldo pendiente</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#dc2626" }}>{formatCOP(totalPendiente)}</div>
+          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>Acércate a la oficina o llama para regularizar tu pago.</div>
+        </div>
+      )}
+      {cargando ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>Cargando...</div> :
+        facturas.length === 0 ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>Sin facturas registradas aún.</div> :
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {facturas.map(f => (
+            <div key={f.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderLeft: "4px solid " + (COLOR_ESTADO[f.estado] || "#e2e8f0"), borderRadius: 12, padding: "12px 16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: "#0f172a" }}>{f.concepto}</div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>Emitida: {f.fechaEmision} {f.numeroRecibo ? `· Recibo #${f.numeroRecibo}` : ""}</div>
+                  {f.saldoPendiente > 0 && f.saldoPendiente < f.monto && (
+                    <div style={{ fontSize: 12, color: "#f59e0b", marginTop: 2 }}>Abonado: {formatCOP(f.monto - f.saldoPendiente)} · Saldo: {formatCOP(f.saldoPendiente)}</div>
+                  )}
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>{formatCOP(f.monto)}</div>
+                  <Badge text={f.estado} color={COLOR_ESTADO[f.estado] || "#64748b"} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      }
+    </div>
+  );
+}
+
 function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion }) {
   const [tab, setTab] = useState("usuarios");
   const [editU, setEditU] = useState(null);
@@ -1906,7 +2522,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     zonas: zonas.length,
   };
 
-  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["zonas", "🗺️ Zonas"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
+  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["zonas", "🗺️ Zonas"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
 
   const getNombreZona = (zonaId) => zonas.find(z => z.id === zonaId)?.nombre || "Sin zona";
 
@@ -1919,6 +2535,10 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       </div>
 
       {/* ── TAB RESUMEN ── */}
+      {tab === "facturacion" && (
+        <ModuloFacturacion usuario={sesion} usuarios={usuarios} zonas={zonas} planes={planes} />
+      )}
+
       {tab === "resumen" && (
         <div>
           <WisproSyncBanner onSync={async () => {
