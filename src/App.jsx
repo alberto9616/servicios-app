@@ -27,13 +27,14 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 // ──────────────────────────────────────────────────────────
 const mapZona = r => r ? ({ id: r.id, nombre: r.nombre, color: r.color, activa: r.activa, nombreEmpresa: r.nombre_empresa }) : null;
 const mapPlan = r => r ? ({ id: r.id, nombre: r.nombre, precio: r.precio, descripcion: r.descripcion, activo: r.activo }) : null;
+const mapPerfilPago = r => r ? ({ id: r.id, nombre: r.nombre, diaInicio: r.dia_inicio, diaFin: r.dia_fin, descripcion: r.descripcion || "", activo: r.activo }) : null;
 const mapUsuario = r => r ? ({
   id: r.id, usuario: r.usuario, clave: r.clave, rol: r.rol, nombre: r.nombre, activo: r.activo,
   zonaId: r.zona_id, secretarioId: r.secretario_id, tipo: r.tipo, cedula: r.cedula,
   telefono: r.telefono, servicio: r.servicio, plan: r.plan, planId: r.plan_id,
   monto: r.monto ? Number(r.monto) : null, fechaPago: r.fecha_pago, estado: r.estado,
   direccion: r.direccion, claveWifi: r.clave_wifi, nombreEmpresa: r.nombre_empresa,
-  privilegios: r.privilegios || []
+  privilegios: r.privilegios || [], perfilPagoId: r.perfil_pago_id || null
 }) : null;
 const mapAviso = r => r ? ({ id: r.id, tipo: r.tipo, titulo: r.titulo, mensaje: r.mensaje, fecha: r.fecha, afecta: r.afecta, activo: r.activo }) : null;
 const mapTicket = (r, mensajes = []) => r ? ({
@@ -87,6 +88,12 @@ const db = {
   async toggleZona(id, activa) { const { error } = await sb.from("zonas").update({ activa }).eq("id", id); if (error) throw error; },
   async patchZonaNombreEmpresa(id, nombreEmpresa) { const { error } = await sb.from("zonas").update({ nombre_empresa: nombreEmpresa }).eq("id", id); if (error) throw error; },
 
+  // PERFILES DE PAGO
+  async getPerfilesPago() { const { data, error } = await sb.from("perfiles_pago").select("*").order("dia_inicio"); if (error) throw error; return data.map(mapPerfilPago); },
+  async upsertPerfilPago(p) { const { data, error } = await sb.from("perfiles_pago").upsert({ id: p.id||undefined, nombre: p.nombre, dia_inicio: p.diaInicio, dia_fin: p.diaFin, descripcion: p.descripcion||null, activo: p.activo }).select().single(); if (error) throw error; return mapPerfilPago(data); },
+  async deletePerfilPago(id) { const { error } = await sb.from("perfiles_pago").delete().eq("id", id); if (error) throw error; },
+  async togglePerfilPago(id, activo) { const { error } = await sb.from("perfiles_pago").update({ activo }).eq("id", id); if (error) throw error; },
+
   // PLANES
   async getPlanes() { const { data, error } = await sb.from("planes").select("*").order("precio"); if (error) throw error; return data.map(mapPlan); },
   async upsertPlan(p) { const { data, error } = await sb.from("planes").upsert({ id: p.id||undefined, nombre: p.nombre, precio: p.precio, descripcion: p.descripcion, activo: p.activo }).select().single(); if (error) throw error; return mapPlan(data); },
@@ -96,7 +103,7 @@ const db = {
   // USUARIOS
   async getUsuarios() { const { data, error } = await sb.from("usuarios").select("*").order("nombre"); if (error) throw error; return data.map(mapUsuario); },
   async upsertUsuario(u) {
-    const row = { id: u.id||undefined, usuario: u.usuario, clave: u.clave, rol: u.rol, nombre: u.nombre, activo: u.activo??true, zona_id: u.zonaId||null, secretario_id: u.secretarioId||null, tipo: u.tipo||null, cedula: u.cedula||null, telefono: u.telefono||null, servicio: u.servicio||null, plan: u.plan||null, plan_id: u.planId||null, monto: u.monto||null, fecha_pago: u.fechaPago||null, estado: u.estado||null, direccion: u.direccion||null, clave_wifi: u.claveWifi||null, nombre_empresa: u.nombreEmpresa||null, privilegios: u.privilegios||[] };
+    const row = { id: u.id||undefined, usuario: u.usuario, clave: u.clave, rol: u.rol, nombre: u.nombre, activo: u.activo??true, zona_id: u.zonaId||null, secretario_id: u.secretarioId||null, tipo: u.tipo||null, cedula: u.cedula||null, telefono: u.telefono||null, servicio: u.servicio||null, plan: u.plan||null, plan_id: u.planId||null, monto: u.monto||null, fecha_pago: u.fechaPago||null, estado: u.estado||null, direccion: u.direccion||null, clave_wifi: u.claveWifi||null, nombre_empresa: u.nombreEmpresa||null, privilegios: u.privilegios||[], perfil_pago_id: u.perfilPagoId||null };
     const { data, error } = await sb.from("usuarios").upsert(row).select().single();
     if (error) throw error; return mapUsuario(data);
   },
@@ -971,7 +978,7 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
 // ══════════════════════════════════════════════════════════════
 // PORTAL SECRETARIO
 // ══════════════════════════════════════════════════════════════
-function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, usuarios, setUsuarios, avisos, setAvisos, planes, zonas, propaganda }) {
+function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, usuarios, setUsuarios, avisos, setAvisos, planes, perfilesPago = [], zonas, propaganda }) {
   const [tab, setTab] = useState("tickets");
   const [ticketAbierto, setTicketAbierto] = useState(null);
   const [modalOrden, setModalOrden] = useState(null);
@@ -1420,7 +1427,18 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   {editCliente.plan && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4 }}>✓ Plan seleccionado: <strong>{editCliente.plan}</strong></div>}
                 </Field>
                 <Field label="Monto (COP)"><Inp type="number" value={editCliente.monto || ""} onChange={e => setEditCliente({ ...editCliente, monto: Number(e.target.value) })} readOnly style={{ background: "#0f172a", opacity: 0.8, cursor: "not-allowed" }} /></Field>
-                <Field label="Fecha de pago"><Inp type="date" value={editCliente.fechaPago || ""} onChange={e => setEditCliente({ ...editCliente, fechaPago: e.target.value })} /></Field>
+                <Field label="Perfil de pago">
+                  <Sel value={editCliente.perfilPagoId || ""} onChange={e => setEditCliente({ ...editCliente, perfilPagoId: e.target.value || null })}>
+                    <option value="">— Sin perfil asignado —</option>
+                    {perfilesPago.filter(p => p.activo).map(p => (
+                      <option key={p.id} value={p.id}>{p.nombre} (días {p.diaInicio}-{p.diaFin})</option>
+                    ))}
+                  </Sel>
+                  {editCliente.perfilPagoId && (() => {
+                    const pf = perfilesPago.find(x => x.id === editCliente.perfilPagoId);
+                    return pf ? <div style={{ fontSize: 11, color: "#0ea5e9", marginTop: 4 }}>📅 Vence entre el día {pf.diaInicio} y {pf.diaFin} de cada mes</div> : null;
+                  })()}
+                </Field>
                 <Field label="Estado de cuenta">
                   <Sel value={editCliente.estado || "Al día"} onChange={e => setEditCliente({ ...editCliente, estado: e.target.value })}>
                     <option>Al día</option><option>Pendiente</option><option>Vencido</option>
@@ -1446,6 +1464,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   {c.telefono && <div style={{ fontSize: 11, color: "#0ea5e9" }}>📞 {c.telefono}</div>}
                   {c.direccion && <div style={{ fontSize: 11, color: "#64748b" }}>📍 {c.direccion}</div>}
                   {c.claveWifi && <div style={{ fontSize: 11, color: "#0ea5e9" }}>🔑 WiFi: {c.claveWifi}</div>}
+                  {c.perfilPagoId && (() => { const pf = perfilesPago.find(x => x.id === c.perfilPagoId); return pf ? <div style={{ fontSize: 11, color: "#8b5cf6" }}>📅 {pf.nombre} (días {pf.diaInicio}-{pf.diaFin})</div> : null; })()}
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontWeight: 700, color: "#0ea5e9", fontSize: 14 }}>{c.monto ? formatCOP(c.monto) : "—"}</div>
@@ -1473,7 +1492,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       )}
 
       {tab === "facturacion" && (
-        <ModuloFacturacion usuario={usuario} usuarios={usuarios} zonas={zonas} planes={planes} />
+        <ModuloFacturacion usuario={usuario} usuarios={usuarios} zonas={zonas} planes={planes} perfilesPago={perfilesPago} />
       )}
 
       {tab === "avisos" && (
@@ -1954,7 +1973,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
 // ══════════════════════════════════════════════════════════════
 // MÓDULO FACTURACIÓN — Admin y Secretario
 // ══════════════════════════════════════════════════════════════
-function ModuloFacturacion({ usuario, usuarios, zonas, planes }) {
+function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = [] }) {
   const [facturas, setFacturas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [subTab, setSubTab] = useState("cobros");
@@ -2019,10 +2038,18 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes }) {
       const nextNum = await db.getSiguienteNumeroRecibo();
       for (let i = 0; i < clientesVisibles.length; i++) {
         const c = clientesVisibles[i];
-        // Verificar que no exista ya factura para este mes/año
         const yaExiste = facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio);
         if (yaExiste || !c.monto) continue;
         const mesNombre = MESES[filtroMes - 1];
+        // Calcular fecha de vencimiento según perfil de pago del cliente
+        let fechaVencimiento = null;
+        if (c.perfilPagoId) {
+          const perfil = perfilesPago.find(p => p.id === c.perfilPagoId);
+          if (perfil) {
+            const diaVence = perfil.diaFin;
+            fechaVencimiento = `${filtroAnio}-${String(filtroMes).padStart(2,"0")}-${String(diaVence).padStart(2,"0")}`;
+          }
+        }
         const nueva = await db.crearFactura({
           clienteId: c.id, clienteNombre: c.nombre,
           clienteCedula: c.cedula, clienteDireccion: c.direccion,
@@ -2030,6 +2057,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes }) {
           concepto: `${c.servicio || "Internet"} ${mesNombre} ${filtroAnio}`,
           monto: c.monto, fechaEmision: new Date().toISOString().split("T")[0],
           creadoPor: usuario.id, numeroRecibo: nextNum + creadas,
+          notas: fechaVencimiento ? `Vence: ${fechaVencimiento}` : "",
         });
         setFacturas(prev => [nueva, ...prev]);
         creadas++;
@@ -2275,6 +2303,10 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes }) {
             </p>
             <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: 13, color: "#92400e" }}>
               ⚠️ Esta acción generará facturas para <strong>{clientesVisibles.filter(c => c.monto && !facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio)).length} clientes</strong> con monto registrado.
+              {(() => {
+                const sinPerfil = clientesVisibles.filter(c => c.monto && !c.perfilPagoId && !facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio)).length;
+                return sinPerfil > 0 ? <div style={{ marginTop: 8, color: "#d97706" }}>⚠️ <strong>{sinPerfil} clientes</strong> no tienen perfil de pago asignado — se generará su factura sin fecha de vencimiento definida.</div> : <div style={{ marginTop: 8, color: "#16a34a" }}>✅ Todos los clientes tienen perfil de pago asignado.</div>;
+              })()}
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
               <Btn onClick={generarFacturasMasivas} disabled={generandoMasivo} style={{ minWidth: 140 }}>
@@ -2391,7 +2423,7 @@ function FacturacionCliente({ usuario }) {
   );
 }
 
-function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion }) {
+function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion }) {
   const [tab, setTab] = useState("usuarios");
   const [editU, setEditU] = useState(null);
   const [editA, setEditA] = useState(null);
@@ -2522,7 +2554,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     zonas: zonas.length,
   };
 
-  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["zonas", "🗺️ Zonas"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
+  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
 
   const getNombreZona = (zonaId) => zonas.find(z => z.id === zonaId)?.nombre || "Sin zona";
 
@@ -2536,7 +2568,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
       {/* ── TAB RESUMEN ── */}
       {tab === "facturacion" && (
-        <ModuloFacturacion usuario={sesion} usuarios={usuarios} zonas={zonas} planes={planes} />
+        <ModuloFacturacion usuario={sesion} usuarios={usuarios} zonas={zonas} planes={planes} perfilesPago={perfilesPago} />
       )}
 
       {tab === "resumen" && (
@@ -2675,6 +2707,110 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           </div>
         </div>
       )}
+
+      {/* ── TAB PERFILES DE PAGO ── */}
+      {tab === "perfiles" && (() => {
+        const [editPerfil, setEditPerfil] = React.useState(null);
+        const [showFormPerfil, setShowFormPerfil] = React.useState(false);
+        const emptyPerfil = { id: "", nombre: "", diaInicio: 1, diaFin: 5, descripcion: "", activo: true };
+
+        const savePerfil = async (p) => {
+          try {
+            const guardado = await db.upsertPerfilPago(p);
+            setPerfilesPago(prev => prev.find(x => x.id === guardado.id) ? prev.map(x => x.id === guardado.id ? guardado : x) : [...prev, guardado]);
+            setShowFormPerfil(false); setEditPerfil(null);
+          } catch (err) { alert("Error: " + err.message); }
+        };
+        const deletePerfil = async (id) => {
+          if (!confirm("¿Eliminar este perfil? Los clientes asignados quedarán sin perfil.")) return;
+          try { await db.deletePerfilPago(id); setPerfilesPago(p => p.filter(x => x.id !== id)); }
+          catch (err) { alert("Error: " + err.message); }
+        };
+        const togglePerfil = async (id) => {
+          const p = perfilesPago.find(x => x.id === id);
+          if (!p) return;
+          try { await db.togglePerfilPago(id, !p.activo); setPerfilesPago(prev => prev.map(x => x.id === id ? { ...x, activo: !x.activo } : x)); }
+          catch (err) { alert("Error: " + err.message); }
+        };
+
+        // Contar clientes por perfil
+        const clientesPorPerfil = (perfId) => usuarios.filter(u => u.rol === "cliente" && u.perfilPagoId === perfId).length;
+
+        return (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <span style={{ color: "#475569", fontSize: 14 }}>{perfilesPago.length} perfiles configurados</span>
+              <Btn onClick={() => { setEditPerfil({ ...emptyPerfil }); setShowFormPerfil(true); }} style={{ fontSize: 13 }}>+ Nuevo perfil</Btn>
+            </div>
+
+            {/* Info */}
+            <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderLeft: "4px solid #0ea5e9", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#1e40af" }}>
+              📅 Los perfiles de pago definen el rango de días del mes en que cada cliente debe pagar. El secretario asigna el perfil a cada cliente y la factura se genera con la fecha límite automáticamente.
+            </div>
+
+            {showFormPerfil && editPerfil && (
+              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, marginBottom: 16, boxShadow: "0 2px 8px #00000010" }}>
+                <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>
+                  {editPerfil.id ? "✏️ Editar perfil" : "📅 Nuevo perfil de pago"}
+                </h3>
+                <Field label="Nombre del perfil">
+                  <Inp value={editPerfil.nombre} onChange={e => setEditPerfil({ ...editPerfil, nombre: e.target.value })} placeholder="Ej: Quincena 1, Fin de mes, Día 15..." />
+                </Field>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+                  <Field label="Día inicio del mes">
+                    <Inp type="number" min="1" max="28" value={editPerfil.diaInicio} onChange={e => setEditPerfil({ ...editPerfil, diaInicio: Number(e.target.value) })} placeholder="Ej: 1" />
+                  </Field>
+                  <Field label="Día límite (vencimiento)">
+                    <Inp type="number" min="1" max="28" value={editPerfil.diaFin} onChange={e => setEditPerfil({ ...editPerfil, diaFin: Number(e.target.value) })} placeholder="Ej: 5" />
+                  </Field>
+                </div>
+                <Field label="Descripción (opcional)">
+                  <Inp value={editPerfil.descripcion} onChange={e => setEditPerfil({ ...editPerfil, descripcion: e.target.value })} placeholder="Ej: Clientes zona norte" />
+                </Field>
+                {editPerfil.diaInicio && editPerfil.diaFin && (
+                  <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13, color: "#16a34a" }}>
+                    ✅ Los clientes con este perfil deben pagar entre el día <strong>{editPerfil.diaInicio}</strong> y el día <strong>{editPerfil.diaFin}</strong> de cada mes.
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn onClick={() => savePerfil(editPerfil)}>Guardar perfil</Btn>
+                  <Btn variant="ghost" onClick={() => { setShowFormPerfil(false); setEditPerfil(null); }}>Cancelar</Btn>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {perfilesPago.length === 0 ? (
+                <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>📅</div>
+                  <div>No hay perfiles creados aún.</div>
+                  <div style={{ fontSize: 13, marginTop: 4 }}>Crea el primer perfil con el botón de arriba.</div>
+                </div>
+              ) : perfilesPago.map(p => (
+                <div key={p.id} style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderLeft: "4px solid #0ea5e9", borderRadius: 12, padding: "14px 16px", opacity: p.activo ? 1 : 0.5 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 15 }}>📅 {p.nombre}</div>
+                      <div style={{ fontSize: 13, color: "#0ea5e9", fontWeight: 600, marginTop: 2 }}>
+                        Días {p.diaInicio} al {p.diaFin} de cada mes
+                      </div>
+                      {p.descripcion && <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{p.descripcion}</div>}
+                      <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                        👥 {clientesPorPerfil(p.id)} clientes asignados
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => togglePerfil(p.id)} style={{ background: p.activo ? "#f0fdf4" : "#f1f5f9", color: p.activo ? "#16a34a" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.activo ? "Activo" : "Inactivo"}</button>
+                      <button onClick={() => { setEditPerfil(p); setShowFormPerfil(true); }} style={{ background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                      <button onClick={() => deletePerfil(p.id)} style={{ background: "#f1f5f9", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── TAB ZONAS ── */}
       {tab === "zonas" && (
@@ -2850,7 +2986,18 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       {editU.plan && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4 }}>✓ {editU.plan}</div>}
                     </Field>
                     <Field label="Monto (COP)"><Inp type="number" value={editU.monto || ""} onChange={e => setEditU({ ...editU, monto: Number(e.target.value) })} style={{ background: "#0f172a", opacity: 0.8 }} /></Field>
-                    <Field label="Fecha de pago"><Inp type="date" value={editU.fechaPago || ""} onChange={e => setEditU({ ...editU, fechaPago: e.target.value })} /></Field>
+                    <Field label="Perfil de pago">
+                      <Sel value={editU.perfilPagoId || ""} onChange={e => setEditU({ ...editU, perfilPagoId: e.target.value || null })}>
+                        <option value="">— Sin perfil asignado —</option>
+                        {perfilesPago.filter(p => p.activo).map(p => (
+                          <option key={p.id} value={p.id}>{p.nombre} (días {p.diaInicio}-{p.diaFin})</option>
+                        ))}
+                      </Sel>
+                      {editU.perfilPagoId && (() => {
+                        const pf = perfilesPago.find(x => x.id === editU.perfilPagoId);
+                        return pf ? <div style={{ fontSize: 11, color: "#0ea5e9", marginTop: 4 }}>📅 Vence entre el día {pf.diaInicio} y {pf.diaFin} de cada mes</div> : null;
+                      })()}
+                    </Field>
                     <Field label="Estado de cuenta">
                       <Sel value={editU.estado || "Al día"} onChange={e => setEditU({ ...editU, estado: e.target.value })}>
                         <option>Al día</option><option>Pendiente</option><option>Vencido</option>
@@ -2944,6 +3091,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                           {u.rol === "cliente" && u.direccion && <div style={{ fontSize: 11, color: "#64748b" }}>📍 {u.direccion}</div>}
                           {u.rol === "cliente" && u.claveWifi && <div style={{ fontSize: 11, color: "#0ea5e9" }}>🔑 WiFi: {u.claveWifi}</div>}
                           {u.rol === "cliente" && u.tipo === "empresa" && u.nombreEmpresa && <div style={{ fontSize: 11, color: "#8b5cf6" }}>🏢 {u.nombreEmpresa}</div>}
+                          {u.rol === "cliente" && u.perfilPagoId && (() => { const pf = perfilesPago.find(x => x.id === u.perfilPagoId); return pf ? <div style={{ fontSize: 11, color: "#8b5cf6" }}>📅 {pf.nombre} (días {pf.diaInicio}-{pf.diaFin})</div> : null; })()}
                           {(u.privilegios || []).length > 0 && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5 }}>
                               {u.privilegios.map(p => (
@@ -3114,6 +3262,7 @@ export default function App() {
   const [tickets, setTickets] = useState([]);
   const [ordenes, setOrdenes] = useState([]);
   const [planes, setPlanes] = useState([]);
+  const [perfilesPago, setPerfilesPago] = useState([]);
   const [zonas, setZonas] = useState([]);
   const [propaganda, setPropaganda] = useState([]);
   const [sesion, setSesionRaw] = useState(null);
@@ -3149,11 +3298,11 @@ export default function App() {
     const cargar = async () => {
       try {
         setCargando(true);
-        const [z, pl, u, a, t, o, pr] = await Promise.all([
-          db.getZonas(), db.getPlanes(), db.getUsuarios(),
+        const [z, pl, perf, u, a, t, o, pr] = await Promise.all([
+          db.getZonas(), db.getPlanes(), db.getPerfilesPago(), db.getUsuarios(),
           db.getAvisos(), db.getTickets(), db.getOrdenes(), db.getPropaganda()
         ]);
-        setZonas(z); setPlanes(pl); setUsuarios(u);
+        setZonas(z); setPlanes(pl); setPerfilesPago(perf); setUsuarios(u);
         setAvisos(a); setTickets(t); setOrdenes(o); setPropaganda(pr);
         // Restaurar sesión guardada al recargar la página
         try {
@@ -3383,13 +3532,13 @@ export default function App() {
         <PortalCliente usuario={sesion} tickets={tickets} setTickets={setTickets} avisos={avisos} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} propaganda={propaganda} />
       )}
       {sesion && sesion.rol === "secretario" && (
-        <PortalSecretario usuario={sesion} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} planes={planes} zonas={zonas} propaganda={propaganda} />
+        <PortalSecretario usuario={sesion} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} planes={planes} perfilesPago={perfilesPago} zonas={zonas} propaganda={propaganda} />
       )}
       {sesion && sesion.rol === "tecnico" && (
         <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} />
       )}
       {sesion && sesion.rol === "admin" && (
-        <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} />
+        <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} />
       )}
     </div>
   );
