@@ -3730,17 +3730,9 @@ export default function App() {
     } else {
       try { localStorage.removeItem("gc_remember_user"); localStorage.removeItem("gc_remember_clave"); } catch {}
     }
-    // Verificar sesión duplicada (misma pestaña/sesión)
+    // Registrar sesión activa
     const tabKey = Date.now().toString();
     try {
-      const activo = localStorage.getItem("gc_sesion_activa_" + u.id);
-      if (activo) {
-        const diff = Date.now() - parseInt(activo, 10);
-        if (diff < 185000) { // 3 min + 5s de margen
-          setLoginError("Este usuario ya tiene una sesión activa. Cierra la otra sesión primero o espera que expire.");
-          return;
-        }
-      }
       localStorage.setItem("gc_sesion_activa_" + u.id, tabKey);
       sesionKeyRef.current = { uid: u.id, key: tabKey };
     } catch {}
