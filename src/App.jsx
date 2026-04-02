@@ -63,6 +63,7 @@ const mapFactura = r => r ? ({
   clienteCedula: r.cliente_cedula, clienteDireccion: r.cliente_direccion,
   zonaId: r.zona_id, mes: r.mes, anio: r.anio,
   concepto: r.concepto, monto: r.monto ? Number(r.monto) : 0,
+  items: Array.isArray(r.items) ? r.items : (r.items ? JSON.parse(r.items) : []),
   saldoPendiente: r.saldo_pendiente ? Number(r.saldo_pendiente) : 0,
   estado: r.estado, metodoPago: r.metodo_pago,
   fechaEmision: r.fecha_emision, fechaPago: r.fecha_pago,
@@ -169,6 +170,7 @@ const db = {
       cliente_cedula: f.clienteCedula, cliente_direccion: f.clienteDireccion,
       zona_id: f.zonaId, mes: f.mes, anio: f.anio,
       concepto: f.concepto, monto: f.monto,
+      items: f.items ? JSON.stringify(f.items) : null,
       saldo_pendiente: f.monto, estado: "Pendiente",
       fecha_emision: f.fechaEmision || new Date().toISOString().split("T")[0],
       notas: f.notas || "", creado_por: f.creadoPor || null,
@@ -2044,10 +2046,26 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
               <span>CONCEPTO</span><span>VALOR</span>
             </div>
             <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span>{factura.concepto}</span>
-                <strong>{formatCOP(factura.monto)}</strong>
-              </div>
+              {/* Si tiene ítems detallados los muestra línea por línea */}
+              {factura.items && factura.items.length > 0 ? (
+                <>
+                  {factura.items.map((item, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span>{item.concepto}</span>
+                      <span>{formatCOP(item.monto)}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #e2e8f0", paddingTop: 6, marginTop: 4, fontWeight: 700 }}>
+                    <span>SUBTOTAL</span>
+                    <strong>{formatCOP(factura.monto)}</strong>
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>{factura.concepto}</span>
+                  <strong>{formatCOP(factura.monto)}</strong>
+                </div>
+              )}
             </div>
           </div>
           {abonos.length > 0 && (
@@ -2105,7 +2123,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
   const [nuevoAbono, setNuevoAbono] = useState({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: new Date().toISOString().split("T")[0] });
   const [errAbono, setErrAbono] = useState("");
   const [showFormManual, setShowFormManual] = useState(false);
-  const [facturaManual, setFacturaManual] = useState({ clienteId: "", concepto: "", monto: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "" });
+  const [facturaManual, setFacturaManual] = useState({ clienteId: "", concepto: "", monto: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [] });
 
   const esAdmin = usuario.rol === "admin";
   const zonaId = usuario.zonaId;
@@ -2165,11 +2183,21 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
             fechaVencimiento = `${filtroAnio}-${String(filtroMes).padStart(2,"0")}-${String(diaVence).padStart(2,"0")}`;
           }
         }
+        // Construir ítems detallados por servicio
+        const servicios = (c.servicio || "Internet").split("+").map(s => s.trim()).filter(Boolean);
+        const montoPorServicio = servicios.length > 1 ? Math.round(c.monto / servicios.length) : c.monto;
+        const itemsFactura = servicios.map(s => ({ concepto: `${s} ${mesNombre} ${filtroAnio}`, monto: montoPorServicio }));
+        // Si hay redondeo, ajustar el último ítem
+        const sumaItems = itemsFactura.reduce((s, i) => s + i.monto, 0);
+        if (sumaItems !== c.monto && itemsFactura.length > 0) {
+          itemsFactura[itemsFactura.length - 1].monto += (c.monto - sumaItems);
+        }
         const nueva = await db.crearFactura({
           clienteId: c.id, clienteNombre: c.nombre,
           clienteCedula: c.cedula, clienteDireccion: c.direccion,
           zonaId: c.zonaId, mes: filtroMes, anio: filtroAnio,
           concepto: `${c.servicio || "Internet"} ${mesNombre} ${filtroAnio}`,
+          items: itemsFactura,
           monto: c.monto, fechaEmision: new Date().toISOString().split("T")[0],
           creadoPor: usuario.id, numeroRecibo: nextNum + creadas,
           notas: fechaVencimiento ? `Vence: ${fechaVencimiento}` : "",
@@ -2215,21 +2243,24 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
   const crearFacturaManual = async () => {
     const cliente = usuarios.find(u => u.id === facturaManual.clienteId);
     if (!cliente) { alert("Selecciona un cliente."); return; }
-    if (!facturaManual.monto || Number(facturaManual.monto) <= 0) { alert("Ingresa un monto válido."); return; }
+    if (!facturaManual.items || facturaManual.items.length === 0) { alert("Agrega al menos un servicio."); return; }
+    const montoTotal = facturaManual.items.reduce((s, i) => s + (Number(i.monto) || 0), 0);
+    if (montoTotal <= 0) { alert("El monto total debe ser mayor a cero."); return; }
     try {
       const nextNum = await db.getSiguienteNumeroRecibo();
       const mesNombre = MESES[facturaManual.mes - 1];
+      const concepto = facturaManual.items.map(i => i.concepto).join(" + ") || `Servicios ${mesNombre} ${facturaManual.anio}`;
       const nueva = await db.crearFactura({
         clienteId: cliente.id, clienteNombre: cliente.nombre,
         clienteCedula: cliente.cedula, clienteDireccion: cliente.direccion,
         zonaId: cliente.zonaId, mes: facturaManual.mes, anio: facturaManual.anio,
-        concepto: facturaManual.concepto || `${cliente.servicio || "Internet"} ${mesNombre} ${facturaManual.anio}`,
-        monto: Number(facturaManual.monto), fechaEmision: new Date().toISOString().split("T")[0],
+        concepto, items: facturaManual.items,
+        monto: montoTotal, fechaEmision: new Date().toISOString().split("T")[0],
         creadoPor: usuario.id, numeroRecibo: nextNum, notas: facturaManual.notas,
       });
       setFacturas(prev => [nueva, ...prev]);
       setShowFormManual(false);
-      setFacturaManual({ clienteId: "", concepto: "", monto: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "" });
+      setFacturaManual({ clienteId: "", concepto: "", monto: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [] });
     } catch (e) { alert("Error: " + e.message); }
   };
 
@@ -2436,13 +2467,22 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
       {/* ── Modal factura manual ── */}
       {showFormManual && (
         <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowFormManual(false)}>
-          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 440, position: "relative" }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
             <button onClick={() => setShowFormManual(false)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
             <h3 style={{ margin: "0 0 16px", color: "#0f172a" }}>🧾 Nueva factura manual</h3>
             <Field label="Cliente">
               <Sel value={facturaManual.clienteId} onChange={e => {
                 const c = usuarios.find(u => u.id === e.target.value);
-                setFacturaManual({ ...facturaManual, clienteId: e.target.value, monto: c?.monto || facturaManual.monto });
+                const mesNombre = MESES[facturaManual.mes - 1];
+                // Auto-generar ítems según servicios del cliente
+                const servicios = c ? (c.servicio || "Internet").split("+").map(s => s.trim()).filter(Boolean) : [];
+                const montoPorServicio = (c && servicios.length > 1) ? Math.round((c.monto || 0) / servicios.length) : (c?.monto || 0);
+                const itemsAuto = servicios.map(s => ({ concepto: `${s} ${mesNombre} ${facturaManual.anio}`, monto: montoPorServicio }));
+                if (itemsAuto.length > 0) {
+                  const suma = itemsAuto.reduce((s,i)=>s+i.monto,0);
+                  if (suma !== (c?.monto||0) && itemsAuto.length > 0) itemsAuto[itemsAuto.length-1].monto += ((c?.monto||0) - suma);
+                }
+                setFacturaManual({ ...facturaManual, clienteId: e.target.value, monto: c?.monto || "", items: itemsAuto.length > 0 ? itemsAuto : facturaManual.items });
               }}>
                 <option value="">— Seleccionar cliente —</option>
                 {clientesVisibles.map(c => <option key={c.id} value={c.id}>{c.nombre} · {c.cedula}</option>)}
@@ -2460,17 +2500,68 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                 </Sel>
               </Field>
             </div>
-            <Field label="Concepto">
-              <Inp value={facturaManual.concepto} onChange={e => setFacturaManual({ ...facturaManual, concepto: e.target.value })} placeholder="Ej: Internet Marzo 2026" />
-            </Field>
-            <Field label="Monto (COP)">
-              <Inp type="number" value={facturaManual.monto} onChange={e => setFacturaManual({ ...facturaManual, monto: e.target.value })} placeholder="Ej: 60000" />
-            </Field>
+
+            {/* ── Ítems de servicio ── */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <label style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>Servicios / Líneas de cobro</label>
+                <button onClick={() => setFacturaManual({ ...facturaManual, items: [...facturaManual.items, { concepto: "", monto: 0 }] })}
+                  style={{ background: "#eff6ff", color: "#0ea5e9", border: "1px solid #bfdbfe", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                  + Agregar línea
+                </button>
+              </div>
+              {facturaManual.items.length === 0 && (
+                <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#94a3b8", textAlign: "center" }}>
+                  Sin líneas — agrega al menos un servicio
+                </div>
+              )}
+              {facturaManual.items.map((item, idx) => (
+                <div key={idx} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-start" }}>
+                  <div style={{ flex: 2 }}>
+                    <Inp
+                      value={item.concepto}
+                      onChange={e => {
+                        const nuevos = [...facturaManual.items];
+                        nuevos[idx] = { ...nuevos[idx], concepto: e.target.value };
+                        setFacturaManual({ ...facturaManual, items: nuevos });
+                      }}
+                      placeholder="Ej: Internet Abril 2026"
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <Inp
+                      type="number"
+                      value={item.monto || ""}
+                      onChange={e => {
+                        const nuevos = [...facturaManual.items];
+                        nuevos[idx] = { ...nuevos[idx], monto: Number(e.target.value) };
+                        const total = nuevos.reduce((s, i) => s + (Number(i.monto) || 0), 0);
+                        setFacturaManual({ ...facturaManual, items: nuevos, monto: total });
+                      }}
+                      placeholder="Valor"
+                    />
+                  </div>
+                  <button onClick={() => {
+                    const nuevos = facturaManual.items.filter((_, i) => i !== idx);
+                    const total = nuevos.reduce((s, i) => s + (Number(i.monto) || 0), 0);
+                    setFacturaManual({ ...facturaManual, items: nuevos, monto: total });
+                  }} style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "9px 10px", cursor: "pointer", fontSize: 14, marginTop: 0 }}>✕</button>
+                </div>
+              ))}
+              {facturaManual.items.length > 0 && (
+                <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid #e2e8f0", paddingTop: 8, marginTop: 4 }}>
+                  <span style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>
+                    Total: {formatCOP(facturaManual.items.reduce((s,i) => s + (Number(i.monto)||0), 0))}
+                  </span>
+                </div>
+              )}
+            </div>
+
             <Field label="Notas (opcional)">
               <Inp value={facturaManual.notas} onChange={e => setFacturaManual({ ...facturaManual, notas: e.target.value })} placeholder="Ej: Mes de prueba" />
             </Field>
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <Btn onClick={crearFacturaManual} style={{ flex: 1 }}>Crear factura</Btn>
+              <Btn onClick={crearFacturaManual} style={{ flex: 1 }} disabled={facturaManual.items.length === 0 || !facturaManual.clienteId}>Crear factura</Btn>
               <Btn variant="ghost" onClick={() => setShowFormManual(false)}>Cancelar</Btn>
             </div>
           </div>
