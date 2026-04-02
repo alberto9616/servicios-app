@@ -553,6 +553,104 @@ function ChatTicket({ ticket, onSend, autorActual, nombreActual, usuarios }) {
 // ══════════════════════════════════════════════════════════════
 // PORTAL CLIENTE (final y empresa)
 // ══════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════
+// MENÚ LATERAL DESPLEGABLE (admin, secretario, técnico)
+// ══════════════════════════════════════════════════════════════
+function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy, extraItems = [] }) {
+  const [open, setOpen] = React.useState(false);
+
+  const ROL_ICON = { admin: "🛡️", secretario: "🗂️", tecnico: "🔧" };
+
+  const MENUS = {
+    admin: [
+      { key: "usuarios",    icon: "👥", label: "Usuarios" },
+      { key: "planes",      icon: "📦", label: "Planes" },
+      { key: "perfiles",    icon: "📅", label: "Perfiles pago" },
+      { key: "zonas",       icon: "🗺️", label: "Zonas" },
+      { key: "avisos",      icon: "📢", label: "Avisos" },
+      { key: "propaganda",  icon: "🎁", label: "Promociones" },
+      { key: "facturacion", icon: "🧾", label: "Facturación" },
+      { key: "equipo",      icon: "👷", label: "Equipo de trabajo" },
+      { key: "resumen",     icon: "📊", label: "Resumen" },
+      { key: "micuenta",    icon: "🔐", label: "Mi cuenta" },
+    ],
+    secretario: [
+      { key: "tickets",     icon: "🎫", label: "Tickets" },
+      { key: "ordenes",     icon: "📋", label: "Órdenes" },
+      { key: "clientes",    icon: "👥", label: "Clientes" },
+      { key: "facturacion", icon: "🧾", label: "Cobros" },
+      { key: "equipos_morosos", icon: "📦", label: "Equipos morosos" },
+      { key: "equipo",      icon: "👷", label: "Equipo de trabajo" },
+      { key: "avisos",      icon: "📢", label: "Avisos" },
+      { key: "promo",       icon: "🎁", label: "Promos" },
+    ],
+    tecnico: [
+      { key: "hoy",      icon: "📅", label: "Hoy" },
+      { key: "todas",    icon: "📋", label: "Todas" },
+      { key: "historial",icon: "✅", label: "Historial" },
+      { key: "equipo",   icon: "👷", label: "Equipo de trabajo" },
+    ],
+  };
+
+  const items = MENUS[sesion.rol] || [];
+  const ROL_BG = { admin: "#8b5cf6", secretario: "#0ea5e9", tecnico: "#f59e0b" };
+  const bg = ROL_BG[sesion.rol] || "#64748b";
+
+  return (
+    <>
+      {/* Botón hamburguesa */}
+      <button onClick={() => setOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 8px", fontSize: 22, color: "#0f172a", lineHeight: 1 }}>☰</button>
+
+      {/* Overlay */}
+      {open && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 400 }} onClick={() => setOpen(false)}>
+          {/* Sidebar */}
+          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 260, background: "#fff", boxShadow: "4px 0 24px #00000018", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+            {/* Header del sidebar */}
+            <div style={{ background: bg, padding: "20px 16px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                {ROL_ICON[sesion.rol] || "👤"}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{sesion.nombre}</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)" }}>{sesion.rol === "admin" ? "Administrador" : sesion.rol === "secretario" ? "Secretario/a" : "Técnico"}</div>
+              </div>
+              <button onClick={() => setOpen(false)} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, width: 28, height: 28, cursor: "pointer", color: "#fff", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+            </div>
+
+            {/* Items */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+              {items.map(item => {
+                const isActive = tab === item.key;
+                let badge = null;
+                if (item.key === "tickets" && ticketsNuevos > 0) badge = ticketsNuevos;
+                if (item.key === "hoy" && ordenesHoy > 0) badge = ordenesHoy;
+                return (
+                  <button key={item.key} onClick={() => { setTab(item.key); setOpen(false); }}
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "11px 20px", border: "none", cursor: "pointer", background: isActive ? bg + "15" : "transparent", borderLeft: isActive ? "3px solid " + bg : "3px solid transparent", color: isActive ? bg : "#334155", fontWeight: isActive ? 700 : 500, fontSize: 14, textAlign: "left" }}>
+                    <span style={{ fontSize: 18, width: 24, textAlign: "center" }}>{item.icon}</span>
+                    <span style={{ flex: 1 }}>{item.label}</span>
+                    {badge && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "2px 7px", fontSize: 10, fontWeight: 800 }}>{badge}</span>}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div style={{ borderTop: "1px solid #e2e8f0", padding: "12px 16px" }}>
+              <button onClick={() => { cerrarSesion(); setOpen(false); }}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", border: "1px solid #fecaca", borderRadius: 10, cursor: "pointer", background: "#fef2f2", color: "#dc2626", fontWeight: 700, fontSize: 14 }}>
+                <span>🚪</span> Cerrar sesión
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsuarios, zonas, propaganda }) {
   const [tab, setTab] = useState("info");
   // Navegación del chat: null = categorías, "solicitudes"/"reportes" = subcategorias, objeto = detalle
@@ -1215,19 +1313,26 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   return (
     <div style={{ maxWidth: 800, margin: "0 auto", padding: "20px 16px" }}>
       {zonaSecretario && (
-        <div style={{ background: zonaSecretario.color + "22", border: "1px solid " + zonaSecretario.color + "44", borderRadius: 10, padding: "8px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ background: zonaSecretario.color + "15", border: "1px solid " + zonaSecretario.color + "33", borderRadius: 10, padding: "8px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
           <span>📍</span>
           <span style={{ color: zonaSecretario.color, fontSize: 13, fontWeight: 700 }}>Zona: {zonaSecretario.nombre}</span>
           <span style={{ color: "#64748b", fontSize: 12 }}>· Solo ves clientes y técnicos de tu zona</span>
         </div>
       )}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#ffffff", borderRadius: 10, padding: 4, flexWrap: "wrap" }}>
-        {[["tickets", "🎫 Tickets", pendientes.length], ["ordenes", "📋 Órdenes", 0], ["clientes", "👥 Clientes", 0], ["facturacion", "🧾 Cobros", 0], ["avisos", "📢 Avisos", 0], ["promo", "🎁 Promos", 0]].map(([k, v, badge]) => (
-          <button key={k} onClick={() => { setTab(k); setShowFormCliente(false); setShowFormAviso(false); }} style={{ flex: 1, padding: "8px 4px", borderRadius: 8, border: "none", cursor: "pointer", background: tab === k ? "#0ea5e9" : "transparent", color: tab === k ? "#fff" : "#64748b", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, minWidth: 60 }}>
-            {v}{badge > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "1px 7px", fontSize: 10, fontWeight: 800 }}>{badge}</span>}
-          </button>
-        ))}
-      </div>
+      {/* Título sección activa */}
+      {(() => {
+        const LABEL = { tickets:"🎫 Tickets", ordenes:"📋 Órdenes", clientes:"👥 Clientes", facturacion:"🧾 Cobros", equipos_morosos:"📦 Equipos morosos", equipo:"👷 Equipo de trabajo", avisos:"📢 Avisos", promo:"🎁 Promociones" };
+        const lbl = LABEL[tab] || "📋 " + tab;
+        const emoji = lbl.split(" ")[0];
+        const titulo = lbl.slice(lbl.indexOf(" ")+1);
+        return (
+          <div style={{ marginBottom: 20, paddingBottom: 12, borderBottom: "2px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 22 }}>{emoji}</span>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0f172a" }}>{titulo}</h2>
+            {tab === "tickets" && pendientes.length > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{pendientes.length} nuevos</span>}
+          </div>
+        );
+      })()}
 
       {tab === "tickets" && (
         <div>
@@ -1726,6 +1831,8 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
           </div>
         </div>
       )}
+      {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} zonaId={usuario.zonaId} />}
+      {tab === "equipos_morosos" && <SeccionEquiposMorosos usuarios={usuarios} ordenes={ordenes} setOrdenes={setOrdenes} tecnicos={tecnicos} secretarioId={usuario.id} zonaId={usuario.zonaId} />}
     </div>
   );
 }
@@ -1845,21 +1952,29 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
   return (
     <div style={{ maxWidth: 700, margin: "0 auto", padding: "20px 16px" }}>
       {zonaT && (
-        <div style={{ background: zonaT.color + "22", border: "1px solid " + zonaT.color + "44", borderRadius: 10, padding: "8px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ background: zonaT.color + "15", border: "1px solid " + zonaT.color + "33", borderRadius: 10, padding: "8px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
           <span>📍</span>
           <span style={{ color: zonaT.color, fontSize: 13, fontWeight: 700 }}>Zona asignada: {zonaT.nombre}</span>
         </div>
       )}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#ffffff", borderRadius: 10, padding: 4 }}>
-        {[["hoy", "📅 Hoy", ordenesHoy.length], ["todas", "📋 Todas", ordenesActivas.length], ["historial", "✅ Historial", 0]].map(([k, v, badge]) => (
-          <button key={k} onClick={() => setTab(k)} style={{ flex: 1, padding: "8px 4px", borderRadius: 8, border: "none", cursor: "pointer", background: tab === k ? "#0ea5e9" : "transparent", color: tab === k ? "#fff" : "#64748b", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-            {v}{badge > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "1px 6px", fontSize: 10, fontWeight: 800 }}>{badge}</span>}
-          </button>
-        ))}
-      </div>
+      {/* Título sección activa */}
+      {(() => {
+        const LABEL = { hoy:"📅 Hoy", todas:"📋 Todas", historial:"✅ Historial", equipo:"👷 Equipo de trabajo" };
+        const lbl = LABEL[tab] || "📋 " + tab;
+        const emoji = lbl.split(" ")[0];
+        const titulo = lbl.slice(lbl.indexOf(" ")+1);
+        return (
+          <div style={{ marginBottom: 20, paddingBottom: 12, borderBottom: "2px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 22 }}>{emoji}</span>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0f172a" }}>{titulo}</h2>
+            {tab === "hoy" && ordenesHoy.length > 0 && <span style={{ background: "#f59e0b", color: "#000", borderRadius: 20, padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{ordenesHoy.length} pendientes</span>}
+          </div>
+        );
+      })()}
       {tab === "hoy" && (ordenesHoy.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>🎉 Sin órdenes para hoy</div> : ordenesHoy.sort((a, b) => (b.prioridad === "alta" ? 1 : 0) - (a.prioridad === "alta" ? 1 : 0)).map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "todas" && (ordenesActivas.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>Sin órdenes activas</div> : ordenesActivas.map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "historial" && (completadas.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>Sin órdenes completadas aún</div> : [...completadas].reverse().map(o => <OrdenCard key={o.id} orden={o} />))}
+      {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} rolFiltro={["admin","secretario","tecnico"]} zonaId={usuario.zonaId} />}
     </div>
   );
 }
@@ -2423,6 +2538,259 @@ function FacturacionCliente({ usuario }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════
+// SECCIÓN EQUIPO DE TRABAJO
+// ══════════════════════════════════════════════════════════════
+function SeccionEquipoTrabajo({ usuarios, zonas, zonaId }) {
+  const ROL_BG = { admin: "#8b5cf6", secretario: "#0ea5e9", tecnico: "#f59e0b" };
+  const ROL_ICON = { admin: "🛡️", secretario: "🗂️", tecnico: "🔧" };
+  const miembros = usuarios.filter(u =>
+    ["admin","secretario","tecnico"].includes(u.rol) && u.activo &&
+    (!zonaId || u.rol === "admin" || u.zonaId === zonaId)
+  ).sort((a,b) => {
+    const orden = { admin:0, secretario:1, tecnico:2 };
+    return (orden[a.rol]||3) - (orden[b.rol]||3);
+  });
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>
+        {miembros.length} miembros en el equipo
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))", gap: 14 }}>
+        {miembros.map(u => {
+          const zona = zonas.find(z => z.id === u.zonaId);
+          const bg = ROL_BG[u.rol] || "#64748b";
+          return (
+            <div key={u.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 8px #00000008" }}>
+              {/* Header color */}
+              <div style={{ background: bg, padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                  {ROL_ICON[u.rol] || "👤"}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, color: "#fff", fontSize: 13 }}>{u.nombre}</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.8)" }}>
+                    {u.rol === "admin" ? "Administrador" : u.rol === "secretario" ? "Secretario/a" : "Técnico"}
+                  </div>
+                </div>
+              </div>
+              {/* Info */}
+              <div style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 6 }}>
+                {u.telefono && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                    <span>📞</span>
+                    <a href={`tel:${u.telefono}`} style={{ color: "#0ea5e9", fontWeight: 600, textDecoration: "none" }}>{u.telefono}</a>
+                  </div>
+                )}
+                {zona && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                    <span style={{ color: zona.color }}>📍</span>
+                    <span style={{ color: "#64748b" }}>Zona {zona.nombre}</span>
+                  </div>
+                )}
+                {!u.telefono && <div style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic" }}>Sin teléfono registrado</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {miembros.length === 0 && (
+        <div style={{ textAlign: "center", color: "#94a3b8", padding: 50 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>👷</div>
+          No hay miembros del equipo en esta zona.
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// SECCIÓN EQUIPOS MOROSOS
+// ══════════════════════════════════════════════════════════════
+function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secretarioId, zonaId }) {
+  const [modalRecogida, setModalRecogida] = React.useState(null);
+  const [recogidas, setRecogidas] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem("gc_recogidas") || "[]"); } catch { return []; }
+  });
+  const [formRecogida, setFormRecogida] = React.useState({ tecnicoId: "", descripcionEquipo: "", fecha: new Date().toISOString().split("T")[0], observacion: "" });
+  const [showActa, setShowActa] = React.useState(null);
+
+  const morosos = usuarios.filter(u =>
+    u.rol === "cliente" && u.activo && u.estado === "Vencido" &&
+    (!zonaId || u.zonaId === zonaId)
+  );
+
+  const guardarRecogida = () => {
+    if (!formRecogida.tecnicoId || !formRecogida.descripcionEquipo.trim()) {
+      alert("Debes asignar un técnico y describir el equipo."); return;
+    }
+    const tecnico = tecnicos.find(t => t.id === formRecogida.tecnicoId);
+    const nuevaRecogida = {
+      id: Date.now().toString(),
+      clienteId: modalRecogida.id,
+      clienteNombre: modalRecogida.nombre,
+      clienteCedula: modalRecogida.cedula,
+      clienteDireccion: modalRecogida.direccion,
+      clienteTelefono: modalRecogida.telefono,
+      tecnicoId: formRecogida.tecnicoId,
+      tecnicoNombre: tecnico?.nombre || "Sin asignar",
+      descripcionEquipo: formRecogida.descripcionEquipo,
+      fecha: formRecogida.fecha,
+      observacion: formRecogida.observacion,
+      secretarioId,
+      estado: "Asignada",
+      creadoEn: new Date().toISOString(),
+    };
+    const nuevas = [nuevaRecogida, ...recogidas];
+    setRecogidas(nuevas);
+    try { localStorage.setItem("gc_recogidas", JSON.stringify(nuevas)); } catch {}
+    setModalRecogida(null);
+    setFormRecogida({ tecnicoId: "", descripcionEquipo: "", fecha: new Date().toISOString().split("T")[0], observacion: "" });
+    alert(`✅ Recogida asignada a ${tecnico?.nombre}. Fecha: ${formRecogida.fecha}`);
+  };
+
+  const recogidaSemana = recogidas.filter(r => {
+    const hace7 = new Date(Date.now() - 7*86400000).toISOString().split("T")[0];
+    return r.fecha >= hace7;
+  });
+
+  return (
+    <div>
+      {/* Resumen */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 20 }}>
+        {[
+          ["🔴 Clientes morosos", morosos.length, "#ef4444"],
+          ["📦 Recogidas esta semana", recogidaSemana.length, "#f59e0b"],
+          ["✅ Total recogidas", recogidas.length, "#22c55e"],
+        ].map(([label, val, color]) => (
+          <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+            <div style={{ fontWeight: 800, fontSize: 22, color }}>{val}</div>
+            <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Lista de morosos */}
+      <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>
+        Clientes con estado Vencido — pendiente recoger equipo
+      </div>
+      {morosos.length === 0 ? (
+        <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>✅</div>
+          No hay clientes morosos en esta zona.
+        </div>
+      ) : morosos.map(c => {
+        const yaAsignada = recogidas.some(r => r.clienteId === c.id && r.estado === "Asignada");
+        return (
+          <div key={c.id} style={{ background: "#fff", border: "1px solid " + (yaAsignada ? "#bbf7d0" : "#fecaca"), borderLeft: "4px solid " + (yaAsignada ? "#22c55e" : "#ef4444"), borderRadius: 12, padding: "12px 16px", marginBottom: 10, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{c.nombre}</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>CC: {c.cedula}</div>
+              {c.telefono && <div style={{ fontSize: 12, color: "#0ea5e9" }}>📞 {c.telefono}</div>}
+              {c.direccion && <div style={{ fontSize: 12, color: "#64748b" }}>📍 {c.direccion}</div>}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {yaAsignada && <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "4px 10px" }}>✅ Asignada</span>}
+              <Btn onClick={() => setModalRecogida(c)} style={{ fontSize: 12, padding: "7px 12px", background: yaAsignada ? "#64748b" : "#ef4444" }}>
+                📦 {yaAsignada ? "Ver / reasignar" : "Asignar recogida"}
+              </Btn>
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Historial recogidas */}
+      {recogidas.length > 0 && (
+        <div style={{ marginTop: 28 }}>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>Historial de recogidas asignadas</div>
+          {recogidas.map(r => (
+            <div key={r.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>{r.clienteNombre}</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>🔧 {r.tecnicoNombre} · 📅 {r.fecha}</div>
+                <div style={{ fontSize: 12, color: "#475569" }}>📦 {r.descripcionEquipo}</div>
+              </div>
+              <button onClick={() => setShowActa(r)} style={{ background: "#eff6ff", color: "#0ea5e9", border: "1px solid #bfdbfe", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                🖨️ Acta
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal asignar recogida */}
+      {modalRecogida && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setModalRecogida(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 440, position: "relative" }}>
+            <button onClick={() => setModalRecogida(null)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+            <h3 style={{ margin: "0 0 4px", color: "#0f172a" }}>📦 Asignar recogida de equipo</h3>
+            <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: 13 }}>{modalRecogida.nombre} · {modalRecogida.direccion}</p>
+            <Field label="Técnico asignado">
+              <Sel value={formRecogida.tecnicoId} onChange={e => setFormRecogida({ ...formRecogida, tecnicoId: e.target.value })}>
+                <option value="">— Seleccionar técnico —</option>
+                {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+              </Sel>
+            </Field>
+            <Field label="Descripción del equipo a recoger">
+              <Inp value={formRecogida.descripcionEquipo} onChange={e => setFormRecogida({ ...formRecogida, descripcionEquipo: e.target.value })} placeholder="Ej: Router marca TP-Link, caja decodificadora" />
+            </Field>
+            <Field label="Fecha de recogida">
+              <Inp type="date" value={formRecogida.fecha} onChange={e => setFormRecogida({ ...formRecogida, fecha: e.target.value })} />
+            </Field>
+            <Field label="Observaciones (opcional)">
+              <Inp value={formRecogida.observacion} onChange={e => setFormRecogida({ ...formRecogida, observacion: e.target.value })} placeholder="Ej: Cliente ausente en las mañanas" />
+            </Field>
+            <Btn onClick={guardarRecogida} style={{ width: "100%", padding: "12px 0", fontSize: 14 }}>✅ Asignar al técnico</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* Modal acta de recogida */}
+      {showActa && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000077", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowActa(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, maxWidth: 420, width: "100%", overflow: "hidden", boxShadow: "0 20px 60px #00000033" }}>
+            <div style={{ display: "flex", gap: 8, padding: "14px 16px", borderBottom: "1px solid #e2e8f0" }}>
+              <Btn onClick={() => window.print()} style={{ flex: 1, fontSize: 13 }}>🖨️ Imprimir</Btn>
+              <button onClick={() => setShowActa(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#64748b" }}>Cerrar</button>
+            </div>
+            <div id="acta-print" style={{ padding: "24px 28px", fontFamily: "monospace", fontSize: 13 }}>
+              <div style={{ textAlign: "center", marginBottom: 16 }}>
+                <div style={{ fontWeight: 800, fontSize: 15 }}>GC HOGAR.NET S.A.S</div>
+                <div style={{ fontSize: 12 }}>ACTA DE RECOGIDA DE EQUIPO</div>
+                <div style={{ fontSize: 12 }}>Fecha: {showActa.fecha}</div>
+              </div>
+              <div style={{ borderTop: "1px dashed #94a3b8", borderBottom: "1px dashed #94a3b8", padding: "10px 0", marginBottom: 12 }}>
+                <div><strong>Cliente:</strong> {showActa.clienteNombre}</div>
+                <div><strong>Cédula:</strong> {showActa.clienteCedula}</div>
+                <div><strong>Dirección:</strong> {showActa.clienteDireccion}</div>
+                {showActa.clienteTelefono && <div><strong>Teléfono:</strong> {showActa.clienteTelefono}</div>}
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <div><strong>Técnico:</strong> {showActa.tecnicoNombre}</div>
+                <div><strong>Equipo recogido:</strong> {showActa.descripcionEquipo}</div>
+                {showActa.observacion && <div><strong>Observaciones:</strong> {showActa.observacion}</div>}
+              </div>
+              <div style={{ borderTop: "1px dashed #94a3b8", paddingTop: 12, fontSize: 12 }}>
+                <div style={{ marginBottom: 20 }}>El cliente autoriza la recogida del equipo mencionado por incumplimiento de pago.</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 20 }}>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ borderTop: "1px solid #0f172a", paddingTop: 6 }}>Firma cliente</div>
+                  </div>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ borderTop: "1px solid #0f172a", paddingTop: 6 }}>Firma técnico</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <style>{`@media print { body * { visibility: hidden; } #acta-print, #acta-print * { visibility: visible; } #acta-print { position: fixed; inset: 0; padding: 24px; } }`}</style>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion }) {
   const [tab, setTab] = useState("usuarios");
   const [editU, setEditU] = useState(null);
@@ -2558,12 +2926,18 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
   const getNombreZona = (zonaId) => zonas.find(z => z.id === zonaId)?.nombre || "Sin zona";
 
+  // Sincronizar tab con el SideNav
+  React.useEffect(() => { if (tabActual) setTab(tabActual); }, [tabActual]);
+  React.useEffect(() => { setTabActual(tab); }, [tab]);
+
+  const LABEL_TAB = { usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta" };
+
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px" }}>
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#ffffff", borderRadius: 10, padding: 4, flexWrap: "wrap" }}>
-        {tabsAdmin.map(([k, v]) => (
-          <button key={k} onClick={() => { setTab(k); setShowForm(false); setFormTipo(null); }} style={{ flex: 1, padding: "9px 4px", borderRadius: 8, border: "none", cursor: "pointer", background: tab === k ? "#8b5cf6" : "transparent", color: tab === k ? "#fff" : "#64748b", fontWeight: 700, fontSize: 12, minWidth: 80 }}>{v}</button>
-        ))}
+      {/* Título de sección activa */}
+      <div style={{ marginBottom: 20, paddingBottom: 12, borderBottom: "2px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 22 }}>{LABEL_TAB[tab]?.split(" ")[0]}</span>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#0f172a" }}>{LABEL_TAB[tab]?.slice(LABEL_TAB[tab]?.indexOf(" ")+1) || tab}</h2>
       </div>
 
       {/* ── TAB RESUMEN ── */}
@@ -2611,6 +2985,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           })}
         </div>
       )}
+
+      {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} zonaId={null} />}
 
       {/* ── TAB MI CUENTA ── */}
       {tab === "micuenta" && (
@@ -3255,6 +3631,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
 // ══════════════════════════════════════════════════════════════
 // APP PRINCIPAL
+
+// Wrapper que conecta SideNav con el portal activo
+function SideNavTrigger({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy }) {
+  return <SideNav sesion={sesion} tab={tab} setTab={setTab} cerrarSesion={cerrarSesion} ticketsNuevos={ticketsNuevos} ordenesHoy={ordenesHoy} />;
+}
+
 // ══════════════════════════════════════════════════════════════
 export default function App() {
   const [usuarios, setUsuarios] = useState([]);
@@ -3278,6 +3660,7 @@ export default function App() {
   const [loginError, setLoginError] = useState("");
   const [cargando, setCargando] = useState(true);
   const [errorBD, setErrorBD] = useState(null);
+  const [tabActual, setTabActual] = useState(""); // Tab activo del portal actual
   const [showRecuperar, setShowRecuperar] = useState(false);
   const [recuperarCorreo, setRecuperar] = useState("");
   const [recuperarMsg, setRecuperarMsg] = useState(null);
@@ -3449,29 +3832,31 @@ export default function App() {
       `}</style>
 
       {/* HEADER */}
-      <header style={{ borderBottom: "1px solid #1e293b", padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "rgba(248,250,252,0.95)", zIndex: 10, backdropFilter: "blur(10px)" }}>
+      <header style={{ borderBottom: "1px solid #e2e8f0", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "rgba(248,250,252,0.97)", zIndex: 10, backdropFilter: "blur(10px)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Botón hamburguesa solo para admin/secretario/técnico */}
+          {sesion && sesion.rol !== "cliente" && (
+            <SideNavTrigger sesion={sesion} tab={tabActual} setTab={setTabActual} cerrarSesion={cerrarSesion} ticketsNuevos={ticketsNuevos} ordenesHoy={ordenesHoyTecnico} />
+          )}
           {LOGO_URL ? (
-            <img src={LOGO_URL} alt="Logo" style={{ width: 32, height: 32, objectFit: "contain", borderRadius: 8 }} />
+            <img src={LOGO_URL} alt="Logo" style={{ width: 30, height: 30, objectFit: "contain", borderRadius: 8 }} />
           ) : (
-            <span style={{ fontSize: 24 }}>📡</span>
+            <span style={{ fontSize: 22 }}>📡</span>
           )}
           <div>
-            <div style={{ fontWeight: 800, fontSize: 15, color: "#0f172a", letterSpacing: -0.5 }}>{nombreEmpresaHeader}</div>
+            <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", letterSpacing: -0.5 }}>{nombreEmpresaHeader}</div>
             <div style={{ fontSize: 10, color: "#64748b" }}>
-              Gestión de servicios{zonaHeader ? ` · Zona ${zonaHeader.nombre}` : ""}
+              {sesion ? `${ROLES[sesion.rol]}${zonaHeader ? " · " + zonaHeader.nombre : ""}` : "Gestión de servicios"}
             </div>
           </div>
         </div>
         {sesion && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{sesion.nombre.split(" ")[0]}</div>
-              <Badge text={ROLES[sesion.rol]} color={ROL_COLOR[sesion.rol]} />
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {sesion.rol === "tecnico" && ordenesHoyTecnico > 0 && <span style={{ background: "#f59e0b", color: "#000", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800 }}>{ordenesHoyTecnico} hoy</span>}
             {sesion.rol === "secretario" && ticketsNuevos > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800 }}>{ticketsNuevos} nuevos</span>}
-            <button onClick={cerrarSesion} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12 }}>Salir</button>
+            {sesion.rol === "cliente" && (
+              <button onClick={cerrarSesion} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12 }}>Salir</button>
+            )}
           </div>
         )}
       </header>
@@ -3535,7 +3920,7 @@ export default function App() {
         <PortalSecretario usuario={sesion} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} planes={planes} perfilesPago={perfilesPago} zonas={zonas} propaganda={propaganda} />
       )}
       {sesion && sesion.rol === "tecnico" && (
-        <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} />
+        <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} />
       )}
       {sesion && sesion.rol === "admin" && (
         <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} />
