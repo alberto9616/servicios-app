@@ -3018,8 +3018,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const getNombreZona = (zonaId) => zonas.find(z => z.id === zonaId)?.nombre || "Sin zona";
 
   // Sincronizar tab con el SideNav
-  React.useEffect(() => { if (tabActual) setTab(tabActual); }, [tabActual]);
-  React.useEffect(() => { setTabActual(tab); }, [tab]);
+
 
   const LABEL_TAB = { usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta" };
 
