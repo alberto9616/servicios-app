@@ -1415,7 +1415,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   </Sel>
                   {editCliente.plan && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4 }}>✓ Plan seleccionado: <strong>{editCliente.plan}</strong></div>}
                 </Field>
-                <Field label="Monto (COP)"><Inp type="number" value={editCliente.monto || ""} onChange={e => setEditCliente({ ...editCliente, monto: Number(e.target.value) })} readOnly style={{ background: "#0f172a", opacity: 0.8, cursor: "not-allowed" }} /></Field>
+                <Field label="Mensualidad (COP)"><Inp type="number" value={editCliente.monto || ""} onChange={e => setEditCliente({ ...editCliente, monto: Number(e.target.value) })} placeholder="Ej: 50000" /></Field>
                 <Field label="Perfil de pago">
                   <Sel value={editCliente.perfilPagoId || ""} onChange={e => setEditCliente({ ...editCliente, perfilPagoId: e.target.value || null })}>
                     <option value="">— Sin perfil asignado —</option>
@@ -3373,7 +3373,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       </Sel>
                       {editU.plan && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4 }}>✓ {editU.plan}</div>}
                     </Field>
-                    <Field label="Monto (COP)"><Inp type="number" value={editU.monto || ""} onChange={e => setEditU({ ...editU, monto: Number(e.target.value) })} style={{ background: "#0f172a", opacity: 0.8 }} /></Field>
+                    <Field label="Mensualidad (COP)"><Inp type="number" value={editU.monto || ""} onChange={e => setEditU({ ...editU, monto: Number(e.target.value) })} placeholder="Ej: 50000" /></Field>
                     <Field label="Perfil de pago">
                       <Sel value={editU.perfilPagoId || ""} onChange={e => setEditU({ ...editU, perfilPagoId: e.target.value || null })}>
                         <option value="">— Sin perfil asignado —</option>
