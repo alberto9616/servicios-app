@@ -1369,125 +1369,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
         </div>
       )}
 
-      {tab === "ordenes" && (() => {
-        const hoy = new Date().toISOString().split("T")[0];
-        const manana = new Date(Date.now() + 86400000).toISOString().split("T")[0];
-        // Sub-tabs internos de órdenes
-        const [subTab, setSubTab] = React.useState("activas");
-        const [filtroFecha, setFiltroFecha] = React.useState("");
-        const [filtroTecnico, setFiltroTecnico] = React.useState("");
-
-        const ordenarPorFecha = arr => [...arr].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "") || (a.hora || "").localeCompare(b.hora || ""));
-
-        const ordenesActivas = misOrdenes.filter(o => o.estado !== "Completada" && o.estado !== "Cancelada");
-        const ordenesProgramadas = misOrdenes.filter(o => o.fecha > hoy && o.estado === "Pendiente");
-        const ordenesHoy = misOrdenes.filter(o => o.fecha === hoy && o.estado !== "Completada" && o.estado !== "Cancelada");
-        const ordenesHistorial = misOrdenes.filter(o => o.estado === "Completada" || o.estado === "Cancelada");
-
-        const aplicarFiltros = (lista) => {
-          let r = lista;
-          if (filtroFecha) r = r.filter(o => o.fecha === filtroFecha);
-          if (filtroTecnico) r = r.filter(o => o.tecnicoId === filtroTecnico);
-          return r;
-        };
-
-        const listaActual =
-          subTab === "hoy"        ? aplicarFiltros(ordenesHoy) :
-          subTab === "programadas"? aplicarFiltros(ordenarPorFecha(ordenesProgramadas)) :
-          subTab === "historial"  ? aplicarFiltros(ordenesHistorial) :
-                                    aplicarFiltros(ordenarPorFecha(ordenesActivas));
-
-        const OrdenCardSec = ({ o }) => {
-          const tecnico = usuarios.find(u => u.id === o.tecnicoId);
-          const esFutura = o.fecha > hoy;
-          return (
-            <div style={{ background: "#ffffff", border: "1px solid " + (o.prioridad === "alta" ? "#c4b5fd" : "#e2e8f0"), borderLeft: "4px solid " + (esFutura ? "#0ea5e9" : ORDEN_COLOR[o.estado]), borderRadius: 12, padding: "12px 16px", marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontWeight: 700, color: "#0f172a", flex: 1 }}>{o.tipo}</span>
-                {esFutura && o.estado === "Pendiente" && <Badge text="📅 Programada" color="#0ea5e9" />}
-                {o.esManual && <Badge text="✍️ Manual" color="#f59e0b" />}
-                {o.prioridad === "alta" && <Badge text="🏢 Empresa" color="#8b5cf6" />}
-                <Badge text={o.estado} color={ORDEN_COLOR[o.estado]} />
-              </div>
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 5, display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <span>👤 {o.clienteNombre}</span>
-                <span>🔧 {tecnico?.nombre || "Sin asignar"}</span>
-                <span style={{ fontWeight: esFutura ? 700 : 400, color: esFutura ? "#0ea5e9" : "#64748b" }}>📅 {o.fecha} {o.hora}</span>
-              </div>
-              {o.telefonoCliente && <div style={{ fontSize: 12, color: "#0ea5e9", marginTop: 3 }}>📞 {o.telefonoCliente}</div>}
-              {o.direccion && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>📍 {o.direccion}</div>}
-              {o.descripcion && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>{o.descripcion}</div>}
-              {o.datosInstalacion && (
-                <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 10px", marginTop: 6, fontSize: 12 }}>
-                  <span style={{ color: "#0ea5e9", fontWeight: 700 }}>📋 Datos instalación nueva: </span>
-                  <span style={{ color: "#475569" }}>CC: {o.datosInstalacion.cedula} · Tel: {o.datosInstalacion.telefono}{o.datosInstalacion.correo ? " · " + o.datosInstalacion.correo : ""}</span>
-                </div>
-              )}
-            </div>
-          );
-        };
-
-        return (
-          <div>
-            {/* Header con botón nueva orden */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div style={{ color: "#64748b", fontSize: 13 }}>
-                {misOrdenes.length} órdenes en total · <span style={{ color: "#0ea5e9", fontWeight: 700 }}>{ordenesProgramadas.length} programadas</span>
-              </div>
-              <Btn onClick={() => setShowModalOrdenManual(true)} style={{ fontSize: 13, padding: "8px 14px" }}>➕ Nueva orden</Btn>
-            </div>
-
-            {/* Sub-tabs internos */}
-            <div style={{ display: "flex", gap: 4, marginBottom: 14, background: "#f1f5f9", borderRadius: 10, padding: 4 }}>
-              {[
-                ["activas", "📋 Activas", ordenesActivas.length],
-                ["hoy",     "📅 Hoy",     ordenesHoy.length],
-                ["programadas", "🗓️ Programadas", ordenesProgramadas.length],
-                ["historial",   "✅ Historial", 0],
-              ].map(([k, v, badge]) => (
-                <button key={k} onClick={() => { setSubTab(k); setFiltroFecha(""); setFiltroTecnico(""); }}
-                  style={{ flex: 1, padding: "7px 4px", borderRadius: 8, border: "none", cursor: "pointer",
-                    background: subTab === k ? "#0ea5e9" : "transparent",
-                    color: subTab === k ? "#fff" : "#64748b",
-                    fontWeight: 700, fontSize: 11,
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                  {v}
-                  {badge > 0 && <span style={{ background: subTab === k ? "rgba(255,255,255,0.3)" : "#e2e8f0", color: subTab === k ? "#fff" : "#64748b", borderRadius: 20, padding: "1px 6px", fontSize: 10, fontWeight: 800 }}>{badge}</span>}
-                </button>
-              ))}
-            </div>
-
-            {/* Filtros */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-              <Inp type="date" value={filtroFecha} onChange={e => setFiltroFecha(e.target.value)} style={{ flex: 1, minWidth: 150 }} placeholder="Filtrar por fecha" />
-              <Sel value={filtroTecnico} onChange={e => setFiltroTecnico(e.target.value)} style={{ flex: 1, minWidth: 150 }}>
-                <option value="">Todos los técnicos</option>
-                {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-              </Sel>
-              {(filtroFecha || filtroTecnico) && (
-                <button onClick={() => { setFiltroFecha(""); setFiltroTecnico(""); }} style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✕ Limpiar</button>
-              )}
-            </div>
-
-            {/* Info sub-tab programadas */}
-            {subTab === "programadas" && (
-              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderLeft: "4px solid #0ea5e9", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "#1e40af" }}>
-                🗓️ Órdenes <strong>programadas para fechas futuras</strong> (aún no aparecen en el portal del técnico). Se activarán automáticamente en la fecha asignada.
-              </div>
-            )}
-
-            {/* Lista */}
-            {listaActual.length === 0 ? (
-              <div style={{ textAlign: "center", color: "#94a3b8", padding: 40, fontSize: 14 }}>
-                {subTab === "programadas" ? "📅 Sin órdenes programadas para fechas futuras." :
-                 subTab === "hoy" ? "🎉 Sin órdenes para hoy." :
-                 subTab === "historial" ? "Sin órdenes completadas aún." :
-                 "Sin órdenes activas."}
-              </div>
-            ) : listaActual.map(o => <OrdenCardSec key={o.id} o={o} />)}
-          </div>
-        );
-      })()}
+      {tab === "ordenes" && <TabOrdenes ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} zonas={zonas} sesion={usuario} />}
 
       {tab === "clientes" && (
         <div>
@@ -1839,6 +1721,72 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   );
 }
 // ══════════════════════════════════════════════════════════════
+function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
+  const hoy = new Date().toISOString().split("T")[0];
+  const manana = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+  const [subTab, setSubTab] = useState("activas");
+  const [filtroFecha, setFiltroFecha] = useState("");
+  const [filtroTecnico, setFiltroTecnico] = useState("");
+  const tecnicos = usuarios.filter(u => u.rol === "tecnico" && u.activo && (!sesion?.zonaId || u.zonaId === sesion.zonaId));
+  const ordenarPorFecha = arr => [...arr].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "") || (a.hora || "").localeCompare(b.hora || ""));
+  const ordenesFiltradas = ordenes.filter(o => {
+    if (filtroFecha && o.fecha !== filtroFecha) return false;
+    if (filtroTecnico && o.tecnicoId !== filtroTecnico) return false;
+    return true;
+  });
+  const activas = ordenesFiltradas.filter(o => o.estado !== "Completada" && o.estado !== "Cancelada");
+  const completadas = ordenesFiltradas.filter(o => o.estado === "Completada" || o.estado === "Cancelada");
+  const hoyList = activas.filter(o => o.fecha === hoy);
+  const mananaList = activas.filter(o => o.fecha === manana);
+  const otrosList = activas.filter(o => o.fecha !== hoy && o.fecha !== manana);
+  const listaActual = subTab === "activas" ? ordenarPorFecha(activas) : subTab === "hoy" ? ordenarPorFecha(hoyList) : subTab === "manana" ? ordenarPorFecha(mananaList) : ordenarPorFecha(completadas);
+  const OrdenCardSec = ({ o }) => {
+    const tecnico = usuarios.find(u => u.id === o.tecnicoId);
+    const zona = zonas.find(z => z.id === o.zonaId);
+    const colorEstado = { Pendiente: "#f59e0b", "En progreso": "#0ea5e9", Completada: "#22c55e", Cancelada: "#ef4444" };
+    return (
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderLeft: `4px solid ${colorEstado[o.estado] || "#94a3b8"}`, borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{o.tipo} — {o.clienteNombre}</div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>📅 {o.fecha} {o.hora} {zona ? `· ${zona.nombre}` : ""}</div>
+            {o.direccion && <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>📍 {o.direccion}</div>}
+            {tecnico && <div style={{ fontSize: 12, color: "#8b5cf6", marginTop: 2 }}>🔧 {tecnico.nombre}</div>}
+          </div>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span style={{ background: colorEstado[o.estado] + "22", color: colorEstado[o.estado], borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{o.estado}</span>
+            <Sel value={o.estado} onChange={async e => { try { await db.actualizarEstadoOrden(o.id, e.target.value); setOrdenes(prev => prev.map(x => x.id === o.id ? { ...x, estado: e.target.value } : x)); } catch(err){alert(err.message);} }} style={{ fontSize: 12, padding: "4px 8px", width: "auto" }}>
+              {["Pendiente","En progreso","Completada","Cancelada"].map(s => <option key={s} value={s}>{s}</option>)}
+            </Sel>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+        {[["activas","Todas activas"],["hoy","Hoy"],["manana","Mañana"],["historial","Historial"]].map(([k,l]) => (
+          <button key={k} onClick={() => setSubTab(k)} style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", background: subTab === k ? "#0ea5e9" : "#f1f5f9", color: subTab === k ? "#fff" : "#475569", fontWeight: 600, fontSize: 13 }}>{l}</button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <Inp type="date" value={filtroFecha} onChange={e => setFiltroFecha(e.target.value)} style={{ width: "auto" }} />
+        <Sel value={filtroTecnico} onChange={e => setFiltroTecnico(e.target.value)} style={{ width: "auto", minWidth: 140 }}>
+          <option value="">Todos los técnicos</option>
+          {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+        </Sel>
+        {(filtroFecha || filtroTecnico) && <button onClick={() => { setFiltroFecha(""); setFiltroTecnico(""); }} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 13 }}>✕ Limpiar</button>}
+      </div>
+      <div>
+        {listaActual.length === 0 ? (
+          <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>Sin órdenes activas.</div>
+        ) : listaActual.map(o => <OrdenCardSec key={o.id} o={o} />)}
+      </div>
+    </div>
+  );
+}
+
 function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zonas, usuarios, tabExterno, setTabExterno }) {
   const [tabLocal, setTabLocal] = useState("hoy"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
 
@@ -2882,6 +2830,81 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
   );
 }
 
+function TabPerfiles({ perfilesPago, setPerfilesPago, usuarios }) {
+  const [editPerfil, setEditPerfil] = useState(null);
+  const [showFormPerfil, setShowFormPerfil] = useState(false);
+  const emptyPerfil = { id: "", nombre: "", diaInicio: 1, diaFin: 5, descripcion: "", activo: true };
+  const savePerfil = async (p) => {
+    try {
+      const guardado = await db.upsertPerfilPago(p);
+      setPerfilesPago(prev => prev.find(x => x.id === guardado.id) ? prev.map(x => x.id === guardado.id ? guardado : x) : [...prev, guardado]);
+      setShowFormPerfil(false); setEditPerfil(null);
+    } catch (err) { alert("Error: " + err.message); }
+  };
+  const deletePerfil = async (id) => {
+    if (!confirm("¿Eliminar este perfil? Los clientes asignados quedarán sin perfil.")) return;
+    try { await db.deletePerfilPago(id); setPerfilesPago(p => p.filter(x => x.id !== id)); }
+    catch (err) { alert("Error: " + err.message); }
+  };
+  const togglePerfil = async (id) => {
+    const p = perfilesPago.find(x => x.id === id);
+    if (!p) return;
+    try { await db.togglePerfilPago(id, !p.activo); setPerfilesPago(prev => prev.map(x => x.id === id ? { ...x, activo: !x.activo } : x)); }
+    catch (err) { alert("Error: " + err.message); }
+  };
+  const clientesPorPerfil = (perfId) => usuarios.filter(u => u.rol === "cliente" && u.perfilPagoId === perfId).length;
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <span style={{ color: "#475569", fontSize: 14 }}>{perfilesPago.length} perfiles configurados</span>
+        <Btn onClick={() => { setEditPerfil({ ...emptyPerfil }); setShowFormPerfil(true); }} style={{ fontSize: 13 }}>+ Nuevo perfil</Btn>
+      </div>
+      <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderLeft: "4px solid #0ea5e9", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#1e40af" }}>
+        📅 Los perfiles de pago definen el rango de días del mes en que cada cliente debe pagar.
+      </div>
+      {showFormPerfil && editPerfil && (
+        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, marginBottom: 16, boxShadow: "0 2px 8px #00000010" }}>
+          <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editPerfil.id ? "✏️ Editar perfil" : "📅 Nuevo perfil de pago"}</h3>
+          <Field label="Nombre del perfil"><Inp value={editPerfil.nombre} onChange={e => setEditPerfil({ ...editPerfil, nombre: e.target.value })} placeholder="Ej: Quincena 1, Fin de mes..." /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+            <Field label="Día inicio"><Inp type="number" min="1" max="28" value={editPerfil.diaInicio} onChange={e => setEditPerfil({ ...editPerfil, diaInicio: Number(e.target.value) })} /></Field>
+            <Field label="Día límite"><Inp type="number" min="1" max="28" value={editPerfil.diaFin} onChange={e => setEditPerfil({ ...editPerfil, diaFin: Number(e.target.value) })} /></Field>
+          </div>
+          <Field label="Descripción (opcional)"><Inp value={editPerfil.descripcion} onChange={e => setEditPerfil({ ...editPerfil, descripcion: e.target.value })} placeholder="Ej: Clientes zona norte" /></Field>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn onClick={() => savePerfil(editPerfil)}>Guardar perfil</Btn>
+            <Btn variant="ghost" onClick={() => { setShowFormPerfil(false); setEditPerfil(null); }}>Cancelar</Btn>
+          </div>
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {perfilesPago.length === 0 ? (
+          <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>
+            <div style={{ fontSize: 36, marginBottom: 8 }}>📅</div>
+            <div>No hay perfiles creados aún.</div>
+          </div>
+        ) : perfilesPago.map(p => (
+          <div key={p.id} style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderLeft: "4px solid #0ea5e9", borderRadius: 12, padding: "14px 16px", opacity: p.activo ? 1 : 0.5 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 15 }}>📅 {p.nombre}</div>
+                <div style={{ fontSize: 13, color: "#0ea5e9", fontWeight: 600, marginTop: 2 }}>Días {p.diaInicio} al {p.diaFin} de cada mes</div>
+                {p.descripcion && <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{p.descripcion}</div>}
+                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>👥 {clientesPorPerfil(p.id)} clientes asignados</div>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => togglePerfil(p.id)} style={{ background: p.activo ? "#f0fdf4" : "#f1f5f9", color: p.activo ? "#16a34a" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.activo ? "Activo" : "Inactivo"}</button>
+                <button onClick={() => { setEditPerfil(p); setShowFormPerfil(true); }} style={{ background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                <button onClick={() => deletePerfil(p.id)} style={{ background: "#f1f5f9", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion, tabExterno, setTabExterno }) {
   const [tabLocal, setTabLocal] = useState("usuarios"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const [editU, setEditU] = useState(null);
@@ -3175,34 +3198,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       )}
 
       {/* ── TAB PERFILES DE PAGO ── */}
-      {tab === "perfiles" && (() => {
-        const [editPerfil, setEditPerfil] = React.useState(null);
-        const [showFormPerfil, setShowFormPerfil] = React.useState(false);
-        const emptyPerfil = { id: "", nombre: "", diaInicio: 1, diaFin: 5, descripcion: "", activo: true };
-
-        const savePerfil = async (p) => {
-          try {
-            const guardado = await db.upsertPerfilPago(p);
-            setPerfilesPago(prev => prev.find(x => x.id === guardado.id) ? prev.map(x => x.id === guardado.id ? guardado : x) : [...prev, guardado]);
-            setShowFormPerfil(false); setEditPerfil(null);
-          } catch (err) { alert("Error: " + err.message); }
-        };
-        const deletePerfil = async (id) => {
-          if (!confirm("¿Eliminar este perfil? Los clientes asignados quedarán sin perfil.")) return;
-          try { await db.deletePerfilPago(id); setPerfilesPago(p => p.filter(x => x.id !== id)); }
-          catch (err) { alert("Error: " + err.message); }
-        };
-        const togglePerfil = async (id) => {
-          const p = perfilesPago.find(x => x.id === id);
-          if (!p) return;
-          try { await db.togglePerfilPago(id, !p.activo); setPerfilesPago(prev => prev.map(x => x.id === id ? { ...x, activo: !x.activo } : x)); }
-          catch (err) { alert("Error: " + err.message); }
-        };
-
-        // Contar clientes por perfil
-        const clientesPorPerfil = (perfId) => usuarios.filter(u => u.rol === "cliente" && u.perfilPagoId === perfId).length;
-
-        return (
+      {tab === "perfiles" && <TabPerfiles perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} usuarios={usuarios} />}
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <span style={{ color: "#475569", fontSize: 14 }}>{perfilesPago.length} perfiles configurados</span>
@@ -3275,8 +3271,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
               ))}
             </div>
           </div>
-        );
-      })()}
+
 
       {/* ── TAB ZONAS ── */}
       {tab === "zonas" && (
