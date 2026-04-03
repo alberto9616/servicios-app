@@ -606,7 +606,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
 
       {/* Overlay */}
       {open && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 400 }} onClick={() => setOpen(false)}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999 }} onClick={() => setOpen(false)}>
           {/* Sidebar */}
           <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 260, background: "#fff", boxShadow: "4px 0 24px #00000018", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
             {/* Header del sidebar */}
@@ -3914,7 +3914,7 @@ export default function App() {
       `}</style>
 
       {/* HEADER */}
-      <header style={{ borderBottom: "1px solid #e2e8f0", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "rgba(248,250,252,0.97)", zIndex: 10, backdropFilter: "blur(10px)" }}>
+      <header style={{ borderBottom: "1px solid #e2e8f0", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "rgba(248,250,252,0.97)", zIndex: 10, /*backdropFilter: "blur(10px)"*/ }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* Botón hamburguesa solo para admin/secretario/técnico */}
           {sesion && sesion.rol !== "cliente" && (
