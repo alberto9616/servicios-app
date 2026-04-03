@@ -6,8 +6,8 @@ import { createClient } from "@supabase/supabase-js";
 // Reemplaza estos valores con los de tu proyecto en
 // https://app.supabase.com → Project Settings → API
 // ══════════════════════════════════════════════════════════════
-const SUPABASE_URL  = "https://fwimnbieduydfsjwljjv.supabase.co";
-const SUPABASE_ANON = "sb_publishable_uHtXEsYeYfnSzKU3maqPOw_rutBeBjh";
+const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL  || "https://fwimnbieduydfsjwljjv.supabase.co";
+const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3aW1uYmllZHV5ZGZzandsamp2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4MjA5ODksImV4cCI6MjA5MDM5Njk4OX0.y4ytnwIFwFSo6Rqd7TA6kFFtOajUbYP5gkO3Pi0d8Fs";
 
 // ── Wispro Sync — Edge Function URL ────────────────────────
 // Reemplaza [TU-PROJECT-ID] con el ID de tu proyecto Supabase
@@ -1839,7 +1839,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   );
 }
 // ══════════════════════════════════════════════════════════════
-function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zonas }) {
+function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zonas, usuarios }) {
   const [tab, setTab] = useState("hoy");
 
   const zonaT = zonas.find(z => z.id === usuario.zonaId);
