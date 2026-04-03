@@ -1078,8 +1078,8 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
 // ══════════════════════════════════════════════════════════════
 // PORTAL SECRETARIO
 // ══════════════════════════════════════════════════════════════
-function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, usuarios, setUsuarios, avisos, setAvisos, planes, perfilesPago = [], zonas, propaganda }) {
-  const [tab, setTab] = useState("tickets");
+function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, usuarios, setUsuarios, avisos, setAvisos, planes, perfilesPago = [], zonas, propaganda, tabExterno, setTabExterno }) {
+  const [tabLocal, setTabLocal] = useState("tickets"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const [ticketAbierto, setTicketAbierto] = useState(null);
   const [modalOrden, setModalOrden] = useState(null);
   const [nuevaOrden, setNuevaOrden] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicoId: "", fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "" });
@@ -1839,8 +1839,8 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   );
 }
 // ══════════════════════════════════════════════════════════════
-function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zonas, usuarios }) {
-  const [tab, setTab] = useState("hoy");
+function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zonas, usuarios, tabExterno, setTabExterno }) {
+  const [tabLocal, setTabLocal] = useState("hoy"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
 
   const zonaT = zonas.find(z => z.id === usuario.zonaId);
   const hoy = new Date().toISOString().split("T")[0];
@@ -2882,8 +2882,8 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
   );
 }
 
-function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion }) {
-  const [tab, setTab] = useState("usuarios");
+function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion, tabExterno, setTabExterno }) {
+  const [tabLocal, setTabLocal] = useState("usuarios"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const [editU, setEditU] = useState(null);
   const [editA, setEditA] = useState(null);
   const [editPlan, setEditPlan] = useState(null);
@@ -3999,13 +3999,13 @@ export default function App() {
         <PortalCliente usuario={sesion} tickets={tickets} setTickets={setTickets} avisos={avisos} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} propaganda={propaganda} />
       )}
       {sesion && sesion.rol === "secretario" && (
-        <PortalSecretario usuario={sesion} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} planes={planes} perfilesPago={perfilesPago} zonas={zonas} propaganda={propaganda} />
+        <PortalSecretario usuario={sesion} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} planes={planes} perfilesPago={perfilesPago} zonas={zonas} propaganda={propaganda} tabExterno={tabActual} setTabExterno={setTabActual} />
       )}
       {sesion && sesion.rol === "tecnico" && (
-        <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} />
+        <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} tabExterno={tabActual} setTabExterno={setTabActual} />
       )}
       {sesion && sesion.rol === "admin" && (
-        <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} />
+        <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} tabExterno={tabActual} setTabExterno={setTabActual} />
       )}
     </div>
   );
