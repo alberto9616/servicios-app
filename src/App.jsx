@@ -1854,20 +1854,13 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             ) : (
               /* OTROS TIPOS: seleccionar cliente existente */
               <Field label="Cliente existente">
-                <Sel value={ordenManual.clienteExistente} onChange={e => setOrdenManual({ ...ordenManual, clienteExistente: e.target.value })} style={{ borderColor: erroresOrdenManual.clienteExistente ? "#ef4444" : undefined }}>
-                  <option value="">— Seleccionar cliente —</option>
-                  {clientes.map(c => <option key={c.id} value={c.id}>{c.nombre} · {c.cedula}</option>)}
-                </Sel>
+                <ClienteBuscador
+                  clientes={clientes}
+                  value={ordenManual.clienteExistente}
+                  onChange={id => setOrdenManual({ ...ordenManual, clienteExistente: id })}
+                  error={erroresOrdenManual.clienteExistente}
+                />
                 {erroresOrdenManual.clienteExistente && <div style={{ color: "#ef4444", fontSize: 11, marginTop: 3 }}>Debes seleccionar un cliente</div>}
-                {ordenManual.clienteExistente && (() => {
-                  const c = usuarios.find(u => u.id === ordenManual.clienteExistente);
-                  return c ? (
-                    <div style={{ background: "#e2e8f0", borderRadius: 8, padding: "7px 10px", marginTop: 8, fontSize: 12 }}>
-                      {c.telefono && <div style={{ color: "#475569" }}>📞 {c.telefono}</div>}
-                      {c.direccion && <div style={{ color: "#475569" }}>📍 {c.direccion}</div>}
-                    </div>
-                  ) : null;
-                })()}
               </Field>
             )}
 
@@ -1913,6 +1906,101 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   );
 }
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// BUSCADOR DE CLIENTES — reutilizable en formularios de órdenes
+// ══════════════════════════════════════════════════════════════
+function ClienteBuscador({ clientes, value, onChange, error, placeholder = "🔍 Buscar por nombre o cédula..." }) {
+  const [busq, setBusq] = useState("");
+  const [abierto, setAbierto] = useState(false);
+  const ref = React.useRef(null);
+
+  // Cerrar al hacer clic fuera
+  React.useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setAbierto(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const seleccionado = clientes.find(c => c.id === value);
+  const resultados = busq.length >= 1
+    ? clientes.filter(c =>
+        c.nombre?.toLowerCase().includes(busq.toLowerCase()) ||
+        c.cedula?.toLowerCase().includes(busq.toLowerCase()) ||
+        c.telefono?.toLowerCase().includes(busq.toLowerCase())
+      ).slice(0, 8)
+    : [];
+
+  const seleccionar = (c) => {
+    onChange(c.id);
+    setBusq("");
+    setAbierto(false);
+  };
+
+  const limpiar = () => { onChange(""); setBusq(""); setAbierto(false); };
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      {/* Campo de búsqueda / cliente seleccionado */}
+      {seleccionado ? (
+        <div style={{ background: "#f0fdf4", border: "1px solid " + (error ? "#ef4444" : "#86efac"), borderRadius: 8, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>✅ {seleccionado.nombre}</div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2, display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <span>CC: {seleccionado.cedula || "—"}</span>
+              {seleccionado.telefono && <span>📞 {seleccionado.telefono}</span>}
+              {seleccionado.direccion && <span>📍 {seleccionado.direccion}</span>}
+            </div>
+          </div>
+          <button onClick={limpiar} style={{ background: "#e2e8f0", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 13, color: "#64748b", flexShrink: 0 }}>
+            ✕ Cambiar
+          </button>
+        </div>
+      ) : (
+        <Inp
+          value={busq}
+          onChange={e => { setBusq(e.target.value); setAbierto(true); }}
+          onFocus={() => setAbierto(true)}
+          placeholder={placeholder}
+          style={{ borderColor: error ? "#ef4444" : undefined }}
+        />
+      )}
+
+      {/* Dropdown resultados */}
+      {abierto && !seleccionado && (
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 24px #00000018", zIndex: 9999, maxHeight: 280, overflowY: "auto", marginTop: 4 }}>
+          {busq.length < 1 ? (
+            <div style={{ padding: "12px 14px", fontSize: 13, color: "#94a3b8", textAlign: "center" }}>
+              Escribe nombre, cédula o teléfono para buscar...
+            </div>
+          ) : resultados.length === 0 ? (
+            <div style={{ padding: "12px 14px", fontSize: 13, color: "#94a3b8", textAlign: "center" }}>
+              Sin resultados para "<strong>{busq}</strong>"
+            </div>
+          ) : (
+            resultados.map(c => (
+              <button
+                key={c.id}
+                onClick={() => seleccionar(c)}
+                style={{ width: "100%", display: "flex", flexDirection: "column", gap: 2, padding: "10px 14px", border: "none", borderBottom: "1px solid #f1f5f9", background: "#fff", cursor: "pointer", textAlign: "left" }}
+                onMouseEnter={e => e.currentTarget.style.background = "#f0f9ff"}
+                onMouseLeave={e => e.currentTarget.style.background = "#fff"}
+              >
+                <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{c.nombre}</div>
+                <div style={{ fontSize: 12, color: "#64748b", display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  {c.cedula && <span>CC: {c.cedula}</span>}
+                  {c.telefono && <span>📞 {c.telefono}</span>}
+                  {c.plan && <span>📦 {c.plan}</span>}
+                  {c.direccion && <span>📍 {c.direccion.slice(0,30)}{c.direccion.length>30?"...":""}</span>}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
   const hoy = new Date().toISOString().split("T")[0];
   const manana = new Date(Date.now() + 86400000).toISOString().split("T")[0];
