@@ -2045,7 +2045,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
           </div>
           {factura.notas && <div style={{ marginTop: 10, fontSize: 11, color: "#64748b", textAlign: "center" }}>{factura.notas}</div>}
         </div>
-        <style>{`@media print { body * { visibility: hidden; } #recibo-print, #recibo-print * { visibility: visible; } #recibo-print { position: fixed; inset: 0; padding: 24px; } }`}</style>
+        <style>{`@media print { @page { size: 76mm auto; margin: 2mm; } body * { visibility: hidden; } #recibo-print, #recibo-print * { visibility: visible; } #recibo-print { position: fixed; top: 0; left: 0; width: 72mm; font-size: 11px; padding: 2mm; } }`}</style>
       </div>
     </div>
   );
@@ -2072,6 +2072,9 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
   const [errAbono, setErrAbono] = useState("");
   const [showFormManual, setShowFormManual] = useState(false);
   const [facturaManual, setFacturaManual] = useState({ clienteId: "", concepto: "", monto: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [] });
+  const [modalEditFactura, setModalEditFactura] = useState(null);
+  const [filtroAuditAnio, setFiltroAuditAnio] = useState(new Date().getFullYear());
+  const [exportando, setExportando] = useState(false);
 
   const esAdmin = usuario.rol === "admin";
   const zonaId = usuario.zonaId;
@@ -2214,8 +2217,104 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
 
   const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444" };
 
+  // ── Exportar a Excel (CSV descargable) ──────────────
+  const exportarExcel = async (porMes) => {
+    setExportando(true);
+    try {
+      const lista = porMes
+        ? facturas.filter(f => f.mes === filtroMes && f.anio === filtroAnio)
+        : facturas.filter(f => f.anio === filtroAnio);
+      const cabecera = ["Recibo","Fecha","Cliente","Cédula","Dirección","Zona","Concepto","Mes","Año","Total","Saldo pendiente","Estado","Método pago","Notas"];
+      const zonaMap = Object.fromEntries(zonas.map(z => [z.id, z.nombre]));
+      const filas = lista.map(f => [
+        f.numeroRecibo || f.id?.slice(-6) || "",
+        f.fechaEmision || "",
+        f.clienteNombre || "",
+        f.clienteCedula || "",
+        f.clienteDireccion || "",
+        zonaMap[f.zonaId] || "",
+        f.concepto || "",
+        MESES[(f.mes||1)-1] || "",
+        f.anio || "",
+        f.monto || 0,
+        f.saldoPendiente || 0,
+        f.estado || "",
+        f.metodoPago || "",
+        f.notas || "",
+      ]);
+      const csvContent = [cabecera, ...filas]
+        .map(row => row.map(c => `"${String(c).replace(/"/g,'""')}"`).join(","))
+        .join("\n");
+      const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = porMes
+        ? `facturas_${MESES[filtroMes-1]}_${filtroAnio}.csv`
+        : `facturas_${filtroAnio}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch(e) { alert("Error al exportar: " + e.message); }
+    setExportando(false);
+  };
+
+  // ── Auditoría: historial de todas las facturas ──────
+  const facturasAudit = facturas.filter(f => f.anio === filtroAuditAnio).sort((a,b) => (b.fechaEmision||"").localeCompare(a.fechaEmision||""));
+
   return (
     <div>
+      {/* Sub-tabs */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+        {[["cobros","🧾 Cobros"],["auditoria","🔍 Auditoría"]].map(([k,l]) => (
+          <button key={k} onClick={() => setSubTab(k)} style={{ padding: "7px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13, background: subTab === k ? "#0ea5e9" : "#f1f5f9", color: subTab === k ? "#fff" : "#475569" }}>{l}</button>
+        ))}
+        <div style={{ flex: 1 }} />
+        {esAdmin && <>
+          <button onClick={() => exportarExcel(true)} disabled={exportando} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #22c55e", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel mes</button>
+          <button onClick={() => exportarExcel(false)} disabled={exportando} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #0ea5e9", background: "#eff6ff", color: "#0ea5e9", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel año</button>
+        </>}
+      </div>
+
+      {subTab === "auditoria" && (
+        <div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
+            <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>🔍 Auditoría de facturas</span>
+            <Sel value={filtroAuditAnio} onChange={e => setFiltroAuditAnio(Number(e.target.value))} style={{ width: "auto", minWidth: 90 }}>
+              {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
+            </Sel>
+            <span style={{ fontSize: 12, color: "#64748b" }}>{facturasAudit.length} registros</span>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
+                  {["#Recibo","Fecha","Cliente","Cédula","Mes","Total","Saldo","Estado","Creado por"].map(h => (
+                    <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: "#64748b", fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {facturasAudit.map(f => (
+                  <tr key={f.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    <td style={{ padding: "8px 12px", color: "#0ea5e9", fontWeight: 700 }}>#{f.numeroRecibo || f.id?.slice(-6)}</td>
+                    <td style={{ padding: "8px 12px", color: "#475569" }}>{f.fechaEmision}</td>
+                    <td style={{ padding: "8px 12px", fontWeight: 600 }}>{f.clienteNombre}</td>
+                    <td style={{ padding: "8px 12px", color: "#475569" }}>{f.clienteCedula}</td>
+                    <td style={{ padding: "8px 12px", color: "#475569" }}>{MESES[(f.mes||1)-1]} {f.anio}</td>
+                    <td style={{ padding: "8px 12px", fontWeight: 700 }}>{formatCOP(f.monto)}</td>
+                    <td style={{ padding: "8px 12px", color: f.saldoPendiente > 0 ? "#ef4444" : "#22c55e", fontWeight: 700 }}>{formatCOP(f.saldoPendiente)}</td>
+                    <td style={{ padding: "8px 12px" }}><span style={{ background: COLOR_ESTADO[f.estado]+"22", color: COLOR_ESTADO[f.estado]||"#64748b", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 11 }}>{f.estado}</span></td>
+                    <td style={{ padding: "8px 12px", color: "#94a3b8" }}>{usuarios.find(u=>u.id===f.creadoPor)?.nombre || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {facturasAudit.length === 0 && <div style={{ textAlign: "center", color: "#94a3b8", padding: 30 }}>Sin registros para {filtroAuditAnio}</div>}
+          </div>
+        </div>
+      )}
+
+      {subTab === "cobros" && <>
       {/* Selector mes/año */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))} style={{ width: "auto", minWidth: 130 }}>
@@ -2295,10 +2394,67 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                   }} style={{ background: "#f0fdf4", color: "#16a34a", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                     🖨️
                   </button>
+                  {esAdmin && <>
+                    <button onClick={() => setModalEditFactura({ ...f })} style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✏️</button>
+                    <button onClick={async () => {
+                      if (!confirm("¿Eliminar esta factura? Esta acción no se puede deshacer.")) return;
+                      try { await db.actualizarFactura(f.id, { estado: "Cancelada" }); setFacturas(prev => prev.map(x => x.id === f.id ? { ...x, estado: "Cancelada" } : x)); }
+                      catch(e) { alert("Error: " + e.message); }
+                    }} style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>🗑️</button>
+                  </>}
                 </div>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      </>}
+
+      {/* ── Modal editar factura (admin) ── */}
+      {modalEditFactura && esAdmin && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setModalEditFactura(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 440, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff" }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>✏️ Editar factura #{modalEditFactura.numeroRecibo}</h3>
+              <button onClick={() => setModalEditFactura(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: 20, color: "#64748b" }}>×</button>
+            </div>
+            <div style={{ padding: 20 }}>
+              <Field label="Estado">
+                <Sel value={modalEditFactura.estado} onChange={e => setModalEditFactura({ ...modalEditFactura, estado: e.target.value })}>
+                  {["Pendiente","Abono parcial","Pagado","Vencido","Cancelada"].map(s => <option key={s} value={s}>{s}</option>)}
+                </Sel>
+              </Field>
+              <Field label="Concepto">
+                <Inp value={modalEditFactura.concepto || ""} onChange={e => setModalEditFactura({ ...modalEditFactura, concepto: e.target.value })} />
+              </Field>
+              <Field label="Monto total (COP)">
+                <Inp type="number" value={modalEditFactura.monto || ""} onChange={e => setModalEditFactura({ ...modalEditFactura, monto: Number(e.target.value) })} />
+              </Field>
+              <Field label="Fecha emisión">
+                <Inp type="date" value={modalEditFactura.fechaEmision || ""} onChange={e => setModalEditFactura({ ...modalEditFactura, fechaEmision: e.target.value })} />
+              </Field>
+              <Field label="Notas">
+                <Inp value={modalEditFactura.notas || ""} onChange={e => setModalEditFactura({ ...modalEditFactura, notas: e.target.value })} />
+              </Field>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <Btn onClick={async () => {
+                  try {
+                    await db.actualizarFactura(modalEditFactura.id, {
+                      estado: modalEditFactura.estado,
+                      concepto: modalEditFactura.concepto,
+                      monto: modalEditFactura.monto,
+                      fecha_emision: modalEditFactura.fechaEmision,
+                      notas: modalEditFactura.notas,
+                    });
+                    setFacturas(prev => prev.map(f => f.id === modalEditFactura.id ? { ...f, ...modalEditFactura } : f));
+                    setModalEditFactura(null);
+                  } catch(e) { alert("Error: " + e.message); }
+                }} style={{ flex: 1 }}>Guardar cambios</Btn>
+                <Btn variant="ghost" onClick={() => setModalEditFactura(null)}>Cancelar</Btn>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2418,23 +2574,29 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
             <button onClick={() => setShowFormManual(false)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
             <h3 style={{ margin: "0 0 16px", color: "#0f172a" }}>🧾 Nueva factura manual</h3>
-            <Field label="Cliente">
-              <Sel value={facturaManual.clienteId} onChange={e => {
-                const c = usuarios.find(u => u.id === e.target.value);
-                const mesNombre = MESES[facturaManual.mes - 1];
-                // Auto-generar ítems según servicios del cliente
-                const servicios = c ? (c.servicio || "Internet").split("+").map(s => s.trim()).filter(Boolean) : [];
-                const montoPorServicio = (c && servicios.length > 1) ? Math.round((c.monto || 0) / servicios.length) : (c?.monto || 0);
-                const itemsAuto = servicios.map(s => ({ concepto: `${s} ${mesNombre} ${facturaManual.anio}`, monto: montoPorServicio }));
-                if (itemsAuto.length > 0) {
-                  const suma = itemsAuto.reduce((s,i)=>s+i.monto,0);
-                  if (suma !== (c?.monto||0) && itemsAuto.length > 0) itemsAuto[itemsAuto.length-1].monto += ((c?.monto||0) - suma);
-                }
-                setFacturaManual({ ...facturaManual, clienteId: e.target.value, monto: c?.monto || "", items: itemsAuto.length > 0 ? itemsAuto : facturaManual.items });
-              }}>
-                <option value="">— Seleccionar cliente —</option>
-                {clientesVisibles.map(c => <option key={c.id} value={c.id}>{c.nombre} · {c.cedula}</option>)}
-              </Sel>
+            <Field label="Buscar cliente (nombre o cédula)">
+              <Inp placeholder="🔍 Escribe nombre o cédula..." value={facturaManual.busqCliente || ""} onChange={e => setFacturaManual({ ...facturaManual, busqCliente: e.target.value, clienteId: "" })} />
+              {facturaManual.busqCliente && facturaManual.busqCliente.length >= 2 && (() => {
+                const q = facturaManual.busqCliente.toLowerCase();
+                const res = clientesVisibles.filter(c => c.nombre.toLowerCase().includes(q) || (c.cedula||"").toLowerCase().includes(q)).slice(0,8);
+                return res.length > 0 ? (
+                  <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, marginTop: 4, overflow: "hidden", boxShadow: "0 4px 12px #00000011" }}>
+                    {res.map(c => (
+                      <button key={c.id} onClick={() => {
+                        const mesNombre = MESES[facturaManual.mes - 1];
+                        const servicios = (c.servicio || "Internet").split("+").map(s => s.trim()).filter(Boolean);
+                        const montoPorServicio = servicios.length > 1 ? Math.round((c.monto || 0) / servicios.length) : (c?.monto || 0);
+                        const itemsAuto = servicios.map(s => ({ concepto: `${s} ${mesNombre} ${facturaManual.anio}`, monto: montoPorServicio }));
+                        if (itemsAuto.length > 0) { const suma = itemsAuto.reduce((s,i)=>s+i.monto,0); if (suma !== (c?.monto||0)) itemsAuto[itemsAuto.length-1].monto += ((c?.monto||0) - suma); }
+                        setFacturaManual({ ...facturaManual, clienteId: c.id, busqCliente: c.nombre, items: itemsAuto.length > 0 ? itemsAuto : facturaManual.items });
+                      }} style={{ width: "100%", display: "block", padding: "10px 14px", border: "none", borderBottom: "1px solid #f1f5f9", background: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13 }}>
+                        <strong>{c.nombre}</strong> <span style={{ color: "#64748b" }}>· {c.cedula}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>Sin resultados</div>;
+              })()}
+              {facturaManual.clienteId && <div style={{ fontSize: 12, color: "#22c55e", marginTop: 4 }}>✅ Cliente seleccionado</div>}
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
               <Field label="Mes">
@@ -2509,7 +2671,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
               <Inp value={facturaManual.notas} onChange={e => setFacturaManual({ ...facturaManual, notas: e.target.value })} placeholder="Ej: Mes de prueba" />
             </Field>
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <Btn onClick={crearFacturaManual} style={{ flex: 1 }} disabled={facturaManual.items.length === 0 || !facturaManual.clienteId}>Crear factura</Btn>
+              <Btn onClick={crearFacturaManual} style={{ flex: 1 }} disabled={facturaManual.items.length === 0 || !facturaManual.clienteId} style={{ flex: 1, opacity: (facturaManual.items.length === 0 || !facturaManual.clienteId) ? 0.5 : 1 }}>Crear factura</Btn>
               <Btn variant="ghost" onClick={() => setShowFormManual(false)}>Cancelar</Btn>
             </div>
           </div>
@@ -2535,6 +2697,50 @@ function FacturacionCliente({ usuario }) {
   const [facturas, setFacturas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444" };
+
+  // ── Exportar a Excel (CSV descargable) ──────────────
+  const exportarExcel = async (porMes) => {
+    setExportando(true);
+    try {
+      const lista = porMes
+        ? facturas.filter(f => f.mes === filtroMes && f.anio === filtroAnio)
+        : facturas.filter(f => f.anio === filtroAnio);
+      const cabecera = ["Recibo","Fecha","Cliente","Cédula","Dirección","Zona","Concepto","Mes","Año","Total","Saldo pendiente","Estado","Método pago","Notas"];
+      const zonaMap = Object.fromEntries(zonas.map(z => [z.id, z.nombre]));
+      const filas = lista.map(f => [
+        f.numeroRecibo || f.id?.slice(-6) || "",
+        f.fechaEmision || "",
+        f.clienteNombre || "",
+        f.clienteCedula || "",
+        f.clienteDireccion || "",
+        zonaMap[f.zonaId] || "",
+        f.concepto || "",
+        MESES[(f.mes||1)-1] || "",
+        f.anio || "",
+        f.monto || 0,
+        f.saldoPendiente || 0,
+        f.estado || "",
+        f.metodoPago || "",
+        f.notas || "",
+      ]);
+      const csvContent = [cabecera, ...filas]
+        .map(row => row.map(c => `"${String(c).replace(/"/g,'""')}"`).join(","))
+        .join("\n");
+      const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = porMes
+        ? `facturas_${MESES[filtroMes-1]}_${filtroAnio}.csv`
+        : `facturas_${filtroAnio}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch(e) { alert("Error al exportar: " + e.message); }
+    setExportando(false);
+  };
+
+  // ── Auditoría: historial de todas las facturas ──────
+  const facturasAudit = facturas.filter(f => f.anio === filtroAuditAnio).sort((a,b) => (b.fechaEmision||"").localeCompare(a.fechaEmision||""));
 
   useEffect(() => {
     db.getFacturasByCliente(usuario.id).then(setFacturas).catch(console.error).finally(() => setCargando(false));
@@ -3274,8 +3480,14 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           </div>
 
           {showForm && formTipo === "usuario" && editU && (
-            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 4, fontSize: 15 }}>{editU.id ? "Editar usuario" : "Nuevo usuario"}</h3>
+          {showForm && formTipo === "usuario" && editU && (
+            <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && (setShowForm(false), setEditU(null), setFormTipo(null))}>
+            <div style={{ background: "#ffffff", borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{editU.id ? "✏️ Editar usuario" : "➕ Nuevo usuario"}</h3>
+              <button onClick={() => { setShowForm(false); setEditU(null); setFormTipo(null); }} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: 20, color: "#64748b" }}>×</button>
+            </div>
+            <div style={{ padding: 20 }}>
               <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 16px" }}>Selecciona el tipo de usuario y configura sus privilegios</p>
 
               {/* PASO 1: Tipo de usuario */}
@@ -3408,6 +3620,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <Btn onClick={() => saveU(editU)}>Guardar usuario</Btn>
                 <Btn variant="ghost" onClick={() => { setShowForm(false); setEditU(null); setFormTipo(null); }}>Cancelar</Btn>
               </div>
+            </div>
+            </div>
             </div>
           )}
 
