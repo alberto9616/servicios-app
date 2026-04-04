@@ -104,9 +104,23 @@ const db = {
   // USUARIOS
   async getUsuarios() { const { data, error } = await sb.from("usuarios").select("*").order("nombre"); if (error) throw error; return data.map(mapUsuario); },
   async upsertUsuario(u) {
-    const row = { id: u.id||undefined, usuario: u.usuario, clave: u.clave, rol: u.rol, nombre: u.nombre, activo: u.activo??true, zona_id: u.zonaId||null, secretario_id: u.secretarioId||null, tipo: u.tipo||null, cedula: u.cedula||null, telefono: u.telefono||null, servicio: u.servicio||null, plan: u.plan||null, plan_id: u.planId||null, monto: u.monto||null, fecha_pago: u.fechaPago||null, estado: u.estado||null, direccion: u.direccion||null, clave_wifi: u.claveWifi||null, nombre_empresa: u.nombreEmpresa||null, privilegios: u.privilegios||[], perfil_pago_id: u.perfilPagoId||null };
+    const row = {
+      id: u.id && u.id.trim() !== "" ? u.id : undefined,
+      usuario: u.usuario, clave: u.clave, rol: u.rol, nombre: u.nombre,
+      activo: u.activo ?? true,
+      zona_id: u.zonaId || null, secretario_id: u.secretarioId || null,
+      tipo: u.tipo || null, cedula: u.cedula || null, telefono: u.telefono || null,
+      servicio: u.servicio || null, plan: u.plan || null, plan_id: u.planId || null,
+      monto: u.monto || null, fecha_pago: u.fechaPago || null, estado: u.estado || null,
+      direccion: u.direccion || null, clave_wifi: u.claveWifi || null,
+      nombre_empresa: u.nombreEmpresa || null, privilegios: u.privilegios || [],
+      perfil_pago_id: u.perfilPagoId || null
+    };
+    // Remove undefined id so Supabase generates it automatically
+    if (row.id === undefined) delete row.id;
     const { data, error } = await sb.from("usuarios").upsert(row).select().single();
-    if (error) throw error; return mapUsuario(data);
+    if (error) throw error;
+    return mapUsuario(data);
   },
   async deleteUsuario(id) { const { error } = await sb.from("usuarios").delete().eq("id", id); if (error) throw error; },
   async toggleUsuario(id, activo) { const { error } = await sb.from("usuarios").update({ activo }).eq("id", id); if (error) throw error; },
@@ -284,8 +298,8 @@ const initialPropaganda = [
 // ══════════════════════════════════════════════════════════════
 // CONSTANTES Y UTILIDADES
 // ══════════════════════════════════════════════════════════════
-const ROLES = { admin: "Administrador", secretario: "Secretario/a", tecnico: "Técnico", cliente: "Cliente" };
-const ROL_COLOR = { admin: "#8b5cf6", secretario: "#0ea5e9", tecnico: "#f59e0b", cliente: "#22c55e" };
+const ROLES = { superusuario: "Superusuario", admin: "Administrador", secretario: "Secretario/a", tecnico: "Técnico", cliente: "Cliente" };
+const ROL_COLOR = { superusuario: "#dc2626", admin: "#8b5cf6", secretario: "#0ea5e9", tecnico: "#f59e0b", cliente: "#22c55e" };
 const ESTADO_COLOR = { "Al día": "#22c55e", Pendiente: "#f59e0b", Vencido: "#ef4444" };
 const TICKET_COLOR = { Abierto: "#f59e0b", "En proceso": "#3b82f6", Resuelto: "#22c55e" };
 const ORDEN_COLOR = { Pendiente: "#f59e0b", "En camino": "#3b82f6", Completada: "#22c55e", Cancelada: "#ef4444" };
@@ -577,10 +591,12 @@ function ChatTicket({ ticket, onSend, autorActual, nombreActual, usuarios }) {
 function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy, extraItems = [] }) {
   const [open, setOpen] = React.useState(false);
 
-  const ROL_ICON = { admin: "🛡️", secretario: "🗂️", tecnico: "🔧" };
+  const ROL_ICON = { superusuario: "👑", admin: "🛡️", secretario: "🗂️", tecnico: "🔧" };
 
   const MENUS = {
-    admin: [
+    superusuario: [
+      { key: "tickets",     icon: "🎫", label: "Tickets" },
+      { key: "ordenes",     icon: "📋", label: "Órdenes" },
       { key: "usuarios",    icon: "👥", label: "Usuarios" },
       { key: "planes",      icon: "📦", label: "Planes" },
       { key: "perfiles",    icon: "📅", label: "Perfiles pago" },
@@ -588,7 +604,22 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "avisos",      icon: "📢", label: "Avisos" },
       { key: "propaganda",  icon: "🎁", label: "Promociones" },
       { key: "facturacion", icon: "🧾", label: "Facturación" },
-      { key: "caja",        icon: "💼", label: "Caja (Ingresos/Egresos)" },
+      { key: "caja",        icon: "💼", label: "Caja" },
+      { key: "equipo",      icon: "👷", label: "Equipo de trabajo" },
+      { key: "resumen",     icon: "📊", label: "Resumen" },
+      { key: "micuenta",    icon: "🔐", label: "Mi cuenta" },
+    ],
+    admin: [
+      { key: "tickets",     icon: "🎫", label: "Tickets" },
+      { key: "ordenes",     icon: "📋", label: "Órdenes" },
+      { key: "usuarios",    icon: "👥", label: "Usuarios" },
+      { key: "planes",      icon: "📦", label: "Planes" },
+      { key: "perfiles",    icon: "📅", label: "Perfiles pago" },
+      { key: "zonas",       icon: "🗺️", label: "Zonas" },
+      { key: "avisos",      icon: "📢", label: "Avisos" },
+      { key: "propaganda",  icon: "🎁", label: "Promociones" },
+      { key: "facturacion", icon: "🧾", label: "Facturación" },
+      { key: "caja",        icon: "💼", label: "Caja" },
       { key: "equipo",      icon: "👷", label: "Equipo de trabajo" },
       { key: "resumen",     icon: "📊", label: "Resumen" },
       { key: "micuenta",    icon: "🔐", label: "Mi cuenta" },
@@ -612,7 +643,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
   };
 
   const items = MENUS[sesion.rol] || [];
-  const ROL_BG = { admin: "#8b5cf6", secretario: "#0ea5e9", tecnico: "#f59e0b" };
+  const ROL_BG = { superusuario: "#dc2626", admin: "#8b5cf6", secretario: "#0ea5e9", tecnico: "#f59e0b" };
   const bg = ROL_BG[sesion.rol] || "#64748b";
 
   return (
@@ -632,7 +663,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{sesion.nombre}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)" }}>{sesion.rol === "admin" ? "Administrador" : sesion.rol === "secretario" ? "Secretario/a" : "Técnico"}</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)" }}>{sesion.rol === "superusuario" ? "👑 Superusuario" : sesion.rol === "admin" ? "Administrador" : sesion.rol === "secretario" ? "Secretario/a" : "Técnico"}</div>
               </div>
               <button onClick={() => setOpen(false)} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, width: 28, height: 28, cursor: "pointer", color: "#fff", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
             </div>
@@ -1234,12 +1265,25 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   const emptyAviso = { id: "", tipo: "Información", titulo: "", mensaje: "", fecha: new Date().toISOString().split("T")[0], afecta: "Internet", activo: true };
 
   const saveCliente = async (u) => {
-    const clienteConZona = { ...u, zonaId: usuario.zonaId, secretarioId: usuario.id };
+    if (!u.nombre?.trim()) { alert("El nombre es obligatorio."); return; }
+    if (!u.usuario?.trim()) { alert("El usuario (login) es obligatorio."); return; }
+    if (!u.clave?.trim()) { alert("La clave de acceso es obligatoria."); return; }
+    const clienteConZona = { ...u, zonaId: usuario.zonaId, secretarioId: usuario.id, rol: "cliente" };
     try {
       const guardado = await db.upsertUsuario(clienteConZona);
       setUsuarios(p => p.find(x => x.id === guardado.id) ? p.map(x => x.id === guardado.id ? guardado : x) : [...p, guardado]);
       setShowFormCliente(false); setEditCliente(null);
-    } catch (err) { console.error("Error guardando cliente:", err); }
+    } catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      if (msg.includes("usuarios_rol_check")) {
+        alert("⚠️ Error: El rol 'superusuario' no está permitido aún en la BD. Ejecuta el SQL del Paso 1 en Supabase para actualizar el constraint.");
+      } else if (msg.includes("duplicate") || msg.includes("unique")) {
+        alert("⚠️ Ya existe un usuario con ese nombre de usuario. Usa uno diferente.");
+      } else {
+        alert("Error guardando cliente: " + msg);
+      }
+      console.error("Error guardando cliente:", err);
+    }
   };
   const deleteCliente = async (id) => {
     try { await db.deleteUsuario(id); setUsuarios(p => p.filter(u => u.id !== id)); }
@@ -1276,7 +1320,12 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   const clientes = usuarios.filter(u => u.rol === "cliente" && u.zonaId === usuario.zonaId);
   const clientesFiltrados = clientes.filter(c => {
     const q = busqCliente.toLowerCase().trim();
-    const matchQ = !q || c.nombre?.toLowerCase().includes(q) || c.cedula?.toLowerCase().includes(q) || c.usuario?.toLowerCase().includes(q);
+    const matchQ = !q ||
+      c.nombre?.toLowerCase().includes(q) ||
+      c.cedula?.toLowerCase().includes(q) ||
+      c.usuario?.toLowerCase().includes(q) ||
+      c.telefono?.toLowerCase().includes(q) ||
+      c.direccion?.toLowerCase().includes(q);
     const matchTipo = filtroTipo === "todos" ? true : filtroTipo === "inactivo" ? !c.activo : c.tipo === filtroTipo;
     return matchQ && matchTipo;
   });
@@ -2243,11 +2292,14 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
   const [facturaManual, setFacturaManual] = useState({ clienteId: "", concepto: "", monto: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [] });
   const [modalEditFactura, setModalEditFactura] = useState(null);
   const [filtroAuditAnio, setFiltroAuditAnio] = useState(new Date().getFullYear());
+  const [filtroAuditMes, setFiltroAuditMes] = useState(0); // 0 = todos los meses
+  const [filtroAuditDia, setFiltroAuditDia] = useState(""); // fecha exacta YYYY-MM-DD
+  const [filtroAuditNombre, setFiltroAuditNombre] = useState("");
   const [exportando, setExportando] = useState(false);
   const [modalExport, setModalExport] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null); // { id, nombre } // null | "mes" | "anio"
 
-  const esAdmin = usuario.rol === "admin";
+  const esAdmin = usuario.rol === "admin" || usuario.rol === "superusuario";
   const zonaId = usuario.zonaId;
 
   // Clientes visibles según rol
@@ -2280,8 +2332,10 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
   });
 
   // Estadísticas del mes
+  const hoyStr = new Date().toISOString().split("T")[0];
   const totalMes = facturasFiltradas.reduce((s, f) => s + f.monto, 0);
   const totalRecaudado = facturasFiltradas.filter(f => f.estado === "Pagado").reduce((s, f) => s + f.monto, 0);
+  const totalDia = facturas.filter(f => f.fechaPago === hoyStr || f.fechaEmision === hoyStr).reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
   const totalPendiente = facturasFiltradas.filter(f => f.estado !== "Pagado").reduce((s, f) => s + f.saldoPendiente, 0);
   const morosos = facturasFiltradas.filter(f => f.estado === "Vencido").length;
 
@@ -2444,7 +2498,16 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
   };
 
   // ── Auditoría: historial de todas las facturas ──────
-  const facturasAudit = facturas.filter(f => f.anio === filtroAuditAnio).sort((a,b) => (b.fechaEmision||"").localeCompare(a.fechaEmision||""));
+  const facturasAudit = facturas.filter(f => {
+    if (f.anio !== filtroAuditAnio) return false;
+    if (filtroAuditMes > 0 && f.mes !== filtroAuditMes) return false;
+    if (filtroAuditDia && f.fechaEmision !== filtroAuditDia && f.fechaPago !== filtroAuditDia) return false;
+    if (filtroAuditNombre) {
+      const q = filtroAuditNombre.toLowerCase();
+      if (!f.clienteNombre?.toLowerCase().includes(q) && !f.clienteCedula?.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }).sort((a,b) => (b.fechaEmision||"").localeCompare(a.fechaEmision||""));
 
   return (
     <div>
@@ -2530,18 +2593,57 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
 
       {subTab === "auditoria" && (
         <div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
-            <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>🔍 Auditoría de facturas</span>
+          {/* Filtros */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>🔍 Auditoría</span>
             <Sel value={filtroAuditAnio} onChange={e => setFiltroAuditAnio(Number(e.target.value))} style={{ width: "auto", minWidth: 90 }}>
               {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
             </Sel>
+            <Sel value={filtroAuditMes} onChange={e => setFiltroAuditMes(Number(e.target.value))} style={{ width: "auto", minWidth: 120 }}>
+              <option value={0}>Todos los meses</option>
+              {MESES.map((m,i) => <option key={i} value={i+1}>{m}</option>)}
+            </Sel>
+            <Inp
+              type="date"
+              value={filtroAuditDia}
+              onChange={e => setFiltroAuditDia(e.target.value)}
+              style={{ width: "auto" }}
+              title="Filtrar por día exacto"
+            />
+            <Inp
+              placeholder="🔍 Nombre o cédula..."
+              value={filtroAuditNombre}
+              onChange={e => setFiltroAuditNombre(e.target.value)}
+              style={{ flex: 1, minWidth: 160 }}
+            />
+            {(filtroAuditMes > 0 || filtroAuditDia || filtroAuditNombre) && (
+              <button onClick={() => { setFiltroAuditMes(0); setFiltroAuditDia(""); setFiltroAuditNombre(""); }}
+                style={{ background: "#e2e8f0", border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 13, color: "#475569" }}>
+                ✕ Limpiar
+              </button>
+            )}
             <span style={{ fontSize: 12, color: "#64748b" }}>{facturasAudit.length} registros</span>
           </div>
+          {/* Totales de la auditoría filtrada */}
+          {facturasAudit.length > 0 && (
+            <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+              {[
+                ["Total facturado", formatCOP(facturasAudit.reduce((s,f)=>s+f.monto,0)), "#0ea5e9"],
+                ["Total cobrado", formatCOP(facturasAudit.reduce((s,f)=>s+(f.monto-f.saldoPendiente),0)), "#22c55e"],
+                ["Saldo pendiente", formatCOP(facturasAudit.reduce((s,f)=>s+f.saldoPendiente,0)), "#ef4444"],
+              ].map(([label,val,color]) => (
+                <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderRadius: 10, padding: "8px 14px" }}>
+                  <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</div>
+                  <div style={{ fontWeight: 800, color, fontSize: 14 }}>{val}</div>
+                </div>
+              ))}
+            </div>
+          )}
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
-                  {["#Recibo","Fecha","Cliente","Cédula","Mes","Total","Saldo","Estado","Creado por"].map(h => (
+                  {["#Recibo","Fecha","Cliente","Cédula","Mes","Total","Saldo","Estado","Creado por",""].map(h => (
                     <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: "#64748b", fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
@@ -2558,6 +2660,11 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                     <td style={{ padding: "8px 12px", color: f.saldoPendiente > 0 ? "#ef4444" : "#22c55e", fontWeight: 700 }}>{formatCOP(f.saldoPendiente)}</td>
                     <td style={{ padding: "8px 12px" }}><span style={{ background: COLOR_ESTADO[f.estado]+"22", color: COLOR_ESTADO[f.estado]||"#64748b", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 11 }}>{f.estado}</span></td>
                     <td style={{ padding: "8px 12px", color: "#94a3b8" }}>{usuarios.find(u=>u.id===f.creadoPor)?.nombre || "—"}</td>
+                    <td style={{ padding: "8px 6px" }}>
+                      <button onClick={() => setConfirmDelete({ id: f.id, nombre: f.clienteNombre })}
+                        style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", fontSize: 13 }}
+                        title="Eliminar factura">🗑️</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -2585,6 +2692,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px,1fr))", gap: 10, marginBottom: 18 }}>
         {[
           ["💰 Total mes", formatCOP(totalMes), "#0ea5e9"],
+          ["📅 Cobrado hoy", formatCOP(totalDia), "#8b5cf6"],
           ["✅ Recaudado", formatCOP(totalRecaudado), "#22c55e"],
           ["⏳ Pendiente", formatCOP(totalPendiente), "#f59e0b"],
           ["🔴 Morosos", morosos + " clientes", "#ef4444", "Clientes con facturas en estado Vencido"],
@@ -3646,6 +3754,283 @@ function TabPerfiles({ perfilesPago, setPerfilesPago, usuarios }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════
+// TAB TICKETS PARA ADMIN — ve todos los tickets de todas las zonas
+// ══════════════════════════════════════════════════════════════
+function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, sesion, zonas, planes, perfilesPago }) {
+  const [ticketAbierto, setTicketAbierto] = useState(null);
+  const [busqTicket, setBusqTicket] = useState("");
+  const [modalOrden, setModalOrden] = useState(null);
+  const [nuevaOrden, setNuevaOrden] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicoId: "", fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", nuevaDireccionTraslado: "" });
+
+  const pendientes = tickets.filter(t => t.estado === "Abierto").sort((a,b) => (b.prioridad === "alta" ? 1 : 0) - (a.prioridad === "alta" ? 1 : 0));
+  const enProceso = tickets.filter(t => t.estado === "En proceso");
+  const resueltos = tickets.filter(t => t.estado === "Resuelto").sort((a,b) => b.fechaCreacion - a.fechaCreacion);
+  const tecnicos = usuarios.filter(u => u.rol === "tecnico" && u.activo);
+
+  const enviarMsg = async (ticketId, texto, autor) => {
+    try {
+      const msg = await db.enviarMensaje(ticketId, autor, texto);
+      await db.actualizarEstadoTicket(ticketId, "En proceso");
+      setTickets(p => p.map(t => t.id === ticketId ? { ...t, mensajes: [...t.mensajes, msg], estado: "En proceso" } : t));
+    } catch(err) { console.error("Error enviando mensaje:", err); }
+  };
+
+  const cambiarEstadoTicket = async (ticketId, estado) => {
+    try { await db.actualizarEstadoTicket(ticketId, estado); setTickets(p => p.map(t => t.id === ticketId ? { ...t, estado } : t)); }
+    catch(err) { console.error("Error cambiando estado ticket:", err); }
+  };
+
+  const crearOrden = async () => {
+    if (!nuevaOrden.tecnicoId) return;
+    const cliente = usuarios.find(u => u.id === modalOrden.clienteId);
+    const ordenData = {
+      ticketId: modalOrden.id, clienteId: modalOrden.clienteId,
+      clienteNombre: modalOrden.clienteNombre, secretarioId: sesion.id,
+      tecnicoId: nuevaOrden.tecnicoId,
+      tipo: nuevaOrden.tipo === "Otro" ? (nuevaOrden.otro || "Otro") : nuevaOrden.tipo,
+      descripcion: nuevaOrden.descripcion,
+      direccion: cliente?.direccion || "Sin dirección",
+      telefonoCliente: cliente?.telefono || null,
+      fecha: nuevaOrden.fecha, hora: nuevaOrden.hora,
+      estado: "Pendiente", prioridad: modalOrden.prioridad,
+      notas: [], zonaId: cliente?.zonaId || null
+    };
+    try {
+      const orden = await db.crearOrden(ordenData);
+      setOrdenes(p => [...p, orden]);
+      await db.actualizarEstadoTicket(modalOrden.id, "En proceso");
+      await db.actualizarOrdenIdTicket(modalOrden.id, orden.id);
+      setTickets(p => p.map(t => t.id === modalOrden.id ? { ...t, estado: "En proceso", ordenId: orden.id } : t));
+      setModalOrden(null);
+      setNuevaOrden({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicoId: "", fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", nuevaDireccionTraslado: "" });
+    } catch(err) { console.error("Error creando orden:", err); }
+  };
+
+  if (ticketAbierto) {
+    const t = tickets.find(x => x.id === ticketAbierto);
+    if (!t) { setTicketAbierto(null); return null; }
+    return (
+      <div style={{ maxWidth: 700, margin: "0 auto" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+          <button onClick={() => setTicketAbierto(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0 }}>← Tickets</button>
+          <div style={{ flex: 1 }} />
+          <Sel style={{ width: "auto" }} value={t.estado} onChange={e => cambiarEstadoTicket(t.id, e.target.value)}>
+            <option>Abierto</option><option>En proceso</option><option>Resuelto</option>
+          </Sel>
+          {!t.ordenId && <Btn onClick={() => { setModalOrden(t); setTicketAbierto(null); }} style={{ fontSize: 13, padding: "7px 14px" }}>🔧 Crear orden</Btn>}
+        </div>
+        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, overflow: "hidden", height: 500 }}>
+          <ChatTicket ticket={t} onSend={enviarMsg} autorActual={sesion.id} nombreActual={sesion.nombre} usuarios={usuarios} />
+        </div>
+      </div>
+    );
+  }
+
+  const q = busqTicket.toLowerCase().trim();
+  const filtrar = lista => !q ? lista : lista.filter(t => {
+    const cliente = usuarios.find(u => u.id === t.clienteId);
+    return (t.id && t.id.toLowerCase().includes(q)) || (cliente?.cedula && cliente.cedula.toLowerCase().includes(q)) || (t.clienteNombre && t.clienteNombre.toLowerCase().includes(q));
+  });
+
+  const TicketCard = ({ t }) => {
+    const ult = t.mensajes[t.mensajes.length - 1];
+    const zona = zonas.find(z => z.id === usuarios.find(u => u.id === t.clienteId)?.zonaId);
+    return (
+      <div onClick={() => setTicketAbierto(t.id)} style={{ background: "#fff", border: "1px solid " + (t.prioridad === "alta" ? "#8b5cf644" : "#e2e8f0"), borderLeft: "4px solid " + (t.prioridad === "alta" ? "#8b5cf6" : TICKET_COLOR[t.estado]), borderRadius: 12, padding: "11px 14px", cursor: "pointer", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span>{ALL_OPCIONES.find(p => p.id === t.tipo)?.emoji || "🔧"}</span>
+          <span style={{ fontWeight: 700, color: "#0f172a", flex: 1, fontSize: 14 }}>{t.titulo}</span>
+          {zona && <span style={{ fontSize: 11, color: zona.color, fontWeight: 700, background: zona.color + "22", borderRadius: 6, padding: "1px 7px" }}>📍 {zona.nombre}</span>}
+          {t.prioridad === "alta" && <Badge text="🏢 PRIORIDAD" color="#8b5cf6" />}
+          <Badge text={t.estado} color={TICKET_COLOR[t.estado]} />
+        </div>
+        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{t.clienteNombre} · {formatTime(t.fechaCreacion)}</div>
+        <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>{ult?.texto?.slice(0,60)}{(ult?.texto?.length || 0) > 60 ? "..." : ""}</div>
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
+        <Inp placeholder="🔍 Buscar por cliente, cédula o N° ticket..." value={busqTicket} onChange={e => setBusqTicket(e.target.value)} style={{ flex: 1 }} />
+        {busqTicket && <button onClick={() => setBusqTicket("")} style={{ background: "#e2e8f0", color: "#64748b", border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
+      </div>
+      {[
+        { lista: filtrar(pendientes), titulo: "🔴 Abiertos", color: "#ef4444" },
+        { lista: filtrar(enProceso), titulo: "🔵 En proceso", color: "#0ea5e9" },
+        { lista: filtrar(resueltos), titulo: `✅ Resueltos (${resueltos.length})`, color: "#22c55e" },
+      ].map(({ lista, titulo, color }) => (
+        <div key={titulo} style={{ marginBottom: 20 }}>
+          <div style={{ color: "#64748b", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+            {titulo}
+            {lista.length > 0 && <span style={{ background: color + "22", color, borderRadius: 20, padding: "1px 8px", fontSize: 11, fontWeight: 800 }}>{lista.length}</span>}
+          </div>
+          {lista.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13, padding: "6px 0" }}>Sin tickets</div> : lista.map(t => <TicketCard key={t.id} t={t} />)}
+        </div>
+      ))}
+
+      {/* Modal crear orden */}
+      {modalOrden && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setModalOrden(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
+            <button onClick={() => setModalOrden(null)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+            <h3 style={{ color: "#0f172a", margin: "0 0 16px", fontSize: 16 }}>🔧 Crear orden de trabajo</h3>
+            <Field label="Tipo de orden">
+              <Sel value={nuevaOrden.tipo} onChange={e => setNuevaOrden({ ...nuevaOrden, tipo: e.target.value })}>
+                {TIPOS_ORDEN.map(t => <option key={t}>{t}</option>)}
+              </Sel>
+            </Field>
+            {nuevaOrden.tipo === "Otro" && <Field label="Especificar"><Inp value={nuevaOrden.otro} onChange={e => setNuevaOrden({ ...nuevaOrden, otro: e.target.value })} /></Field>}
+            <Field label="Descripción"><textarea value={nuevaOrden.descripcion} onChange={e => setNuevaOrden({ ...nuevaOrden, descripcion: e.target.value })} style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} /></Field>
+            <Field label="Asignar técnico">
+              <Sel value={nuevaOrden.tecnicoId} onChange={e => setNuevaOrden({ ...nuevaOrden, tecnicoId: e.target.value })}>
+                <option value="">— Seleccionar técnico —</option>
+                {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre} {zonas.find(z=>z.id===t.zonaId) ? `(${zonas.find(z=>z.id===t.zonaId).nombre})` : ""}</option>)}
+              </Sel>
+            </Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+              <Field label="Fecha"><Inp type="date" value={nuevaOrden.fecha} onChange={e => setNuevaOrden({ ...nuevaOrden, fecha: e.target.value })} /></Field>
+              <Field label="Hora"><Inp type="time" value={nuevaOrden.hora} onChange={e => setNuevaOrden({ ...nuevaOrden, hora: e.target.value })} /></Field>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <Btn onClick={crearOrden} disabled={!nuevaOrden.tecnicoId}>Crear orden</Btn>
+              <Btn variant="ghost" onClick={() => setModalOrden(null)}>Cancelar</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// TAB SUPERUSUARIO — gestión exclusiva del superusuario
+// ══════════════════════════════════════════════════════════════
+function TabSuperusuario({ usuarios, setUsuarios, sesion }) {
+  const [editU, setEditU] = useState(null);
+  const [confirm, setConfirm] = useState(null);
+  const [msg, setMsg] = useState(null);
+
+  // Solo admins y el superusuario mismo son visibles aquí
+  const admins = usuarios.filter(u => u.rol === "admin" || u.rol === "superusuario");
+
+  const toggleActivo = async (u) => {
+    if (u.rol === "superusuario") { setMsg({ ok: false, texto: "No puedes desactivar al superusuario." }); return; }
+    try {
+      await db.toggleUsuario(u.id, !u.activo);
+      setUsuarios(p => p.map(x => x.id === u.id ? { ...x, activo: !x.activo } : x));
+    } catch(e) { setMsg({ ok: false, texto: "Error: " + e.message }); }
+  };
+
+  const eliminarAdmin = async (id) => {
+    try {
+      await db.deleteUsuario(id);
+      setUsuarios(p => p.filter(u => u.id !== id));
+      setConfirm(null);
+    } catch(e) { setMsg({ ok: false, texto: "Error: " + e.message }); }
+  };
+
+  const guardarAdmin = async () => {
+    if (!editU.nombre.trim() || !editU.usuario.trim() || !editU.clave.trim()) {
+      setMsg({ ok: false, texto: "Nombre, usuario y clave son obligatorios." }); return;
+    }
+    try {
+      const guardado = await db.upsertUsuario(editU);
+      setUsuarios(p => p.find(x => x.id === guardado.id) ? p.map(x => x.id === guardado.id ? guardado : x) : [...p, guardado]);
+      setEditU(null);
+      setMsg({ ok: true, texto: "✅ Administrador guardado correctamente." });
+    } catch(e) { setMsg({ ok: false, texto: "Error: " + e.message }); }
+  };
+
+  return (
+    <div>
+      {/* Banner superusuario */}
+      <div style={{ background: "linear-gradient(135deg, #dc262622, #dc262608)", border: "1px solid #dc262633", borderLeft: "4px solid #dc2626", borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ fontSize: 28 }}>👑</span>
+        <div>
+          <div style={{ fontWeight: 800, color: "#dc2626", fontSize: 15 }}>Panel Superusuario</div>
+          <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
+            Desde aquí puedes gestionar los administradores del sistema. Solo existe un superusuario y no puede ser eliminado.
+          </div>
+        </div>
+      </div>
+
+      {msg && (
+        <div style={{ background: msg.ok ? "#f0fdf4" : "#fef2f2", border: "1px solid " + (msg.ok ? "#bbf7d0" : "#fecaca"), borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: msg.ok ? "#16a34a" : "#dc2626", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          {msg.texto}
+          <button onClick={() => setMsg(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 16 }}>×</button>
+        </div>
+      )}
+
+      {/* Botón nuevo admin */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+        <Btn onClick={() => setEditU({ id: "", usuario: "", clave: "", rol: "admin", nombre: "", activo: true, zonaId: "", telefono: "", privilegios: [] })}>
+          + Nuevo administrador
+        </Btn>
+      </div>
+
+      {/* Form crear/editar admin */}
+      {editU && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setEditU(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 440, position: "relative" }}>
+            <button onClick={() => setEditU(null)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+            <h3 style={{ margin: "0 0 16px", color: "#0f172a", fontSize: 16 }}>{editU.id ? "✏️ Editar administrador" : "➕ Nuevo administrador"}</h3>
+            <Field label="Nombre completo"><Inp value={editU.nombre} onChange={e => setEditU({ ...editU, nombre: e.target.value })} /></Field>
+            <Field label="Usuario (login)"><Inp value={editU.usuario} onChange={e => setEditU({ ...editU, usuario: e.target.value })} /></Field>
+            <Field label="Clave"><Inp type="text" value={editU.clave} onChange={e => setEditU({ ...editU, clave: e.target.value })} /></Field>
+            <Field label="Teléfono (opcional)"><Inp value={editU.telefono || ""} onChange={e => setEditU({ ...editU, telefono: e.target.value })} /></Field>
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <Btn onClick={guardarAdmin} style={{ flex: 1 }}>Guardar</Btn>
+              <Btn variant="ghost" onClick={() => setEditU(null)}>Cancelar</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lista admins */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {admins.map(u => (
+          <div key={u.id} style={{ background: "#fff", border: "1px solid " + (u.rol === "superusuario" ? "#dc262633" : "#e2e8f0"), borderLeft: "4px solid " + (u.rol === "superusuario" ? "#dc2626" : "#8b5cf6"), borderRadius: 12, padding: "14px 16px", opacity: u.activo ? 1 : 0.5, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 18 }}>{u.rol === "superusuario" ? "👑" : "🛡️"}</span>
+                <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{u.nombre}</span>
+                <Badge text={u.rol === "superusuario" ? "Superusuario" : "Administrador"} color={u.rol === "superusuario" ? "#dc2626" : "#8b5cf6"} />
+              </div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>@{u.usuario} {u.telefono ? "· 📞 " + u.telefono : ""}</div>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {u.rol !== "superusuario" && (
+                <>
+                  <button onClick={() => toggleActivo(u)} style={{ background: u.activo ? "#f0fdf4" : "#f1f5f9", color: u.activo ? "#16a34a" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                    {u.activo ? "Activo" : "Inactivo"}
+                  </button>
+                  <button onClick={() => setEditU({ ...u, privilegios: u.privilegios || [] })} style={{ background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                  <button onClick={() => setConfirm(u)} style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                </>
+              )}
+              {u.rol === "superusuario" && u.id === sesion.id && (
+                <button onClick={() => setEditU({ ...u })} style={{ background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️ Editar mi cuenta</button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {confirm && (
+        <ModalConfirm
+          titulo="¿Eliminar administrador?"
+          mensaje={`Se eliminará a "${confirm.nombre}" del sistema. Esta acción no se puede deshacer.`}
+          onCancel={() => setConfirm(null)}
+          onConfirm={() => eliminarAdmin(confirm.id)}
+        />
+      )}
+    </div>
+  );
+}
+
 function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion, tabExterno, setTabExterno }) {
   const [tabLocal, setTabLocal] = useState("usuarios"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const [editU, setEditU] = useState(null);
@@ -3769,6 +4154,11 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     catch (err) { console.error("Error toggling propaganda:", err); }
   };
 
+  // Solo el superusuario puede gestionar admins
+  const esSuperusuario = sesion.rol === "superusuario";
+  const esAdmin = u => u.rol === "admin" || u.rol === "superusuario";
+  const pendientes = tickets.filter(t => t.estado === "Abierto");
+
   const resumen = {
     clientes: usuarios.filter(u => u.rol === "cliente").length,
     tecnicos: usuarios.filter(u => u.rol === "tecnico").length,
@@ -3785,7 +4175,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   // Sincronizar tab con el SideNav
 
 
-  const LABEL_TAB = { usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación", caja:"💼 Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta" };
+  const LABEL_TAB = { tickets:"🎫 Tickets", ordenes:"📋 Órdenes", usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación", caja:"💼 Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta", superusuario:"👑 Superusuario" };
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px" }}>
@@ -3793,7 +4183,35 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       <div style={{ marginBottom: 20, paddingBottom: 12, borderBottom: "2px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 22 }}>{LABEL_TAB[tab]?.split(" ")[0]}</span>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#0f172a" }}>{LABEL_TAB[tab]?.slice(LABEL_TAB[tab]?.indexOf(" ")+1) || tab}</h2>
+        {tab === "tickets" && pendientes.length > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{pendientes.length} nuevos</span>}
+        {sesion.rol === "superusuario" && tab !== "superusuario" && (
+          <button onClick={() => setTab("superusuario")} style={{ marginLeft: "auto", background: "#dc262611", border: "1px solid #dc262633", borderRadius: 8, padding: "5px 12px", cursor: "pointer", fontSize: 12, color: "#dc2626", fontWeight: 700 }}>
+            👑 Panel Superusuario
+          </button>
+        )}
       </div>
+
+      {/* ── TAB TICKETS (admin ve todos) ── */}
+      {tab === "tickets" && (
+        <TabTicketsAdmin
+          tickets={tickets} setTickets={setTickets}
+          usuarios={usuarios} ordenes={ordenes} setOrdenes={setOrdenes}
+          sesion={sesion} zonas={zonas} planes={planes} perfilesPago={perfilesPago}
+        />
+      )}
+
+      {/* ── TAB ÓRDENES (admin ve todas) ── */}
+      {tab === "ordenes" && (
+        <TabOrdenes ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} zonas={zonas} sesion={sesion} />
+      )}
+
+      {/* ── TAB SUPERUSUARIO (solo visible para superusuario) ── */}
+      {tab === "superusuario" && sesion.rol === "superusuario" && (
+        <TabSuperusuario
+          usuarios={usuarios} setUsuarios={setUsuarios}
+          sesion={sesion}
+        />
+      )}
 
       {/* ── TAB RESUMEN ── */}
       {tab === "facturacion" && (
@@ -4203,16 +4621,16 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   </div>
                   {u.rol === "cliente" && u.monto && <div style={{ fontSize: 13, color: "#0ea5e9", fontWeight: 700 }}>{formatCOP(u.monto)}</div>}
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>
+                    {u.rol !== "superusuario" && <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>}
                     <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                    {u.rol !== "admin" && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
+                    {u.rol !== "superusuario" && (u.rol !== "admin" || sesion.rol === "superusuario") && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
             <div>
-              {["admin", "secretario", "tecnico", "cliente"].map(rol => {
+              {["superusuario", "admin", "secretario", "tecnico", "cliente"].map(rol => {
                 const lista = usuarios.filter(u => u.rol === rol);
                 if (lista.length === 0) return null;
                 return (
@@ -4246,9 +4664,9 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                         </div>
                         {u.rol === "cliente" && u.monto && <div style={{ fontSize: 13, color: "#0ea5e9", fontWeight: 700 }}>{formatCOP(u.monto)}</div>}
                         <div style={{ display: "flex", gap: 6 }}>
-                          <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>
+                          {u.rol !== "superusuario" && <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>}
                           <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                          {u.rol !== "admin" && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
+                          {u.rol !== "superusuario" && (u.rol !== "admin" || sesion.rol === "superusuario") && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                         </div>
                       </div>
                     ))}
@@ -4529,16 +4947,16 @@ export default function App() {
     }
   };
 
-  // ── Cierre automático por inactividad (3 minutos) ─────────
+  // ── Cierre automático por inactividad (solo para clientes — 30 min) ─────────
   const timerRef = useRef(null);
   const resetTimer = useCallback(() => {
-    if (!sesion) return;
+    if (!sesion || sesion.rol !== "cliente") return;
     clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => { cerrarSesion(); }, 180000);
+    timerRef.current = setTimeout(() => { cerrarSesion(); }, 1800000); // 30 minutos solo para clientes
   }, [sesion, cerrarSesion]);
 
   useEffect(() => {
-    if (!sesion) { clearTimeout(timerRef.current); return; }
+    if (!sesion || sesion.rol !== "cliente") { clearTimeout(timerRef.current); return; }
     const eventos = ["mousemove", "mousedown", "keydown", "touchstart", "scroll", "click"];
     eventos.forEach(e => window.addEventListener(e, resetTimer));
     resetTimer();
@@ -4680,7 +5098,7 @@ export default function App() {
       {sesion && sesion.rol === "tecnico" && (
         <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} tabExterno={tabActual} setTabExterno={setTabActual} />
       )}
-      {sesion && sesion.rol === "admin" && (
+      {sesion && (sesion.rol === "admin" || sesion.rol === "superusuario") && (
         <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} tabExterno={tabActual} setTabExterno={setTabActual} />
       )}
     </div>
