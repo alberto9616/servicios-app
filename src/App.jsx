@@ -199,6 +199,19 @@ const db = {
     const { data } = await sb.from("facturas").select("numero_recibo").not("numero_recibo", "is", null).order("numero_recibo", { ascending: false }).limit(1).single();
     return data ? (Number(data.numero_recibo) + 1) : 68849;
   },
+
+  // INGRESOS / EGRESOS (CAJA)
+  async getMovimientosCaja() {
+    const { data, error } = await sb.from("caja_movimientos").select("*").order("fecha", { ascending: false }).order("created_at", { ascending: false });
+    if (error) throw error;
+    return data.map(r => ({ id: r.id, tipo: r.tipo, concepto: r.concepto, monto: Number(r.monto), fecha: r.fecha, registradoPor: r.registrado_por, observacion: r.observacion || "", creadoEn: r.created_at }));
+  },
+  async crearMovimientoCaja(m) {
+    const { data, error } = await sb.from("caja_movimientos").insert({ tipo: m.tipo, concepto: m.concepto, monto: m.monto, fecha: m.fecha || new Date().toISOString().split("T")[0], registrado_por: m.registradoPor || null, observacion: m.observacion || "" }).select().single();
+    if (error) throw error;
+    return { id: data.id, tipo: data.tipo, concepto: data.concepto, monto: Number(data.monto), fecha: data.fecha, registradoPor: data.registrado_por, observacion: data.observacion || "", creadoEn: data.created_at };
+  },
+  async deleteMovimientoCaja(id) { const { error } = await sb.from("caja_movimientos").delete().eq("id", id); if (error) throw error; },
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -471,9 +484,10 @@ const Sel = ({ children, style: s = {}, ...props }) => (
   <select style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", ...s }} {...props}>{children}</select>
 );
 
-const Btn = ({ children, variant = "primary", style: s = {}, ...props }) => {
+const Btn = ({ children, variant = "primary", style: s = {}, disabled, ...props }) => {
   const bg = variant === "primary" ? "#0ea5e9" : variant === "danger" ? "#ef4444" : variant === "success" ? "#22c55e" : variant === "purple" ? "#8b5cf6" : "#e2e8f0";
-  return <button style={{ background: bg, color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", cursor: "pointer", fontWeight: 700, fontSize: 14, ...s }} {...props}>{children}</button>;
+  const color = variant === "ghost" ? "#475569" : "#fff";
+  return <button disabled={disabled} style={{ background: bg, color, border: "none", borderRadius: 8, padding: "9px 18px", cursor: disabled ? "not-allowed" : "pointer", fontWeight: 700, fontSize: 14, opacity: disabled ? 0.5 : 1, ...s }} {...props}>{children}</button>;
 };
 
 const Field = ({ label, children }) => (
@@ -574,6 +588,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "avisos",      icon: "📢", label: "Avisos" },
       { key: "propaganda",  icon: "🎁", label: "Promociones" },
       { key: "facturacion", icon: "🧾", label: "Facturación" },
+      { key: "caja",        icon: "💼", label: "Caja (Ingresos/Egresos)" },
       { key: "equipo",      icon: "👷", label: "Equipo de trabajo" },
       { key: "resumen",     icon: "📊", label: "Resumen" },
       { key: "micuenta",    icon: "🔐", label: "Mi cuenta" },
@@ -654,7 +669,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
   );
 }
 
-function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsuarios, zonas, propaganda }) {
+function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsuarios, zonas, propaganda, perfilesPago = [] }) {
   const [tab, setTab] = useState("info");
   // Navegación del chat: null = categorías, "solicitudes"/"reportes" = subcategorias, objeto = detalle
   const [categoriaChat, setCategoriaChat] = useState(null);
@@ -810,7 +825,10 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                   <p style={{ color: "#475569", fontSize: 14, margin: "0 0 8px", lineHeight: 1.6 }}>{p.descripcion}</p>
                   {p.fecha && <div style={{ fontSize: 11, color: "#64748b" }}>⏳ Válido hasta: {formatDate(p.fecha)}</div>}
                   <div style={{ marginTop: 12 }}>
-                    <Btn style={{ fontSize: 13, padding: "8px 16px", background: p.color }}>📞 Consultar ahora</Btn>
+                    <Btn style={{ fontSize: 13, padding: "8px 16px", background: p.color }} onClick={() => {
+                      setCategoriaChat("solicitudes");
+                      setTab("soporte");
+                    }}>📞 Consultar ahora</Btn>
                   </div>
                 </div>
               ))}
@@ -832,7 +850,13 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
               <div>
                 <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Próximo pago</div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: "#0f172a" }}>{formatCOP(usuario.monto)}</div>
-                <div style={{ fontSize: 14, color: "#475569", marginTop: 4 }}>Vence: {formatDate(usuario.fechaPago)}</div>
+                {usuario.fechaPago ? (
+                  <div style={{ fontSize: 14, color: "#475569", marginTop: 4 }}>Vence: {formatDate(usuario.fechaPago)}</div>
+                ) : usuario.perfilPagoId ? (() => {
+                  const pf = perfilesPago.find(x => x.id === usuario.perfilPagoId);
+                  return pf ? <div style={{ fontSize: 13, color: "#0ea5e9", marginTop: 4 }}>📅 Paga entre el día {pf.diaInicio} y {pf.diaFin} de cada mes</div>
+                           : <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>📅 Pago mensual</div>;
+                })() : <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>📅 Consulta en oficina</div>}
               </div>
               <Badge text={usuario.estado} color={ESTADO_COLOR[usuario.estado]} />
             </div>
@@ -1371,7 +1395,14 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
         </div>
       )}
 
-      {tab === "ordenes" && <TabOrdenes ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} zonas={zonas} sesion={usuario} />}
+      {tab === "ordenes" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+            <Btn onClick={() => setShowModalOrdenManual(true)} style={{ fontSize: 13 }}>➕ Generar orden</Btn>
+          </div>
+          <TabOrdenes ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} zonas={zonas} sesion={usuario} />
+        </div>
+      )}
 
       {tab === "clientes" && (
         <div>
@@ -1388,8 +1419,13 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
           </div>
           <div style={{ color: "#64748b", fontSize: 12, marginBottom: 10 }}>{clientesFiltrados.length} de {clientes.length} clientes</div>
           {showFormCliente && editCliente && (
-            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editCliente.id ? "Editar cliente" : "Nuevo cliente"} — Zona: {zonaSecretario?.nombre}</h3>
+            <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && (setShowFormCliente(false), setEditCliente(null))}>
+            <div style={{ background: "#ffffff", borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{editCliente.id ? "✏️ Editar cliente" : "➕ Nuevo cliente"} — Zona: {zonaSecretario?.nombre}</h3>
+              <button onClick={() => { setShowFormCliente(false); setEditCliente(null); }} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: 20, color: "#64748b" }}>×</button>
+            </div>
+            <div style={{ padding: 20 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                 <Field label="Nombre completo"><Inp value={editCliente.nombre} onChange={e => setEditCliente({ ...editCliente, nombre: e.target.value })} /></Field>
                 <Field label="Tipo de cliente">
@@ -1427,7 +1463,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   </Sel>
                   {editCliente.perfilPagoId && (() => {
                     const pf = perfilesPago.find(x => x.id === editCliente.perfilPagoId);
-                    return pf ? <div style={{ fontSize: 11, color: "#0ea5e9", marginTop: 4 }}>📅 Vence entre el día {pf.diaInicio} y {pf.diaFin} de cada mes</div> : null;
+                    return pf ? <div style={{ fontSize: 11, color: "#0ea5e9", marginTop: 4 }}>📅 Paga entre el día {pf.diaInicio} y {pf.diaFin} de cada mes</div> : null;
                   })()}
                 </Field>
                 <Field label="Estado de cuenta">
@@ -1441,6 +1477,8 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 <Btn onClick={() => saveCliente(editCliente)}>Guardar</Btn>
                 <Btn variant="ghost" onClick={() => { setShowFormCliente(false); setEditCliente(null); }}>Cancelar</Btn>
               </div>
+            </div>
+            </div>
             </div>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1719,6 +1757,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       )}
       {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} zonaId={usuario.zonaId} />}
       {tab === "equipos_morosos" && <SeccionEquiposMorosos usuarios={usuarios} ordenes={ordenes} setOrdenes={setOrdenes} tecnicos={tecnicos} secretarioId={usuario.id} zonaId={usuario.zonaId} />}
+      {confirmElimSecretario && <ModalConfirm titulo={confirmElimSecretario.titulo} mensaje={confirmElimSecretario.mensaje} onCancel={() => setConfirmElimSecretario(null)} onConfirm={() => { confirmElimSecretario.accion(); setConfirmElimSecretario(null); }} />}
     </div>
   );
 }
@@ -1757,7 +1796,15 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <span style={{ background: colorEstado[o.estado] + "22", color: colorEstado[o.estado], borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{o.estado}</span>
-            <Sel value={o.estado} onChange={async e => { try { await db.actualizarEstadoOrden(o.id, e.target.value); setOrdenes(prev => prev.map(x => x.id === o.id ? { ...x, estado: e.target.value } : x)); } catch(err){alert(err.message);} }} style={{ fontSize: 12, padding: "4px 8px", width: "auto" }}>
+            <Sel value={o.estado} onChange={async e => {
+              const nuevoEstado = e.target.value;
+              try {
+                await db.actualizarEstadoOrden(o.id, nuevoEstado);
+                setOrdenes(prev => prev.map(x => x.id === o.id ? { ...x, estado: nuevoEstado } : x));
+              } catch(err) {
+                alert("Error al cambiar estado: " + (err.message || "Verifica tu conexión"));
+              }
+            }} style={{ fontSize: 12, padding: "4px 8px", width: "auto" }}>
               {["Pendiente","En progreso","Completada","Cancelada"].map(s => <option key={s} value={s}>{s}</option>)}
             </Sel>
           </div>
@@ -1927,7 +1974,6 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
       {tab === "todas" && (ordenesActivas.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>Sin órdenes activas</div> : ordenesActivas.map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "historial" && (completadas.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>Sin órdenes completadas aún</div> : [...completadas].reverse().map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} rolFiltro={["admin","secretario","tecnico"]} zonaId={usuario.zonaId} />}
-      {confirmElimSecretario && <ModalConfirm titulo={confirmElimSecretario.titulo} mensaje={confirmElimSecretario.mensaje} onCancel={() => setConfirmElimSecretario(null)} onConfirm={() => { confirmElimSecretario.accion(); setConfirmElimSecretario(null); }} />}
     </div>
   );
 }
@@ -2026,7 +2072,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
                   ))}
                   <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #e2e8f0", paddingTop: 6, marginTop: 4, fontWeight: 700 }}>
                     <span>SUBTOTAL</span>
-                    <strong>{formatCOP(factura.monto)}</strong>
+                    <strong>{formatCOP(factura.items.reduce((s,i) => s + (Number(i.monto)||0), 0))}</strong>
                   </div>
                 </>
               ) : (
@@ -2425,11 +2471,12 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
           ["💰 Total mes", formatCOP(totalMes), "#0ea5e9"],
           ["✅ Recaudado", formatCOP(totalRecaudado), "#22c55e"],
           ["⏳ Pendiente", formatCOP(totalPendiente), "#f59e0b"],
-          ["🔴 Morosos", morosos + " clientes", "#ef4444"],
-        ].map(([label, val, color]) => (
-          <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px" }}>
+          ["🔴 Morosos", morosos + " clientes", "#ef4444", "Clientes con facturas en estado Vencido"],
+        ].map(([label, val, color, tooltip]) => (
+          <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px" }} title={tooltip || ""}>
             <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>{label}</div>
             <div style={{ fontWeight: 800, color, fontSize: 15 }}>{val}</div>
+            {tooltip && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{tooltip}</div>}
           </div>
         ))}
       </div>
@@ -2702,10 +2749,41 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
             <div style={{ marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <label style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>Servicios / Líneas de cobro</label>
-                <button onClick={() => setFacturaManual({ ...facturaManual, items: [...facturaManual.items, { concepto: "", monto: 0 }] })}
-                  style={{ background: "#eff6ff", color: "#0ea5e9", border: "1px solid #bfdbfe", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                  + Agregar línea
-                </button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {facturaManual.clienteId && (() => {
+                    const c = clientesVisibles.find(x => x.id === facturaManual.clienteId);
+                    if (!c || !c.monto) return null;
+                    return (
+                      <button onClick={() => {
+                        const mes = facturaManual.mes;
+                        const anio = facturaManual.anio;
+                        const servicios = (c.servicio || "Internet").split("+").map(s => s.trim()).filter(Boolean);
+                        const montoPorSrv = servicios.length > 1 ? Math.round(c.monto / servicios.length) : c.monto;
+                        let nextMes = mes; let nextAnio = anio;
+                        const currentConceptos = new Set(facturaManual.items.map(i => i.concepto));
+                        const newItems = [...facturaManual.items];
+                        // Find next month not already added
+                        for (let i = 0; i < 12; i++) {
+                          nextMes++; if (nextMes > 12) { nextMes = 1; nextAnio++; }
+                          const mn = MESES[nextMes - 1];
+                          servicios.forEach(srv => {
+                            const concepto = `${srv} ${mn} ${nextAnio}`;
+                            if (!currentConceptos.has(concepto)) { newItems.push({ concepto, monto: montoPorSrv }); currentConceptos.add(concepto); }
+                          });
+                          break;
+                        }
+                        const total = newItems.reduce((s, i) => s + (Number(i.monto) || 0), 0);
+                        setFacturaManual({ ...facturaManual, items: newItems, monto: total });
+                      }} style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                        📅 + Mes extra
+                      </button>
+                    );
+                  })()}
+                  <button onClick={() => setFacturaManual({ ...facturaManual, items: [...facturaManual.items, { concepto: "", monto: 0 }] })}
+                    style={{ background: "#eff6ff", color: "#0ea5e9", border: "1px solid #bfdbfe", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                    + Agregar línea
+                  </button>
+                </div>
               </div>
               {facturaManual.items.length === 0 && (
                 <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#94a3b8", textAlign: "center" }}>
@@ -2758,7 +2836,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
               <Inp value={facturaManual.notas} onChange={e => setFacturaManual({ ...facturaManual, notas: e.target.value })} placeholder="Ej: Mes de prueba" />
             </Field>
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <Btn onClick={crearFacturaManual} style={{ flex: 1 }} disabled={facturaManual.items.length === 0 || !facturaManual.clienteId} style={{ flex: 1, opacity: (facturaManual.items.length === 0 || !facturaManual.clienteId) ? 0.5 : 1 }}>Crear factura</Btn>
+              <Btn onClick={crearFacturaManual} disabled={facturaManual.items.length === 0 || !facturaManual.clienteId} style={{ flex: 1, opacity: (facturaManual.items.length === 0 || !facturaManual.clienteId) ? 0.5 : 1 }}>Crear factura</Btn>
               <Btn variant="ghost" onClick={() => setShowFormManual(false)}>Cancelar</Btn>
             </div>
           </div>
@@ -2784,50 +2862,6 @@ function FacturacionCliente({ usuario }) {
   const [facturas, setFacturas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444" };
-
-  // ── Exportar a Excel (CSV descargable) ──────────────
-  const exportarExcel = async (porMes) => {
-    setExportando(true);
-    try {
-      const lista = porMes
-        ? facturas.filter(f => f.mes === filtroMes && f.anio === filtroAnio)
-        : facturas.filter(f => f.anio === filtroAnio);
-      const cabecera = ["Recibo","Fecha","Cliente","Cédula","Dirección","Zona","Concepto","Mes","Año","Total","Saldo pendiente","Estado","Método pago","Notas"];
-      const zonaMap = Object.fromEntries(zonas.map(z => [z.id, z.nombre]));
-      const filas = lista.map(f => [
-        f.numeroRecibo || f.id?.slice(-6) || "",
-        f.fechaEmision || "",
-        f.clienteNombre || "",
-        f.clienteCedula || "",
-        f.clienteDireccion || "",
-        zonaMap[f.zonaId] || "",
-        f.concepto || "",
-        MESES[(f.mes||1)-1] || "",
-        f.anio || "",
-        f.monto || 0,
-        f.saldoPendiente || 0,
-        f.estado || "",
-        f.metodoPago || "",
-        f.notas || "",
-      ]);
-      const csvContent = [cabecera, ...filas]
-        .map(row => row.map(c => `"${String(c).replace(/"/g,'""')}"`).join(","))
-        .join("\n");
-      const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = porMes
-        ? `facturas_${MESES[filtroMes-1]}_${filtroAnio}.csv`
-        : `facturas_${filtroAnio}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch(e) { alert("Error al exportar: " + e.message); }
-    setExportando(false);
-  };
-
-  // ── Auditoría: historial de todas las facturas ──────
-  const facturasAudit = facturas.filter(f => f.anio === filtroAuditAnio).sort((a,b) => (b.fechaEmision||"").localeCompare(a.fechaEmision||""));
 
   useEffect(() => {
     db.getFacturasByCliente(usuario.id).then(setFacturas).catch(console.error).finally(() => setCargando(false));
@@ -3123,6 +3157,158 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
   );
 }
 
+// ══════════════════════════════════════════════════════════════
+// MÓDULO CAJA — Ingresos y Egresos
+// ══════════════════════════════════════════════════════════════
+function ModuloCaja({ usuario }) {
+  const [movimientos, setMovimientos] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [nuevoMov, setNuevoMov] = useState({ tipo: "Ingreso", concepto: "", monto: "", fecha: new Date().toISOString().split("T")[0], observacion: "" });
+  const [errMsg, setErrMsg] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState("todos");
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  useEffect(() => {
+    db.getMovimientosCaja().then(setMovimientos).catch(e => console.error("Error cargando caja:", e)).finally(() => setCargando(false));
+  }, []);
+
+  const totalIngresos = movimientos.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
+  const totalEgresos = movimientos.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
+  const saldo = totalIngresos - totalEgresos;
+
+  const guardar = async () => {
+    setErrMsg("");
+    if (!nuevoMov.concepto.trim()) { setErrMsg("Ingresa un concepto."); return; }
+    const monto = Number(nuevoMov.monto);
+    if (!monto || monto <= 0) { setErrMsg("Ingresa un monto válido."); return; }
+    try {
+      const guardado = await db.crearMovimientoCaja({ ...nuevoMov, monto, registradoPor: usuario.id });
+      setMovimientos(prev => [guardado, ...prev]);
+      setNuevoMov({ tipo: "Ingreso", concepto: "", monto: "", fecha: new Date().toISOString().split("T")[0], observacion: "" });
+      setShowForm(false);
+    } catch(e) { setErrMsg("Error: " + e.message); }
+  };
+
+  const eliminar = async (id) => {
+    try { await db.deleteMovimientoCaja(id); setMovimientos(prev => prev.filter(m => m.id !== id)); setConfirmDel(null); }
+    catch(e) { alert("Error: " + e.message); }
+  };
+
+  const filtrados = filtroTipo === "todos" ? movimientos : movimientos.filter(m => m.tipo === filtroTipo);
+
+  return (
+    <div>
+      {/* Resumen */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px,1fr))", gap: 10, marginBottom: 18 }}>
+        {[
+          ["💚 Ingresos", formatCOP(totalIngresos), "#22c55e"],
+          ["🔴 Egresos", formatCOP(totalEgresos), "#ef4444"],
+          ["💼 Saldo", formatCOP(saldo), saldo >= 0 ? "#0ea5e9" : "#ef4444"],
+        ].map(([label, val, color]) => (
+          <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>{label}</div>
+            <div style={{ fontWeight: 800, color, fontSize: 15 }}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Barra de acciones */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <Sel value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} style={{ width: "auto", minWidth: 130 }}>
+          <option value="todos">Todos</option>
+          <option value="Ingreso">Solo ingresos</option>
+          <option value="Egreso">Solo egresos</option>
+        </Sel>
+        <div style={{ flex: 1 }} />
+        <button onClick={() => { setNuevoMov({ tipo: "Ingreso", concepto: "", monto: "", fecha: new Date().toISOString().split("T")[0], observacion: "" }); setShowForm(true); setErrMsg(""); }}
+          style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+          💚 + Ingreso
+        </button>
+        <button onClick={() => { setNuevoMov({ tipo: "Egreso", concepto: "", monto: "", fecha: new Date().toISOString().split("T")[0], observacion: "" }); setShowForm(true); setErrMsg(""); }}
+          style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+          🔴 + Egreso
+        </button>
+      </div>
+
+      {/* Modal nuevo movimiento */}
+      {showForm && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowForm(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 420, position: "relative" }}>
+            <button onClick={() => setShowForm(false)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+            <h3 style={{ margin: "0 0 16px", color: nuevoMov.tipo === "Ingreso" ? "#16a34a" : "#dc2626", fontSize: 16 }}>
+              {nuevoMov.tipo === "Ingreso" ? "💚 Registrar Ingreso" : "🔴 Registrar Egreso"}
+            </h3>
+            <Field label="Tipo">
+              <Sel value={nuevoMov.tipo} onChange={e => setNuevoMov({ ...nuevoMov, tipo: e.target.value })}>
+                <option value="Ingreso">💚 Ingreso</option>
+                <option value="Egreso">🔴 Egreso</option>
+              </Sel>
+            </Field>
+            <Field label="Concepto / Descripción">
+              <Inp value={nuevoMov.concepto} onChange={e => setNuevoMov({ ...nuevoMov, concepto: e.target.value })} placeholder="Ej: Pago cliente zona norte, Compra cable..." />
+            </Field>
+            <Field label="Monto (COP)">
+              <Inp type="number" value={nuevoMov.monto} onChange={e => setNuevoMov({ ...nuevoMov, monto: e.target.value })} placeholder="Ej: 150000" />
+            </Field>
+            <Field label="Fecha">
+              <Inp type="date" value={nuevoMov.fecha} onChange={e => setNuevoMov({ ...nuevoMov, fecha: e.target.value })} />
+            </Field>
+            <Field label="Observación (opcional)">
+              <Inp value={nuevoMov.observacion} onChange={e => setNuevoMov({ ...nuevoMov, observacion: e.target.value })} placeholder="Detalle adicional..." />
+            </Field>
+            {errMsg && <div style={{ color: "#ef4444", fontSize: 13, marginBottom: 10 }}>⚠️ {errMsg}</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn onClick={guardar} variant={nuevoMov.tipo === "Ingreso" ? "success" : "danger"} style={{ flex: 1 }}>✅ Guardar</Btn>
+              <Btn variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lista movimientos */}
+      {cargando ? (
+        <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>Cargando...</div>
+      ) : filtrados.length === 0 ? (
+        <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>💼</div>
+          <div>No hay movimientos registrados.</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {filtrados.map(m => (
+            <div key={m.id} style={{ background: "#fff", border: "1px solid " + (m.tipo === "Ingreso" ? "#bbf7d0" : "#fecaca"), borderLeft: "4px solid " + (m.tipo === "Ingreso" ? "#22c55e" : "#ef4444"), borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 160 }}>
+                <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{m.concepto}</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>📅 {m.fecha} {m.observacion ? "· " + m.observacion : ""}</div>
+              </div>
+              <div style={{ fontWeight: 800, fontSize: 16, color: m.tipo === "Ingreso" ? "#16a34a" : "#dc2626" }}>
+                {m.tipo === "Ingreso" ? "+" : "-"}{formatCOP(m.monto)}
+              </div>
+              <span style={{ background: m.tipo === "Ingreso" ? "#f0fdf4" : "#fef2f2", color: m.tipo === "Ingreso" ? "#16a34a" : "#dc2626", border: "1px solid " + (m.tipo === "Ingreso" ? "#bbf7d0" : "#fecaca"), borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{m.tipo}</span>
+              <button onClick={() => setConfirmDel(m)} style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {confirmDel && (
+        <ModalConfirm
+          titulo="¿Eliminar movimiento?"
+          mensaje={`Se eliminará "${confirmDel.concepto}" (${formatCOP(confirmDel.monto)}). Esta acción no se puede deshacer.`}
+          onCancel={() => setConfirmDel(null)}
+          onConfirm={() => eliminar(confirmDel.id)}
+        />
+      )}
+
+      {/* Nota sobre la tabla en Supabase */}
+      <div style={{ marginTop: 24, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#64748b" }}>
+        💡 <strong>Nota:</strong> Para que los ingresos/egresos funcionen, crea la tabla <code>caja_movimientos</code> en Supabase con las columnas: <code>id</code> (uuid), <code>tipo</code> (text), <code>concepto</code> (text), <code>monto</code> (numeric), <code>fecha</code> (date), <code>registrado_por</code> (uuid), <code>observacion</code> (text), <code>created_at</code> (timestamptz).
+      </div>
+    </div>
+  );
+}
+
 function TabPerfiles({ perfilesPago, setPerfilesPago, usuarios }) {
   const [editPerfil, setEditPerfil] = useState(null);
   const [showFormPerfil, setShowFormPerfil] = useState(false);
@@ -3338,7 +3524,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   // Sincronizar tab con el SideNav
 
 
-  const LABEL_TAB = { usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta" };
+  const LABEL_TAB = { usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación", caja:"💼 Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta" };
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px" }}>
@@ -3351,6 +3537,10 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {/* ── TAB RESUMEN ── */}
       {tab === "facturacion" && (
         <ModuloFacturacion usuario={sesion} usuarios={usuarios} zonas={zonas} planes={planes} perfilesPago={perfilesPago} />
+      )}
+
+      {tab === "caja" && (
+        <ModuloCaja usuario={sesion} />
       )}
 
       {tab === "resumen" && (
@@ -4221,7 +4411,7 @@ export default function App() {
 
       {/* PORTALES */}
       {sesion && sesion.rol === "cliente" && (
-        <PortalCliente usuario={sesion} tickets={tickets} setTickets={setTickets} avisos={avisos} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} propaganda={propaganda} />
+        <PortalCliente usuario={sesion} tickets={tickets} setTickets={setTickets} avisos={avisos} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} propaganda={propaganda} perfilesPago={perfilesPago} />
       )}
       {sesion && sesion.rol === "secretario" && (
         <PortalSecretario usuario={sesion} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} planes={planes} perfilesPago={perfilesPago} zonas={zonas} propaganda={propaganda} tabExterno={tabActual} setTabExterno={setTabActual} />
