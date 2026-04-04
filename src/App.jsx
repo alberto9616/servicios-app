@@ -315,7 +315,7 @@ const PROBLEMAS = [
   { id: "pago", emoji: "💳", label: "Consulta de pago", afecta: null, categoria: "reportes" },
 ];
 
-const ALL_OPCIONES = [...SOLICITUDES, ...PROBLEMAS];
+const ALL_OPCIONES = [...SOLICITUDES, ...PROBLEMAS, { id: "consulta_promo", emoji: "🎁", label: "Consulta de promoción", categoria: "solicitudes" }];
 
 const PASOS = {
   sin_internet: ["Apaga el router y espera 30 segundos antes de volver a encenderlo.", "Verifica que todos los cables estén bien conectados al router.", "Si persiste puede haber una falla en tu zona.", "Si no se restablece en 10 minutos, reporta la falla abajo."],
@@ -669,6 +669,125 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
   );
 }
 
+// ══════════════════════════════════════════════════════════════
+// PROMO CARD — Tarjeta de promoción con chat de consulta
+// ══════════════════════════════════════════════════════════════
+function PromoCard({ promo: p, usuario, tickets, setTickets }) {
+  const [showModal, setShowModal] = useState(false);
+  const [mensaje, setMensaje] = useState("");
+  const [enviado, setEnviado] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+
+  // Ver si ya existe un ticket de consulta para esta promo
+  const ticketExistente = tickets.find(t =>
+    t.clienteId === usuario.id &&
+    t.tipo === "consulta_promo" &&
+    t.titulo.includes(p.titulo) &&
+    t.estado !== "Resuelto"
+  );
+
+  const enviarConsulta = async () => {
+    if (!mensaje.trim()) return;
+    setEnviando(true);
+    try {
+      const nuevo = {
+        clienteId: usuario.id,
+        clienteNombre: usuario.nombre,
+        tipo: "consulta_promo",
+        titulo: `Consulta: ${p.titulo}`,
+        categoria: "solicitudes",
+        estado: "Abierto",
+        prioridad: "normal",
+        mensajes: [{
+          autor: "cliente",
+          texto: mensaje.trim(),
+          ts: Date.now()
+        }]
+      };
+      const guardado = await db.crearTicket(nuevo);
+      setTickets(prev => [...prev, guardado]);
+      setEnviado(true);
+      setMensaje("");
+    } catch(err) {
+      alert("Error al enviar consulta: " + err.message);
+    }
+    setEnviando(false);
+  };
+
+  return (
+    <>
+      <div style={{ background: "#ffffff", border: "1px solid " + p.color + "44", borderLeft: "4px solid " + p.color, borderRadius: 14, padding: 18, position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: 10, right: 14, fontSize: 40, opacity: 0.12 }}>{p.imagen}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <span style={{ fontSize: 28 }}>{p.imagen}</span>
+          <div>
+            <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>{p.titulo}</div>
+            <Badge text={p.categoria === "promocion" ? "🏷️ Promoción" : p.categoria === "equipos" ? "🖥️ Equipos" : "📷 Cámaras"} color={p.color} />
+          </div>
+        </div>
+        <p style={{ color: "#475569", fontSize: 14, margin: "0 0 8px", lineHeight: 1.6 }}>{p.descripcion}</p>
+        {p.fecha && <div style={{ fontSize: 11, color: "#64748b" }}>⏳ Válido hasta: {formatDate(p.fecha)}</div>}
+        <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
+          <Btn style={{ fontSize: 13, padding: "8px 16px", background: p.color }} onClick={() => { setShowModal(true); setEnviado(false); }}>
+            💬 Consultar ahora
+          </Btn>
+          {ticketExistente && (
+            <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 700 }}>✅ Consulta enviada · pendiente respuesta</span>
+          )}
+        </div>
+      </div>
+
+      {/* Modal de consulta */}
+      {showModal && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 420, position: "relative" }}>
+            <button onClick={() => setShowModal(false)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+              <span style={{ fontSize: 24 }}>{p.imagen}</span>
+              <div>
+                <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>{p.titulo}</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>Envía tu consulta al equipo</div>
+              </div>
+            </div>
+
+            {enviado ? (
+              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: 20, textAlign: "center" }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+                <div style={{ fontWeight: 700, color: "#16a34a", fontSize: 15 }}>¡Consulta enviada!</div>
+                <div style={{ color: "#475569", fontSize: 13, marginTop: 6, lineHeight: 1.5 }}>
+                  Un secretario te responderá pronto. Puedes ver la respuesta en la sección <strong>Soporte → Mis solicitudes</strong>.
+                </div>
+                <Btn onClick={() => setShowModal(false)} style={{ marginTop: 14, fontSize: 13 }}>Cerrar</Btn>
+              </div>
+            ) : (
+              <>
+                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "#475569" }}>
+                  {p.descripcion}
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Tu mensaje / pregunta</label>
+                  <textarea
+                    value={mensaje}
+                    onChange={e => setMensaje(e.target.value)}
+                    placeholder={`Ej: Estoy interesado en ${p.titulo}, ¿cuál es el precio y disponibilidad?`}
+                    style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "10px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 90, resize: "vertical" }}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn onClick={enviarConsulta} disabled={!mensaje.trim() || enviando} style={{ flex: 1 }}>
+                    {enviando ? "Enviando..." : "📨 Enviar consulta"}
+                  </Btn>
+                  <Btn variant="ghost" onClick={() => setShowModal(false)}>Cancelar</Btn>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsuarios, zonas, propaganda, perfilesPago = [] }) {
   const [tab, setTab] = useState("info");
   // Navegación del chat: null = categorías, "solicitudes"/"reportes" = subcategorias, objeto = detalle
@@ -813,24 +932,7 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {propaganda.filter(p => p.activo).map(p => (
-                <div key={p.id} style={{ background: "#ffffff", border: "1px solid " + p.color + "44", borderLeft: "4px solid " + p.color, borderRadius: 14, padding: 18, position: "relative", overflow: "hidden" }}>
-                  <div style={{ position: "absolute", top: 10, right: 14, fontSize: 40, opacity: 0.12 }}>{p.imagen}</div>
-                  <div style={{ display: "flex", align: "center", gap: 10, marginBottom: 8 }}>
-                    <span style={{ fontSize: 28 }}>{p.imagen}</span>
-                    <div>
-                      <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>{p.titulo}</div>
-                      <Badge text={p.categoria === "promocion" ? "🏷️ Promoción" : p.categoria === "equipos" ? "🖥️ Equipos" : "📷 Cámaras"} color={p.color} />
-                    </div>
-                  </div>
-                  <p style={{ color: "#475569", fontSize: 14, margin: "0 0 8px", lineHeight: 1.6 }}>{p.descripcion}</p>
-                  {p.fecha && <div style={{ fontSize: 11, color: "#64748b" }}>⏳ Válido hasta: {formatDate(p.fecha)}</div>}
-                  <div style={{ marginTop: 12 }}>
-                    <Btn style={{ fontSize: 13, padding: "8px 16px", background: p.color }} onClick={() => {
-                      setCategoriaChat("solicitudes");
-                      setTab("soporte");
-                    }}>📞 Consultar ahora</Btn>
-                  </div>
-                </div>
+                <PromoCard key={p.id} promo={p} usuario={usuario} tickets={tickets} setTickets={setTickets} />
               ))}
             </div>
           )}
@@ -1784,7 +1886,7 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
   const OrdenCardSec = ({ o }) => {
     const tecnico = usuarios.find(u => u.id === o.tecnicoId);
     const zona = zonas.find(z => z.id === o.zonaId);
-    const colorEstado = { Pendiente: "#f59e0b", "En progreso": "#0ea5e9", Completada: "#22c55e", Cancelada: "#ef4444" };
+    const colorEstado = { Pendiente: "#f59e0b", "En camino": "#0ea5e9", Completada: "#22c55e", Cancelada: "#ef4444" };
     return (
       <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderLeft: `4px solid ${colorEstado[o.estado] || "#94a3b8"}`, borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
@@ -1805,7 +1907,7 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
                 alert("Error al cambiar estado: " + (err.message || "Verifica tu conexión"));
               }
             }} style={{ fontSize: 12, padding: "4px 8px", width: "auto" }}>
-              {["Pendiente","En progreso","Completada","Cancelada"].map(s => <option key={s} value={s}>{s}</option>)}
+              {["Pendiente","En camino","Completada","Cancelada"].map(s => <option key={s} value={s}>{s}</option>)}
             </Sel>
           </div>
         </div>
@@ -2753,30 +2855,40 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                   {facturaManual.clienteId && (() => {
                     const c = clientesVisibles.find(x => x.id === facturaManual.clienteId);
                     if (!c || !c.monto) return null;
-                    return (
+                    const mesesAgregados = facturaManual.items.length;
+                    const maxMeses = 6;
+                    return mesesAgregados < maxMeses ? (
                       <button onClick={() => {
-                        const mes = facturaManual.mes;
-                        const anio = facturaManual.anio;
                         const servicios = (c.servicio || "Internet").split("+").map(s => s.trim()).filter(Boolean);
                         const montoPorSrv = servicios.length > 1 ? Math.round(c.monto / servicios.length) : c.monto;
-                        let nextMes = mes; let nextAnio = anio;
-                        const currentConceptos = new Set(facturaManual.items.map(i => i.concepto));
+                        // Calcular siguiente mes no añadido
+                        const conceptosUsados = new Set(facturaManual.items.map(i => i.concepto));
+                        let mes = facturaManual.mes; let anio = facturaManual.anio;
                         const newItems = [...facturaManual.items];
-                        // Find next month not already added
-                        for (let i = 0; i < 12; i++) {
-                          nextMes++; if (nextMes > 12) { nextMes = 1; nextAnio++; }
-                          const mn = MESES[nextMes - 1];
-                          servicios.forEach(srv => {
-                            const concepto = `${srv} ${mn} ${nextAnio}`;
-                            if (!currentConceptos.has(concepto)) { newItems.push({ concepto, monto: montoPorSrv }); currentConceptos.add(concepto); }
-                          });
-                          break;
+                        // Avanzar un mes por cada ciclo hasta encontrar uno no duplicado
+                        for (let intento = 0; intento < 12; intento++) {
+                          mes++; if (mes > 12) { mes = 1; anio++; }
+                          const mn = MESES[mes - 1];
+                          const todosNuevos = servicios.every(srv => !conceptosUsados.has(`${srv} ${mn} ${anio}`));
+                          if (todosNuevos) {
+                            servicios.forEach(srv => {
+                              const concepto = `${srv} ${mn} ${anio}`;
+                              newItems.push({ concepto, monto: montoPorSrv });
+                              conceptosUsados.add(concepto);
+                            });
+                            // Ajuste de redondeo en el último ítem
+                            const sumaActual = newItems.reduce((s, i) => s + (Number(i.monto) || 0), 0);
+                            const esperado = Math.round(newItems.length / servicios.length) * c.monto;
+                            break;
+                          }
                         }
                         const total = newItems.reduce((s, i) => s + (Number(i.monto) || 0), 0);
                         setFacturaManual({ ...facturaManual, items: newItems, monto: total });
                       }} style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                        📅 + Mes extra
+                        📅 + Mes extra ({mesesAgregados}/{maxMeses})
                       </button>
+                    ) : (
+                      <span style={{ fontSize: 12, color: "#94a3b8" }}>Máx. {maxMeses} meses</span>
                     );
                   })()}
                   <button onClick={() => setFacturaManual({ ...facturaManual, items: [...facturaManual.items, { concepto: "", monto: 0 }] })}
@@ -3301,9 +3413,27 @@ function ModuloCaja({ usuario }) {
         />
       )}
 
-      {/* Nota sobre la tabla en Supabase */}
-      <div style={{ marginTop: 24, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 16px", fontSize: 12, color: "#64748b" }}>
-        💡 <strong>Nota:</strong> Para que los ingresos/egresos funcionen, crea la tabla <code>caja_movimientos</code> en Supabase con las columnas: <code>id</code> (uuid), <code>tipo</code> (text), <code>concepto</code> (text), <code>monto</code> (numeric), <code>fecha</code> (date), <code>registrado_por</code> (uuid), <code>observacion</code> (text), <code>created_at</code> (timestamptz).
+      {/* SQL para crear la tabla */}
+      <div style={{ marginTop: 24, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8 }}>⚙️ Si ves errores, ejecuta este SQL en Supabase → SQL Editor:</div>
+        <pre style={{ background: "#0f172a", color: "#22c55e", borderRadius: 8, padding: "10px 14px", fontSize: 11, margin: 0, overflowX: "auto", lineHeight: 1.6 }}>{`CREATE TABLE IF NOT EXISTS public.caja_movimientos (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  tipo text NOT NULL CHECK (tipo IN ('Ingreso','Egreso')),
+  concepto text NOT NULL,
+  monto numeric NOT NULL,
+  fecha date NOT NULL DEFAULT CURRENT_DATE,
+  registrado_por uuid REFERENCES public.usuarios(id),
+  observacion text DEFAULT '',
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.caja_movimientos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "allow_all" ON public.caja_movimientos FOR ALL USING (true);`}</pre>
+        <button onClick={() => {
+          const sql = `CREATE TABLE IF NOT EXISTS public.caja_movimientos (\n  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,\n  tipo text NOT NULL CHECK (tipo IN ('Ingreso','Egreso')),\n  concepto text NOT NULL,\n  monto numeric NOT NULL,\n  fecha date NOT NULL DEFAULT CURRENT_DATE,\n  registrado_por uuid REFERENCES public.usuarios(id),\n  observacion text DEFAULT '',\n  created_at timestamptz DEFAULT now()\n);\nALTER TABLE public.caja_movimientos ENABLE ROW LEVEL SECURITY;\nCREATE POLICY "allow_all" ON public.caja_movimientos FOR ALL USING (true);`;
+          navigator.clipboard.writeText(sql).then(() => alert("✅ SQL copiado al portapapeles")).catch(() => alert("Copia el SQL manualmente del recuadro de arriba"));
+        }} style={{ marginTop: 10, background: "#0ea5e9", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+          📋 Copiar SQL
+        </button>
       </div>
     </div>
   );
