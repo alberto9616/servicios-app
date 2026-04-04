@@ -2286,15 +2286,24 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
   const morosos = facturasFiltradas.filter(f => f.estado === "Vencido").length;
 
   // Generar facturación masiva del mes
-  const generarFacturasMasivas = async () => {
+  const generarFacturasMasivas = async (perfilFiltro = null) => {
+    // perfilFiltro: null = todos, "sin_perfil" = solo sin perfil, string id = solo ese perfil
     setGenerandoMasivo(true);
     let creadas = 0;
     try {
       const nextNum = await db.getSiguienteNumeroRecibo();
-      for (let i = 0; i < clientesVisibles.length; i++) {
-        const c = clientesVisibles[i];
+      // Filtrar clientes según el perfil seleccionado
+      const clientesTarget = clientesVisibles.filter(c => {
+        if (!c.monto) return false;
         const yaExiste = facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio);
-        if (yaExiste || !c.monto) continue;
+        if (yaExiste) return false;
+        if (perfilFiltro === null) return true; // todos
+        if (perfilFiltro === "sin_perfil") return !c.perfilPagoId;
+        return c.perfilPagoId === perfilFiltro;
+      });
+
+      for (let i = 0; i < clientesTarget.length; i++) {
+        const c = clientesTarget[i];
         const mesNombre = MESES[filtroMes - 1];
         // Calcular fecha de vencimiento según perfil de pago del cliente
         let fechaVencimiento = null;
@@ -2327,9 +2336,14 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
         setFacturas(prev => [nueva, ...prev]);
         creadas++;
       }
-      alert(`✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.`);
+
+      const nombrePerfil = perfilFiltro === null ? "todos los clientes"
+        : perfilFiltro === "sin_perfil" ? "clientes sin perfil"
+        : `perfil "${perfilesPago.find(p => p.id === perfilFiltro)?.nombre || ""}"`;
+      alert(`✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio} (${nombrePerfil}).`);
+      if (creadas > 0) setShowGenerarMasivo(false);
     } catch (e) { alert("Error generando facturas: " + e.message); }
-    finally { setGenerandoMasivo(false); setShowGenerarMasivo(false); }
+    finally { setGenerandoMasivo(false); }
   };
 
   // Registrar abono
@@ -2778,31 +2792,142 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
       )}
 
       {/* ── Modal generar masivo ── */}
-      {showGenerarMasivo && (
-        <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowGenerarMasivo(false)}>
-          <div style={{ background: "#fff", borderRadius: 16, padding: 28, maxWidth: 400, width: "100%", textAlign: "center", position: "relative" }}>
-            <button onClick={() => setShowGenerarMasivo(false)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
-            <div style={{ fontSize: 40, marginBottom: 10 }}>⚡</div>
-            <h3 style={{ color: "#0f172a", marginBottom: 8 }}>Generar facturas masivas</h3>
-            <p style={{ color: "#64748b", fontSize: 14, marginBottom: 16 }}>
-              Se crearán facturas para todos los clientes activos de {MESES[filtroMes-1]} {filtroAnio} que aún no tengan factura. Se omitirán los que ya tienen factura para ese mes.
-            </p>
-            <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: 13, color: "#92400e" }}>
-              ⚠️ Esta acción generará facturas para <strong>{clientesVisibles.filter(c => c.monto && !facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio)).length} clientes</strong> con monto registrado.
-              {(() => {
-                const sinPerfil = clientesVisibles.filter(c => c.monto && !c.perfilPagoId && !facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio)).length;
-                return sinPerfil > 0 ? <div style={{ marginTop: 8, color: "#d97706" }}>⚠️ <strong>{sinPerfil} clientes</strong> no tienen perfil de pago asignado — se generará su factura sin fecha de vencimiento definida.</div> : <div style={{ marginTop: 8, color: "#16a34a" }}>✅ Todos los clientes tienen perfil de pago asignado.</div>;
-              })()}
-            </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-              <Btn onClick={generarFacturasMasivas} disabled={generandoMasivo} style={{ minWidth: 140 }}>
-                {generandoMasivo ? "Generando..." : "✅ Confirmar"}
-              </Btn>
-              <Btn variant="ghost" onClick={() => setShowGenerarMasivo(false)}>Cancelar</Btn>
+      {showGenerarMasivo && (() => {
+        // Calcular clientes por perfil para el modal
+        const hoy = new Date();
+        const diaHoy = hoy.getDate();
+        const clientesSinFactura = clientesVisibles.filter(c =>
+          c.monto && !facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio)
+        );
+        const clientesPorPerfil = perfilesPago.map(pf => ({
+          perfil: pf,
+          clientes: clientesSinFactura.filter(c => c.perfilPagoId === pf.id),
+          venceHoy: diaHoy >= pf.diaInicio && diaHoy <= pf.diaFin,
+        })).filter(g => g.clientes.length > 0);
+        const clientesSinPerfil = clientesSinFactura.filter(c => !c.perfilPagoId);
+
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowGenerarMasivo(false)}>
+            <div style={{ background: "#fff", borderRadius: 16, padding: 0, maxWidth: 500, width: "100%", maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>⚡ Generar facturas</h3>
+                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{MESES[filtroMes-1]} {filtroAnio} · {clientesSinFactura.length} clientes pendientes</div>
+                </div>
+                <button onClick={() => setShowGenerarMasivo(false)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+              </div>
+
+              <div style={{ padding: "16px 24px 24px" }}>
+                {/* Opción: TODOS */}
+                <div style={{ background: "#eff6ff", border: "2px solid #bfdbfe", borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: "#1e40af", fontSize: 14 }}>🌐 Todos los clientes</div>
+                      <div style={{ fontSize: 12, color: "#3b82f6", marginTop: 2 }}>
+                        {clientesSinFactura.length} clientes sin factura en {MESES[filtroMes-1]}
+                      </div>
+                    </div>
+                    <Btn
+                      disabled={generandoMasivo || clientesSinFactura.length === 0}
+                      onClick={() => generarFacturasMasivas(null)}
+                      style={{ fontSize: 13, padding: "8px 16px" }}
+                    >
+                      {generandoMasivo ? "Generando..." : "⚡ Generar todos"}
+                    </Btn>
+                  </div>
+                </div>
+
+                {/* Separador */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "14px 0 10px" }}>
+                  <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+                  <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8 }}>O por perfil de pago</span>
+                  <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+                </div>
+
+                {/* Por perfil */}
+                {clientesPorPerfil.length === 0 && clientesSinPerfil.length === 0 && (
+                  <div style={{ textAlign: "center", color: "#94a3b8", padding: 20 }}>
+                    ✅ Todos los clientes ya tienen factura para {MESES[filtroMes-1]} {filtroAnio}
+                  </div>
+                )}
+
+                {clientesPorPerfil.map(({ perfil: pf, clientes: lista, venceHoy }) => (
+                  <div key={pf.id} style={{ background: venceHoy ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (venceHoy ? "#86efac" : "#e2e8f0"), borderLeft: "4px solid " + (venceHoy ? "#22c55e" : "#0ea5e9"), borderRadius: 12, padding: "12px 16px", marginBottom: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>📅 {pf.nombre}</span>
+                          {venceHoy && (
+                            <span style={{ background: "#22c55e", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>
+                              🟢 VENCE ESTE MES (días {pf.diaInicio}-{pf.diaFin})
+                            </span>
+                          )}
+                          {!venceHoy && (
+                            <span style={{ background: "#e2e8f0", color: "#64748b", borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
+                              Días {pf.diaInicio}-{pf.diaFin}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>
+                          👥 {lista.length} cliente{lista.length !== 1 ? "s" : ""} sin factura
+                          {venceHoy && <span style={{ color: "#16a34a", fontWeight: 700, marginLeft: 6 }}>· Recomendado generar ahora</span>}
+                        </div>
+                        {/* Mini lista de clientes */}
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5 }}>
+                          {lista.slice(0, 4).map(c => (
+                            <span key={c.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 6, padding: "2px 8px", fontSize: 11, color: "#475569" }}>
+                              {c.nombre.split(" ")[0]} {c.nombre.split(" ")[1]?.[0] || ""}.
+                            </span>
+                          ))}
+                          {lista.length > 4 && <span style={{ fontSize: 11, color: "#94a3b8" }}>+{lista.length - 4} más</span>}
+                        </div>
+                      </div>
+                      <Btn
+                        disabled={generandoMasivo}
+                        variant={venceHoy ? "success" : "primary"}
+                        onClick={() => generarFacturasMasivas(pf.id)}
+                        style={{ fontSize: 13, padding: "8px 14px", whiteSpace: "nowrap" }}
+                      >
+                        {generandoMasivo ? "..." : `⚡ Generar (${lista.length})`}
+                      </Btn>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Clientes sin perfil */}
+                {clientesSinPerfil.length > 0 && (
+                  <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderLeft: "4px solid #f59e0b", borderRadius: 12, padding: "12px 16px", marginBottom: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, color: "#92400e", fontSize: 14 }}>⚠️ Sin perfil asignado</div>
+                        <div style={{ fontSize: 12, color: "#b45309", marginTop: 2 }}>
+                          {clientesSinPerfil.length} cliente{clientesSinPerfil.length !== 1 ? "s" : ""} — factura sin fecha de vencimiento
+                        </div>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5 }}>
+                          {clientesSinPerfil.slice(0, 4).map(c => (
+                            <span key={c.id} style={{ background: "#fff", border: "1px solid #fde68a", borderRadius: 6, padding: "2px 8px", fontSize: 11, color: "#92400e" }}>
+                              {c.nombre.split(" ")[0]} {c.nombre.split(" ")[1]?.[0] || ""}.
+                            </span>
+                          ))}
+                          {clientesSinPerfil.length > 4 && <span style={{ fontSize: 11, color: "#b45309" }}>+{clientesSinPerfil.length - 4} más</span>}
+                        </div>
+                      </div>
+                      <Btn
+                        disabled={generandoMasivo}
+                        onClick={() => generarFacturasMasivas("sin_perfil")}
+                        style={{ fontSize: 13, padding: "8px 14px", background: "#f59e0b", whiteSpace: "nowrap" }}
+                      >
+                        {generandoMasivo ? "..." : `⚡ Generar (${clientesSinPerfil.length})`}
+                      </Btn>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Modal factura manual ── */}
       {showFormManual && (
