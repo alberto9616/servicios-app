@@ -3422,14 +3422,14 @@ function ModuloCaja({ usuario }) {
   concepto text NOT NULL,
   monto numeric NOT NULL,
   fecha date NOT NULL DEFAULT CURRENT_DATE,
-  registrado_por uuid REFERENCES public.usuarios(id),
+  registrado_por text DEFAULT NULL,
   observacion text DEFAULT '',
   created_at timestamptz DEFAULT now()
 );
 ALTER TABLE public.caja_movimientos ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "allow_all" ON public.caja_movimientos FOR ALL USING (true);`}</pre>
         <button onClick={() => {
-          const sql = `CREATE TABLE IF NOT EXISTS public.caja_movimientos (\n  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,\n  tipo text NOT NULL CHECK (tipo IN ('Ingreso','Egreso')),\n  concepto text NOT NULL,\n  monto numeric NOT NULL,\n  fecha date NOT NULL DEFAULT CURRENT_DATE,\n  registrado_por uuid REFERENCES public.usuarios(id),\n  observacion text DEFAULT '',\n  created_at timestamptz DEFAULT now()\n);\nALTER TABLE public.caja_movimientos ENABLE ROW LEVEL SECURITY;\nCREATE POLICY "allow_all" ON public.caja_movimientos FOR ALL USING (true);`;
+          const sql = `CREATE TABLE IF NOT EXISTS public.caja_movimientos (\n  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,\n  tipo text NOT NULL CHECK (tipo IN ('Ingreso','Egreso')),\n  concepto text NOT NULL,\n  monto numeric NOT NULL,\n  fecha date NOT NULL DEFAULT CURRENT_DATE,\n  registrado_por text DEFAULT NULL,\n  observacion text DEFAULT '',\n  created_at timestamptz DEFAULT now()\n);\nALTER TABLE public.caja_movimientos ENABLE ROW LEVEL SECURITY;\nCREATE POLICY "allow_all" ON public.caja_movimientos FOR ALL USING (true);`;
           navigator.clipboard.writeText(sql).then(() => alert("✅ SQL copiado al portapapeles")).catch(() => alert("Copia el SQL manualmente del recuadro de arriba"));
         }} style={{ marginTop: 10, background: "#0ea5e9", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
           📋 Copiar SQL
