@@ -3400,6 +3400,7 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
 function ModuloCaja({ usuario }) {
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [nuevoMov, setNuevoMov] = useState({ tipo: "Ingreso", concepto: "", monto: "", fecha: new Date().toISOString().split("T")[0], observacion: "" });
   const [errMsg, setErrMsg] = useState("");
@@ -3407,7 +3408,10 @@ function ModuloCaja({ usuario }) {
   const [confirmDel, setConfirmDel] = useState(null);
 
   useEffect(() => {
-    db.getMovimientosCaja().then(setMovimientos).catch(e => console.error("Error cargando caja:", e)).finally(() => setCargando(false));
+    db.getMovimientosCaja()
+      .then(data => { setMovimientos(data); setErrorCarga(false); })
+      .catch(e => { console.error("Error cargando caja:", e); setErrorCarga(true); })
+      .finally(() => setCargando(false));
   }, []);
 
   const totalIngresos = movimientos.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
@@ -3538,8 +3542,9 @@ function ModuloCaja({ usuario }) {
         />
       )}
 
-      {/* SQL para crear la tabla */}
-      <div style={{ marginTop: 24, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px" }}>
+      {/* SQL — solo visible si hay error de conexión con la tabla */}
+      {errorCarga && (
+        <div style={{ marginTop: 24, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px" }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8 }}>⚙️ Si ves errores, ejecuta este SQL en Supabase → SQL Editor:</div>
         <pre style={{ background: "#0f172a", color: "#22c55e", borderRadius: 8, padding: "10px 14px", fontSize: 11, margin: 0, overflowX: "auto", lineHeight: 1.6 }}>{`CREATE TABLE IF NOT EXISTS public.caja_movimientos (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -3560,6 +3565,7 @@ CREATE POLICY "allow_all" ON public.caja_movimientos FOR ALL USING (true);`}</pr
           📋 Copiar SQL
         </button>
       </div>
+      )}
     </div>
   );
 }
