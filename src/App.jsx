@@ -180,6 +180,7 @@ const db = {
     return mapFactura(data);
   },
   async actualizarFactura(id, campos) { const { error } = await sb.from("facturas").update(campos).eq("id", id); if (error) throw error; },
+  async deleteFactura(id) { const { error } = await sb.from("facturas").delete().eq("id", id); if (error) throw error; },
   async getAbonos(facturaId) {
     const { data, error } = await sb.from("abonos").select("*").eq("factura_id", facturaId).order("fecha", { ascending: false });
     if (error) throw error;
@@ -2398,7 +2399,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                     <button onClick={() => setModalEditFactura({ ...f })} style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✏️</button>
                     <button onClick={async () => {
                       if (!confirm("¿Eliminar esta factura? Esta acción no se puede deshacer.")) return;
-                      try { await db.actualizarFactura(f.id, { estado: "Cancelada" }); setFacturas(prev => prev.map(x => x.id === f.id ? { ...x, estado: "Cancelada" } : x)); }
+                      try { await db.deleteFactura(f.id); setFacturas(prev => prev.filter(x => x.id !== f.id)); }
                       catch(e) { alert("Error: " + e.message); }
                     }} style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>🗑️</button>
                   </>}
@@ -2422,7 +2423,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
             <div style={{ padding: 20 }}>
               <Field label="Estado">
                 <Sel value={modalEditFactura.estado} onChange={e => setModalEditFactura({ ...modalEditFactura, estado: e.target.value })}>
-                  {["Pendiente","Abono parcial","Pagado","Vencido","Cancelada"].map(s => <option key={s} value={s}>{s}</option>)}
+                  {["Pendiente","Abono parcial","Pagado","Vencido"].map(s => <option key={s} value={s}>{s}</option>)}
                 </Sel>
               </Field>
               <Field label="Concepto">
