@@ -2324,7 +2324,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
           {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
         </Sel>
         <div style={{ flex: 1 }} />
-        <Btn onClick={() => setShowFormManual(true)} variant="ghost" style={{ fontSize: 13 }}>+ Factura manual</Btn>
+        <button onClick={() => setShowFormManual(true)} style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #8b5cf6", background: "#f5f3ff", color: "#7c3aed", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>+ Factura manual</button>
         <Btn onClick={() => setShowGenerarMasivo(true)} style={{ fontSize: 13 }}>⚡ Generar todas</Btn>
       </div>
 
