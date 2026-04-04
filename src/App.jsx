@@ -1082,6 +1082,7 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
 function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, usuarios, setUsuarios, avisos, setAvisos, planes, perfilesPago = [], zonas, propaganda, tabExterno, setTabExterno }) {
   const [tabLocal, setTabLocal] = useState("tickets"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const [ticketAbierto, setTicketAbierto] = useState(null);
+  const [confirmElimSecretario, setConfirmElimSecretario] = useState(null);
   const [modalOrden, setModalOrden] = useState(null);
   const [nuevaOrden, setNuevaOrden] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicoId: "", fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "" });
   const [showModalOrdenManual, setShowModalOrdenManual] = useState(false);
@@ -1473,7 +1474,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                       alert(`✅ Clave actualizada para ${c.nombre}`);
                     } catch (err) { alert("Error al cambiar clave: " + err.message); }
                   }} style={{ background: "#f1f5f9", color: "#0ea5e9", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🔑</button>
-                  <button onClick={() => deleteCliente(c.id)} style={{ background: "#f1f5f9", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                  <button onClick={() => setConfirmElimSecretario({ accion: () => deleteCliente(c.id), titulo: "¿Eliminar cliente?", mensaje: `Se eliminará a "${c.nombre}" del sistema.` })} style={{ background: "#f1f5f9", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                 </div>
               </div>
             ))}
@@ -1524,7 +1525,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   <Badge text={a.tipo} color={TIPO_COLOR[a.tipo]} />
                   <span style={{ fontWeight: 700, color: "#0f172a", flex: 1 }}>{a.titulo}</span>
                   <button onClick={() => toggleAviso(a.id)} style={{ background: a.activo ? "#22c55e22" : "#e2e8f0", color: a.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 20, padding: "3px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{a.activo ? "Activo" : "Inactivo"}</button>
-                  <button onClick={() => deleteAviso(a.id)} style={{ background: "transparent", color: "#ef4444", border: "none", cursor: "pointer", fontSize: 16 }}>🗑️</button>
+                  <button onClick={() => setConfirmElimSecretario({ accion: () => deleteAviso(a.id), titulo: "¿Eliminar aviso?", mensaje: `Se eliminará el aviso "${a.titulo}".` })} style={{ background: "transparent", color: "#ef4444", border: "none", cursor: "pointer", fontSize: 16 }}>🗑️</button>
                 </div>
                 <p style={{ margin: "6px 0 0", color: "#475569", fontSize: 13 }}>{a.mensaje}</p>
               </div>
@@ -1926,6 +1927,7 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
       {tab === "todas" && (ordenesActivas.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>Sin órdenes activas</div> : ordenesActivas.map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "historial" && (completadas.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>Sin órdenes completadas aún</div> : [...completadas].reverse().map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} rolFiltro={["admin","secretario","tecnico"]} zonaId={usuario.zonaId} />}
+      {confirmElimSecretario && <ModalConfirm titulo={confirmElimSecretario.titulo} mensaje={confirmElimSecretario.mensaje} onCancel={() => setConfirmElimSecretario(null)} onConfirm={() => { confirmElimSecretario.accion(); setConfirmElimSecretario(null); }} />}
     </div>
   );
 }
@@ -1953,6 +1955,24 @@ const numeroALetras = (n) => {
 };
 
 // ── Componente Recibo de Pago (imprimible) ────────────────
+function ModalConfirm({ titulo, mensaje, icono, onConfirm, onCancel }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && onCancel()}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px #00000033", overflow: "hidden" }}>
+        <div style={{ padding: "28px 24px 20px", textAlign: "center" }}>
+          <div style={{ fontSize: 44, marginBottom: 12 }}>{icono || "🗑️"}</div>
+          <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a", marginBottom: 8 }}>{titulo || "¿Eliminar?"}</div>
+          <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>{mensaje || "Esta acción no se puede deshacer."}</div>
+        </div>
+        <div style={{ display: "flex", borderTop: "1px solid #f1f5f9" }}>
+          <button onClick={onCancel} style={{ flex: 1, padding: "14px 0", border: "none", background: "#f8fafc", color: "#64748b", fontWeight: 700, fontSize: 14, cursor: "pointer", borderRight: "1px solid #f1f5f9" }}>Cancelar</button>
+          <button onClick={onConfirm} style={{ flex: 1, padding: "14px 0", border: "none", background: "#fef2f2", color: "#ef4444", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>Sí, eliminar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose }) {
   const totalAbonado = abonos.reduce((s, a) => s + a.monto, 0);
   const saldo = factura.monto - totalAbonado;
@@ -2076,6 +2096,8 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
   const [modalEditFactura, setModalEditFactura] = useState(null);
   const [filtroAuditAnio, setFiltroAuditAnio] = useState(new Date().getFullYear());
   const [exportando, setExportando] = useState(false);
+  const [modalExport, setModalExport] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null); // { id, nombre } // null | "mes" | "anio"
 
   const esAdmin = usuario.rol === "admin";
   const zonaId = usuario.zonaId;
@@ -2271,10 +2293,78 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
         ))}
         <div style={{ flex: 1 }} />
         {esAdmin && <>
-          <button onClick={() => exportarExcel(true)} disabled={exportando} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #22c55e", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel mes</button>
-          <button onClick={() => exportarExcel(false)} disabled={exportando} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #0ea5e9", background: "#eff6ff", color: "#0ea5e9", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel año</button>
+          <button onClick={() => setModalExport("mes")} disabled={exportando} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #22c55e", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel mes</button>
+          <button onClick={() => setModalExport("anio")} disabled={exportando} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #0ea5e9", background: "#eff6ff", color: "#0ea5e9", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel año</button>
         </>}
       </div>
+
+      {/* ── Modal confirmar eliminación ── */}
+      {confirmDelete && (
+        <ModalConfirm
+          titulo="¿Eliminar factura?"
+          mensaje={`Se eliminará permanentemente la factura de ${confirmDelete.nombre}. Esta acción no se puede deshacer.`}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={async () => {
+            try { await db.deleteFactura(confirmDelete.id); setFacturas(prev => prev.filter(x => x.id !== confirmDelete.id)); }
+            catch(e) { alert("Error: " + e.message); }
+            setConfirmDelete(null);
+          }}
+        />
+      )}
+
+      {/* ── Modal exportar Excel ── */}
+      {modalExport && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setModalExport(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 380, boxShadow: "0 20px 60px #00000033" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #e2e8f0" }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
+                {modalExport === "mes" ? "📊 Exportar por mes" : "📊 Exportar por año"}
+              </h3>
+              <button onClick={() => setModalExport(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+            </div>
+            <div style={{ padding: 20 }}>
+              {modalExport === "mes" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Mes</label>
+                    <Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))}>
+                      {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+                    </Sel>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Año</label>
+                    <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))}>
+                      {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
+                    </Sel>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Año</label>
+                  <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))}>
+                    {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
+                  </Sel>
+                </div>
+              )}
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#475569" }}>
+                {modalExport === "mes"
+                  ? <>Se exportarán las facturas de <strong>{MESES[filtroMes-1]} {filtroAnio}</strong> ({facturas.filter(f => f.mes === filtroMes && f.anio === filtroAnio).length} registros)</>
+                  : <>Se exportarán todas las facturas del año <strong>{filtroAnio}</strong> ({facturas.filter(f => f.anio === filtroAnio).length} registros)</>
+                }
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={async () => { await exportarExcel(modalExport === "mes"); setModalExport(null); }}
+                  style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "none", background: modalExport === "mes" ? "#22c55e" : "#0ea5e9", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
+                  {exportando ? "Exportando..." : "⬇️ Descargar CSV"}
+                </button>
+                <button onClick={() => setModalExport(null)} style={{ padding: "10px 16px", borderRadius: 9, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#64748b", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {subTab === "auditoria" && (
         <div>
@@ -2397,11 +2487,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                   </button>
                   {esAdmin && <>
                     <button onClick={() => setModalEditFactura({ ...f })} style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✏️</button>
-                    <button onClick={async () => {
-                      if (!confirm("¿Eliminar esta factura? Esta acción no se puede deshacer.")) return;
-                      try { await db.deleteFactura(f.id); setFacturas(prev => prev.filter(x => x.id !== f.id)); }
-                      catch(e) { alert("Error: " + e.message); }
-                    }} style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>🗑️</button>
+                    <button onClick={() => setConfirmDelete({ id: f.id, nombre: f.clienteNombre })} style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>🗑️</button>
                   </>}
                 </div>
               </div>
@@ -3040,6 +3126,7 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
 function TabPerfiles({ perfilesPago, setPerfilesPago, usuarios }) {
   const [editPerfil, setEditPerfil] = useState(null);
   const [showFormPerfil, setShowFormPerfil] = useState(false);
+  const [confirmPerfil, setConfirmPerfil] = useState(null);
   const emptyPerfil = { id: "", nombre: "", diaInicio: 1, diaFin: 5, descripcion: "", activo: true };
   const savePerfil = async (p) => {
     try {
@@ -3049,7 +3136,6 @@ function TabPerfiles({ perfilesPago, setPerfilesPago, usuarios }) {
     } catch (err) { alert("Error: " + err.message); }
   };
   const deletePerfil = async (id) => {
-    if (!confirm("¿Eliminar este perfil? Los clientes asignados quedarán sin perfil.")) return;
     try { await db.deletePerfilPago(id); setPerfilesPago(p => p.filter(x => x.id !== id)); }
     catch (err) { alert("Error: " + err.message); }
   };
@@ -3102,12 +3188,13 @@ function TabPerfiles({ perfilesPago, setPerfilesPago, usuarios }) {
               <div style={{ display: "flex", gap: 6 }}>
                 <button onClick={() => togglePerfil(p.id)} style={{ background: p.activo ? "#f0fdf4" : "#f1f5f9", color: p.activo ? "#16a34a" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.activo ? "Activo" : "Inactivo"}</button>
                 <button onClick={() => { setEditPerfil(p); setShowFormPerfil(true); }} style={{ background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                <button onClick={() => deletePerfil(p.id)} style={{ background: "#f1f5f9", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                <button onClick={() => setConfirmPerfil(p)} style={{ background: "#f1f5f9", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
               </div>
             </div>
           </div>
         ))}
       </div>
+      {confirmPerfil && <ModalConfirm titulo="¿Eliminar perfil de pago?" mensaje={`Se eliminará el perfil "${confirmPerfil.nombre}". Los clientes asignados quedarán sin perfil.`} onCancel={() => setConfirmPerfil(null)} onConfirm={() => { deletePerfil(confirmPerfil.id); setConfirmPerfil(null); }} />}
     </div>
   );
 }
@@ -3123,6 +3210,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const [busqAdmin, setBusqAdmin] = useState("");
   const [filtroAdminTipo, setFiltroAdminTipo] = useState("todos");
   const [formTipo, setFormTipo] = useState(null);
+  const [confirmEliminar, setConfirmEliminar] = useState(null); // { accion, titulo, mensaje }
   // Mi cuenta
   const [miCuenta, setMiCuenta] = useState({ usuario: sesion?.usuario || "", clave: "", claveNueva: "", claveConfirm: "" });
   const [miCuentaMsg, setMiCuentaMsg] = useState(null);
@@ -3396,7 +3484,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <div style={{ display: "flex", gap: 6 }}>
                   <button onClick={() => togglePlan(p.id)} style={{ background: p.activo ? "#22c55e22" : "#e2e8f0", color: p.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.activo ? "Activo" : "Inactivo"}</button>
                   <button onClick={() => { setEditPlan(p); setFormTipo("plan"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                  <button onClick={() => deletePlan(p.id)} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                  <button onClick={() => setConfirmEliminar({ accion: () => deletePlan(p.id), titulo: "¿Eliminar plan?", mensaje: `Se eliminará el plan "${p.nombre}". Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                 </div>
               </div>
             ))}
@@ -3406,6 +3494,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
       {/* ── TAB PERFILES DE PAGO ── */}
       {tab === "perfiles" && <TabPerfiles perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} usuarios={usuarios} />}
+      {confirmEliminar && <ModalConfirm titulo={confirmEliminar.titulo} mensaje={confirmEliminar.mensaje} onCancel={() => setConfirmEliminar(null)} onConfirm={() => { confirmEliminar.accion(); setConfirmEliminar(null); }} />}
 
       {/* ── TAB ZONAS ── */}
       {tab === "zonas" && (
@@ -3462,7 +3551,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => toggleZona(z.id)} style={{ background: z.activa ? "#22c55e22" : "#e2e8f0", color: z.activa ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{z.activa ? "Activa" : "Inactiva"}</button>
                       <button onClick={() => { setEditZona(z); setFormTipo("zona"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                      <button onClick={() => deleteZona(z.id)} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                      <button onClick={() => setConfirmEliminar({ accion: () => deleteZona(z.id), titulo: "¿Eliminar zona?", mensaje: `Se eliminará la zona "${z.nombre}". Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                     </div>
                   </div>
                 </div>
@@ -3665,7 +3754,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>
                     <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                    {u.rol !== "admin" && <button onClick={() => deleteU(u.id)} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
+                    {u.rol !== "admin" && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                   </div>
                 </div>
               ))}
@@ -3708,7 +3797,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                         <div style={{ display: "flex", gap: 6 }}>
                           <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>
                           <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                          {u.rol !== "admin" && <button onClick={() => deleteU(u.id)} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
+                          {u.rol !== "admin" && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                         </div>
                       </div>
                     ))}
@@ -3761,7 +3850,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   <span style={{ fontWeight: 700, color: "#0f172a", flex: 1 }}>{a.titulo}</span>
                   <span style={{ fontSize: 11, color: "#64748b" }}>Afecta: {a.afecta}</span>
                   <button onClick={() => toggleA(a.id)} style={{ background: a.activo ? "#22c55e22" : "#e2e8f0", color: a.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 20, padding: "3px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{a.activo ? "Activo" : "Inactivo"}</button>
-                  <button onClick={() => deleteA(a.id)} style={{ background: "transparent", color: "#ef4444", border: "none", cursor: "pointer", fontSize: 16 }}>🗑️</button>
+                  <button onClick={() => setConfirmEliminar({ accion: () => deleteA(a.id), titulo: "¿Eliminar aviso?", mensaje: `Se eliminará el aviso "${a.titulo}". Esta acción no se puede deshacer.` })} style={{ background: "transparent", color: "#ef4444", border: "none", cursor: "pointer", fontSize: 16 }}>🗑️</button>
                 </div>
                 <p style={{ margin: "6px 0 0", color: "#475569", fontSize: 13 }}>{a.mensaje}</p>
               </div>
@@ -3841,7 +3930,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => togglePropa(p.id)} style={{ background: p.activo ? "#22c55e22" : "#e2e8f0", color: p.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.activo ? "Activo" : "Inactivo"}</button>
                     <button onClick={() => { setEditPropa(p); setFormTipo("propa"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                    <button onClick={() => deletePropa(p.id)} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                    <button onClick={() => setConfirmEliminar({ accion: () => deletePropa(p.id), titulo: "¿Eliminar promoción?", mensaje: `Se eliminará la promoción "${p.titulo}". Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                   </div>
                 </div>
                 <p style={{ margin: "8px 0 0", color: "#475569", fontSize: 13, lineHeight: 1.5 }}>{p.descripcion}</p>
