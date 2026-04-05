@@ -2904,61 +2904,92 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
                   <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>{tirilla.titulo}</div>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={() => {
-                      const fecha = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric" });
-                      const filasTirilla = tirilla.filas.map((f, i) => `
-                        <tr style="border-bottom:1px solid #f0f0f0">
-                          <td style="padding:7px 8px;font-size:12px;font-weight:700">${f.nombre}</td>
-                          <td style="padding:7px 8px;font-size:11px;color:#555">${f.detalle}</td>
-                          <td style="padding:7px 8px;font-size:11px;text-align:center">
-                            <span style="background:${{"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2"}[f.estado]||"#f1f5f9"};color:${{"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c"}[f.estado]||"#555"};border-radius:4px;padding:2px 7px;font-weight:700;font-size:10px">${f.estado}</span>
-                          </td>
-                          <td style="padding:7px 8px;font-size:13px;font-weight:800;text-align:right;color:${tirilla.colorTotal}">${f.monto.toLocaleString("es-CO",{style:"currency",currency:"COP",minimumFractionDigits:0})}</td>
-                        </tr>`).join("");
-                      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${tirilla.titulo}</title>
+                    <button onClick={async () => {
+                      const fecha = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+                      // Cargar movimientos de caja para sumar ingresos extra
+                      let ingresosExtra = 0;
+                      let movsCaja = [];
+                      try {
+                        movsCaja = await db.getMovimientosCaja();
+                        ingresosExtra = movsCaja.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
+                      } catch(e) {}
+                      const totalGlobal = tirilla.total + ingresosExtra;
+                      const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
+                      const filasTirilla = tirilla.filas.map(f => {
+                        const colorBg = {"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2"}[f.estado]||"#f1f5f9";
+                        const colorTxt = {"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c"}[f.estado]||"#555";
+                        return `<tr><td class="td-nombre">${f.nombre}</td><td class="td-concepto">${f.detalle}</td><td class="td-estado"><span style="background:${colorBg};color:${colorTxt}">${f.estado}</span></td><td class="td-monto">${cop(f.monto)}</td></tr>`;
+                      }).join("");
+                      const filasCaja = movsCaja.filter(m => m.tipo === "Ingreso").map(m =>
+                        `<tr><td class="td-nombre">${m.concepto}</td><td class="td-concepto">${m.observacion||"-"}</td><td class="td-estado"><span style="background:#dcfce7;color:#16a34a">Caja</span></td><td class="td-monto">+${cop(m.monto)}</td></tr>`
+                      ).join("");
+                      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Tirilla ${tirilla.titulo}</title>
                       <style>
+                        @page { size: 76mm auto; margin: 4mm 3mm; }
                         * { box-sizing: border-box; margin: 0; padding: 0; }
-                        body { font-family: Arial, sans-serif; background: #fff; color: #0f172a; }
-                        @media print {
-                          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                          .no-print { display: none !important; }
-                        }
-                        .header { text-align: center; padding: 24px 20px 16px; border-bottom: 2px dashed #e2e8f0; }
-                        .empresa { font-size: 18px; font-weight: 900; color: #0f172a; }
-                        .titulo { font-size: 14px; font-weight: 700; color: #334155; margin-top: 4px; }
-                        .subtitulo { font-size: 11px; color: #64748b; margin-top: 2px; }
-                        .fecha { font-size: 10px; color: #94a3b8; margin-top: 6px; }
-                        table { width: 100%; border-collapse: collapse; margin-top: 0; }
-                        th { background: #f8fafc; font-size: 10px; color: #94a3b8; text-transform: uppercase; padding: 8px; text-align: left; font-weight: 700; }
-                        th:last-child { text-align: right; }
-                        .total-row { background: #f8fafc; border-top: 2px solid #e2e8f0; }
-                        .total-label { font-size: 12px; color: #64748b; font-weight: 600; padding: 12px 8px 4px; }
-                        .total-count { font-size: 10px; color: #94a3b8; padding: 0 8px 12px; }
-                        .total-val { font-size: 22px; font-weight: 900; color: ${tirilla.colorTotal}; padding: 12px 8px; text-align: right; vertical-align: middle; }
-                        .footer { text-align: center; padding: 14px; font-size: 10px; color: #94a3b8; border-top: 1px dashed #e2e8f0; margin-top: 4px; }
-                        .btn-print { display: block; margin: 16px auto; padding: 10px 32px; background: #0ea5e9; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; }
+                        body { font-family: "Courier New", Courier, monospace; font-size: 9.5pt; color: #000; width: 70mm; background: #fff; }
+                        .center { text-align: center; }
+                        .bold { font-weight: bold; }
+                        .empresa { font-size: 11pt; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+                        .sep { border: none; border-top: 1px dashed #555; margin: 5px 0; }
+                        .sep-solid { border: none; border-top: 1px solid #000; margin: 4px 0; }
+                        .info { font-size: 8.5pt; margin: 2px 0; }
+                        table { width: 100%; border-collapse: collapse; margin: 3px 0; }
+                        th { font-size: 8pt; text-transform: uppercase; border-bottom: 1px solid #000; padding: 2px 2px; text-align: left; }
+                        th.r { text-align: right; }
+                        .td-nombre { font-size: 8.5pt; font-weight: bold; padding: 3px 2px 0; width: 38%; }
+                        .td-concepto { font-size: 7.5pt; color: #333; padding: 3px 2px 0; width: 26%; }
+                        .td-estado span { font-size: 7pt; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
+                        .td-estado { padding: 3px 2px 0; width: 18%; }
+                        .td-monto { text-align: right; font-weight: bold; font-size: 8.5pt; padding: 3px 0 3px 2px; width: 18%; }
+                        tr { border-bottom: 1px dotted #ccc; }
+                        .subtotal-row td { font-size: 8.5pt; padding: 4px 2px; border-top: 1px dashed #555; border-bottom: none; }
+                        .total-row td { font-size: 11pt; font-weight: 900; padding: 5px 2px; border-top: 2px solid #000; }
+                        .footer { font-size: 7.5pt; text-align: center; margin-top: 6px; color: #333; }
+                        .btn-print { display: block; margin: 12px auto; padding: 8px 24px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: Arial, sans-serif; }
+                        @media print { .no-print { display: none !important; } body { width: 70mm; } }
                       </style></head><body>
-                      <div class="header">
+                      <div class="center">
                         <div class="empresa">${nombreEmpresa}</div>
-                        <div class="titulo">${tirilla.titulo}</div>
-                        <div class="subtitulo">${tirilla.subtitulo}</div>
-                        <div class="fecha">Impreso el ${fecha}</div>
+                        <div class="info">Tel: 318-8255601</div>
+                        <div class="info">Fecha: ${fecha}</div>
                       </div>
-                      <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+                      <hr class="sep"/>
+                      <div class="center bold" style="font-size:9pt;margin:3px 0">${tirilla.titulo}</div>
+                      <div class="center" style="font-size:7.5pt;color:#444;margin-bottom:3px">${tirilla.subtitulo}</div>
+                      <hr class="sep"/>
                       <table>
-                        <thead><tr><th>Cliente</th><th>Concepto</th><th style="text-align:center">Estado</th><th style="text-align:right">Monto</th></tr></thead>
+                        <thead><tr><th>Cliente</th><th>Concepto</th><th>Estado</th><th class="r">Valor</th></tr></thead>
                         <tbody>${filasTirilla}</tbody>
-                        <tfoot>
-                          <tr class="total-row">
-                            <td class="total-label" colspan="2">${tirilla.labelTotal}<br/><span class="total-count">${tirilla.filas.length} registro${tirilla.filas.length !== 1 ? "s" : ""}</span></td>
-                            <td></td>
-                            <td class="total-val">${tirilla.total.toLocaleString("es-CO",{style:"currency",currency:"COP",minimumFractionDigits:0})}</td>
-                          </tr>
-                        </tfoot>
+                        <tr class="subtotal-row">
+                          <td colspan="3" class="bold">Subtotal facturas (${tirilla.filas.length} clientes)</td>
+                          <td style="text-align:right;font-weight:900">${cop(tirilla.total)}</td>
+                        </tr>
                       </table>
-                      <div class="footer">GC HOGAR.NET S.A.S · Reporte generado automáticamente</div>
+                      ${ingresosExtra > 0 ? `
+                      <hr class="sep"/>
+                      <div class="bold" style="font-size:8.5pt;margin:3px 2px">Ingresos adicionales (Caja):</div>
+                      <table><tbody>${filasCaja}</tbody>
+                        <tr class="subtotal-row">
+                          <td colspan="3" class="bold">Subtotal caja</td>
+                          <td style="text-align:right;font-weight:900">${cop(ingresosExtra)}</td>
+                        </tr>
+                      </table>` : ""}
+                      <hr class="sep-solid"/>
+                      <table><tbody>
+                        <tr class="total-row">
+                          <td colspan="3">TOTAL GLOBAL</td>
+                          <td style="text-align:right">${cop(totalGlobal)}</td>
+                        </tr>
+                      </tbody></table>
+                      <hr class="sep"/>
+                      <div class="footer">Firma: ______________________</div>
+                      <div class="footer" style="margin-top:8px">Gracias por su pago</div>
+                      <div class="footer">** Reporte generado automáticamente **</div>
+                      <br/>
+                      <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir tirilla</button>
                       </body></html>`;
-                      const w = window.open("", "_blank", "width=720,height=600");
+                      const w = window.open("", "_blank", "width=340,height=700");
                       w.document.write(html);
                       w.document.close();
                     }} style={{ background: "#f0fdf4", color: "#16a34a", border: "none", borderRadius: 8, padding: "0 12px", height: 32, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>🖨️ Imprimir</button>
