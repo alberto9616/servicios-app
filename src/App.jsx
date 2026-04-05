@@ -2903,7 +2903,67 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
               <div style={{ padding: "18px 20px 12px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
                   <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>{tirilla.titulo}</div>
-                  <button onClick={() => setTirilla(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b", lineHeight: 1 }}>×</button>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={() => {
+                      const fecha = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric" });
+                      const filasTirilla = tirilla.filas.map((f, i) => `
+                        <tr style="border-bottom:1px solid #f0f0f0">
+                          <td style="padding:7px 8px;font-size:12px;font-weight:700">${f.nombre}</td>
+                          <td style="padding:7px 8px;font-size:11px;color:#555">${f.detalle}</td>
+                          <td style="padding:7px 8px;font-size:11px;text-align:center">
+                            <span style="background:${{"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2"}[f.estado]||"#f1f5f9"};color:${{"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c"}[f.estado]||"#555"};border-radius:4px;padding:2px 7px;font-weight:700;font-size:10px">${f.estado}</span>
+                          </td>
+                          <td style="padding:7px 8px;font-size:13px;font-weight:800;text-align:right;color:${tirilla.colorTotal}">${f.monto.toLocaleString("es-CO",{style:"currency",currency:"COP",minimumFractionDigits:0})}</td>
+                        </tr>`).join("");
+                      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${tirilla.titulo}</title>
+                      <style>
+                        * { box-sizing: border-box; margin: 0; padding: 0; }
+                        body { font-family: Arial, sans-serif; background: #fff; color: #0f172a; }
+                        @media print {
+                          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                          .no-print { display: none !important; }
+                        }
+                        .header { text-align: center; padding: 24px 20px 16px; border-bottom: 2px dashed #e2e8f0; }
+                        .empresa { font-size: 18px; font-weight: 900; color: #0f172a; }
+                        .titulo { font-size: 14px; font-weight: 700; color: #334155; margin-top: 4px; }
+                        .subtitulo { font-size: 11px; color: #64748b; margin-top: 2px; }
+                        .fecha { font-size: 10px; color: #94a3b8; margin-top: 6px; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 0; }
+                        th { background: #f8fafc; font-size: 10px; color: #94a3b8; text-transform: uppercase; padding: 8px; text-align: left; font-weight: 700; }
+                        th:last-child { text-align: right; }
+                        .total-row { background: #f8fafc; border-top: 2px solid #e2e8f0; }
+                        .total-label { font-size: 12px; color: #64748b; font-weight: 600; padding: 12px 8px 4px; }
+                        .total-count { font-size: 10px; color: #94a3b8; padding: 0 8px 12px; }
+                        .total-val { font-size: 22px; font-weight: 900; color: ${tirilla.colorTotal}; padding: 12px 8px; text-align: right; vertical-align: middle; }
+                        .footer { text-align: center; padding: 14px; font-size: 10px; color: #94a3b8; border-top: 1px dashed #e2e8f0; margin-top: 4px; }
+                        .btn-print { display: block; margin: 16px auto; padding: 10px 32px; background: #0ea5e9; color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; }
+                      </style></head><body>
+                      <div class="header">
+                        <div class="empresa">${nombreEmpresa}</div>
+                        <div class="titulo">${tirilla.titulo}</div>
+                        <div class="subtitulo">${tirilla.subtitulo}</div>
+                        <div class="fecha">Impreso el ${fecha}</div>
+                      </div>
+                      <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+                      <table>
+                        <thead><tr><th>Cliente</th><th>Concepto</th><th style="text-align:center">Estado</th><th style="text-align:right">Monto</th></tr></thead>
+                        <tbody>${filasTirilla}</tbody>
+                        <tfoot>
+                          <tr class="total-row">
+                            <td class="total-label" colspan="2">${tirilla.labelTotal}<br/><span class="total-count">${tirilla.filas.length} registro${tirilla.filas.length !== 1 ? "s" : ""}</span></td>
+                            <td></td>
+                            <td class="total-val">${tirilla.total.toLocaleString("es-CO",{style:"currency",currency:"COP",minimumFractionDigits:0})}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                      <div class="footer">GC HOGAR.NET S.A.S · Reporte generado automáticamente</div>
+                      </body></html>`;
+                      const w = window.open("", "_blank", "width=720,height=600");
+                      w.document.write(html);
+                      w.document.close();
+                    }} style={{ background: "#f0fdf4", color: "#16a34a", border: "none", borderRadius: 8, padding: "0 12px", height: 32, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>🖨️ Imprimir</button>
+                    <button onClick={() => setTirilla(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b", lineHeight: 1 }}>×</button>
+                  </div>
                 </div>
                 <div style={{ fontSize: 12, color: "#64748b" }}>{tirilla.subtitulo}</div>
               </div>
