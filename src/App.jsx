@@ -2894,50 +2894,67 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
 
       {/* ── TIRILLA DE DETALLE ── */}
       {tirilla && (
-        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9500, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={e => e.target === e.currentTarget && setTirilla(null)}>
-          <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 560, maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 -8px 40px #00000022" }}>
-            {/* Encabezado */}
-            <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>{tirilla.titulo}</div>
-                <button onClick={() => setTirilla(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+        <div
+          onClick={e => e.target === e.currentTarget && setTirilla(null)}
+          style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "#00000066", zIndex: 9500 }}
+        >
+          {/* Panel pegado al fondo, centrado con maxWidth */}
+          <div style={{
+            position: "absolute", left: 0, right: 0, bottom: 0,
+            display: "flex", justifyContent: "center",
+          }}>
+            <div style={{
+              background: "#fff", borderRadius: "20px 20px 0 0",
+              width: "100%", maxWidth: 600, maxHeight: "82vh",
+              display: "flex", flexDirection: "column",
+              boxShadow: "0 -8px 40px #00000033",
+            }}>
+              {/* Pastilla drag */}
+              <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 4px" }}>
+                <div style={{ width: 40, height: 4, borderRadius: 4, background: "#e2e8f0" }} />
               </div>
-              <div style={{ fontSize: 12, color: "#64748b" }}>{tirilla.subtitulo}</div>
-            </div>
-            {/* Lista */}
-            <div style={{ overflowY: "auto", flex: 1, padding: "12px 20px" }}>
-              {tirilla.filas.length === 0 ? (
-                <div style={{ textAlign: "center", color: "#94a3b8", padding: 30, fontSize: 13 }}>Sin registros para mostrar</div>
-              ) : (
-                <>
-                  {/* Cabecera columnas */}
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#94a3b8", textTransform: "uppercase", fontWeight: 700, marginBottom: 6, padding: "0 2px" }}>
-                    <span>Cliente / Concepto</span><span>Monto</span>
-                  </div>
-                  {tirilla.filas.map((fila, i) => {
-                    const colorEstadoBadge = { "Pagado": "#22c55e", "Pendiente": "#f59e0b", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444" }[fila.estado] || "#94a3b8";
-                    return (
-                      <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid #f8fafc", gap: 10 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.nombre}</div>
-                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.detalle}</div>
-                          <span style={{ fontSize: 10, background: colorEstadoBadge + "22", color: colorEstadoBadge, borderRadius: 6, padding: "1px 6px", fontWeight: 700, marginTop: 2, display: "inline-block" }}>{fila.estado}</span>
-                        </div>
-                        <div style={{ fontWeight: 800, color: tirilla.colorTotal, fontSize: 14, whiteSpace: "nowrap" }}>{formatCOP(fila.monto)}</div>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-            {/* Total */}
-            <div style={{ padding: "14px 20px", borderTop: "2px solid #f1f5f9", background: "#f8fafc", borderRadius: "0 0 0 0", flexShrink: 0 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
-                  <div style={{ fontSize: 11, color: "#64748b" }}>{tirilla.labelTotal}</div>
-                  <div style={{ fontSize: 10, color: "#94a3b8" }}>{tirilla.filas.length} registro{tirilla.filas.length !== 1 ? "s" : ""}</div>
+              {/* Encabezado */}
+              <div style={{ padding: "8px 20px 12px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>{tirilla.titulo}</div>
+                  <button onClick={() => setTirilla(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b", lineHeight: 1 }}>×</button>
                 </div>
-                <div style={{ fontWeight: 900, fontSize: 20, color: tirilla.colorTotal }}>{formatCOP(tirilla.total)}</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>{tirilla.subtitulo}</div>
+              </div>
+              {/* Lista scrollable */}
+              <div style={{ overflowY: "auto", flex: 1, padding: "12px 20px" }}>
+                {tirilla.filas.length === 0 ? (
+                  <div style={{ textAlign: "center", color: "#94a3b8", padding: 30, fontSize: 13 }}>Sin registros para mostrar</div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#94a3b8", textTransform: "uppercase", fontWeight: 700, marginBottom: 6, padding: "0 2px" }}>
+                      <span>Cliente / Concepto</span><span>Monto</span>
+                    </div>
+                    {tirilla.filas.map((fila, i) => {
+                      const colorEstadoBadge = { "Pagado": "#22c55e", "Pendiente": "#f59e0b", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444" }[fila.estado] || "#94a3b8";
+                      return (
+                        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid #f8fafc", gap: 10 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.nombre}</div>
+                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.detalle}</div>
+                            <span style={{ fontSize: 10, background: colorEstadoBadge + "22", color: colorEstadoBadge, borderRadius: 6, padding: "1px 6px", fontWeight: 700, marginTop: 2, display: "inline-block" }}>{fila.estado}</span>
+                          </div>
+                          <div style={{ fontWeight: 800, color: tirilla.colorTotal, fontSize: 14, whiteSpace: "nowrap" }}>{formatCOP(fila.monto)}</div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+              {/* Pie con total */}
+              <div style={{ padding: "14px 20px", borderTop: "2px solid #f1f5f9", background: "#f8fafc", flexShrink: 0, borderRadius: "0 0 0 0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>{tirilla.labelTotal}</div>
+                    <div style={{ fontSize: 10, color: "#94a3b8" }}>{tirilla.filas.length} registro{tirilla.filas.length !== 1 ? "s" : ""}</div>
+                  </div>
+                  <div style={{ fontWeight: 900, fontSize: 22, color: tirilla.colorTotal }}>{formatCOP(tirilla.total)}</div>
+                </div>
               </div>
             </div>
           </div>
