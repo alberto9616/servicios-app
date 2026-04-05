@@ -2892,29 +2892,15 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
         );
       })()}
 
-      {/* ── TIRILLA DE DETALLE ── */}
+      {/* ── TIRILLA DE DETALLE — modal centrado ── */}
       {tirilla && (
         <div
           onClick={e => e.target === e.currentTarget && setTirilla(null)}
-          style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "#00000066", zIndex: 9500 }}
+          style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "#00000066", zIndex: 9500, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 16px" }}
         >
-          {/* Panel pegado al fondo, centrado con maxWidth */}
-          <div style={{
-            position: "absolute", left: 0, right: 0, bottom: 0,
-            display: "flex", justifyContent: "center",
-          }}>
-            <div style={{
-              background: "#fff", borderRadius: "20px 20px 0 0",
-              width: "100%", maxWidth: 600, maxHeight: "82vh",
-              display: "flex", flexDirection: "column",
-              boxShadow: "0 -8px 40px #00000033",
-            }}>
-              {/* Pastilla drag */}
-              <div style={{ display: "flex", justifyContent: "center", padding: "10px 0 4px" }}>
-                <div style={{ width: 40, height: 4, borderRadius: 4, background: "#e2e8f0" }} />
-              </div>
+          <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 540, maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px #00000044" }}>
               {/* Encabezado */}
-              <div style={{ padding: "8px 20px 12px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
+              <div style={{ padding: "18px 20px 12px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
                   <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>{tirilla.titulo}</div>
                   <button onClick={() => setTirilla(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b", lineHeight: 1 }}>×</button>
@@ -2947,7 +2933,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                 )}
               </div>
               {/* Pie con total */}
-              <div style={{ padding: "14px 20px", borderTop: "2px solid #f1f5f9", background: "#f8fafc", flexShrink: 0, borderRadius: "0 0 0 0" }}>
+              <div style={{ padding: "14px 20px", borderTop: "2px solid #f1f5f9", background: "#f8fafc", borderRadius: "0 0 20px 20px", flexShrink: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>{tirilla.labelTotal}</div>
@@ -2957,7 +2943,6 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                 </div>
               </div>
             </div>
-          </div>
         </div>
       )}
 
