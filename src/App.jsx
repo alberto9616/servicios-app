@@ -2386,6 +2386,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
   const [exportando, setExportando] = useState(false);
   const [modalExport, setModalExport] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null); // { id, nombre } // null | "mes" | "anio"
+  const [tirilla, setTirilla] = useState(null); // { tipo, titulo, datos[], total? }
 
   const esAdmin = usuario.rol === "admin" || usuario.rol === "superusuario";
   const zonaId = usuario.zonaId;
@@ -2422,7 +2423,8 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
   // Estadísticas del mes
   const hoyStr = new Date().toISOString().split("T")[0];
   const totalMes = facturasFiltradas.reduce((s, f) => s + f.monto, 0);
-  const totalRecaudado = facturasFiltradas.filter(f => f.estado === "Pagado").reduce((s, f) => s + f.monto, 0);
+  // Total en caja: suma todo lo cobrado (monto - saldoPendiente) de TODAS las facturas históricas
+  const totalCaja = facturas.reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
   const totalDia = facturas.filter(f => f.fechaPago === hoyStr || f.fechaEmision === hoyStr).reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
   const totalPendiente = facturasFiltradas.filter(f => f.estado !== "Pagado").reduce((s, f) => s + f.saldoPendiente, 0);
   const morosos = facturasFiltradas.filter(f => f.estado === "Vencido").length;
@@ -2776,22 +2778,171 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
         <Btn onClick={() => setShowGenerarMasivo(true)} style={{ fontSize: 13 }}>⚡ Generar todas</Btn>
       </div>
 
-      {/* Resumen */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px,1fr))", gap: 10, marginBottom: 18 }}>
-        {[
-          ["💰 Total mes", formatCOP(totalMes), "#0ea5e9"],
-          ["📅 Cobrado hoy", formatCOP(totalDia), "#8b5cf6"],
-          ["✅ Recaudado", formatCOP(totalRecaudado), "#22c55e"],
-          ["⏳ Pendiente", formatCOP(totalPendiente), "#f59e0b"],
-          ["🔴 Morosos", morosos + " clientes", "#ef4444", "Clientes con facturas en estado Vencido"],
-        ].map(([label, val, color, tooltip]) => (
-          <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px" }} title={tooltip || ""}>
-            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>{label}</div>
-            <div style={{ fontWeight: 800, color, fontSize: 15 }}>{val}</div>
-            {tooltip && <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>{tooltip}</div>}
+      {/* Resumen — tarjetas clicables */}
+      {(() => {
+        const tarjetas = [
+          {
+            label: "💰 Total mes", val: formatCOP(totalMes), color: "#0ea5e9",
+            tooltip: `Suma de todas las facturas de ${MESES[filtroMes-1]} ${filtroAnio}`,
+            getTirilla: () => ({
+              titulo: `💰 Total mes — ${MESES[filtroMes-1]} ${filtroAnio}`,
+              subtitulo: `Todas las facturas emitidas del mes, sin importar su estado`,
+              total: totalMes,
+              labelTotal: "Total facturado",
+              colorTotal: "#0ea5e9",
+              filas: facturasFiltradas.map(f => ({
+                nombre: f.clienteNombre,
+                detalle: f.concepto,
+                estado: f.estado,
+                monto: f.monto,
+              })),
+            }),
+          },
+          {
+            label: "📅 Cobrado hoy", val: formatCOP(totalDia), color: "#8b5cf6",
+            tooltip: "Dinero efectivamente cobrado en facturas cuya fecha de pago o emisión es hoy",
+            getTirilla: () => {
+              const hoyFacts = facturas.filter(f => f.fechaPago === hoyStr || f.fechaEmision === hoyStr);
+              return {
+                titulo: `📅 Cobrado hoy — ${hoyStr}`,
+                subtitulo: "Facturas con fecha de pago o emisión de hoy",
+                total: totalDia,
+                labelTotal: "Total cobrado hoy",
+                colorTotal: "#8b5cf6",
+                filas: hoyFacts.map(f => ({
+                  nombre: f.clienteNombre,
+                  detalle: f.concepto,
+                  estado: f.estado,
+                  monto: f.monto - f.saldoPendiente,
+                })),
+              };
+            },
+          },
+          {
+            label: "🏦 Total en caja", val: formatCOP(totalCaja), color: "#22c55e",
+            tooltip: "Suma histórica de TODO el dinero real que ha ingresado (pagos completos + abonos de todos los tiempos)",
+            getTirilla: () => {
+              const pagadas = facturas.filter(f => f.monto - f.saldoPendiente > 0);
+              return {
+                titulo: "🏦 Total en caja — Histórico",
+                subtitulo: "Todo el dinero real cobrado desde siempre (pagos completos + abonos)",
+                total: totalCaja,
+                labelTotal: "Total en caja",
+                colorTotal: "#22c55e",
+                filas: pagadas.map(f => ({
+                  nombre: f.clienteNombre,
+                  detalle: `${f.concepto} · ${MESES[(f.mes||1)-1]} ${f.anio}`,
+                  estado: f.estado,
+                  monto: f.monto - f.saldoPendiente,
+                })),
+              };
+            },
+          },
+          {
+            label: "⏳ Pendiente", val: formatCOP(totalPendiente), color: "#f59e0b",
+            tooltip: `Saldo que aún no se ha cobrado en facturas de ${MESES[filtroMes-1]} ${filtroAnio}`,
+            getTirilla: () => ({
+              titulo: `⏳ Pendiente — ${MESES[filtroMes-1]} ${filtroAnio}`,
+              subtitulo: "Saldo que falta cobrar (incluye abonos parciales y vencidos)",
+              total: totalPendiente,
+              labelTotal: "Total pendiente",
+              colorTotal: "#f59e0b",
+              filas: facturasFiltradas.filter(f => f.estado !== "Pagado").map(f => ({
+                nombre: f.clienteNombre,
+                detalle: f.estado === "Abono parcial" ? `Abono parcial · pagó ${formatCOP(f.monto - f.saldoPendiente)}` : f.concepto,
+                estado: f.estado,
+                monto: f.saldoPendiente,
+              })),
+            }),
+          },
+          {
+            label: "🔴 Morosos", val: morosos + " clientes", color: "#ef4444",
+            tooltip: `Clientes con facturas en estado Vencido en ${MESES[filtroMes-1]} ${filtroAnio}`,
+            getTirilla: () => ({
+              titulo: `🔴 Morosos — ${MESES[filtroMes-1]} ${filtroAnio}`,
+              subtitulo: "Clientes con facturas en estado Vencido",
+              total: facturasFiltradas.filter(f => f.estado === "Vencido").reduce((s,f) => s + f.saldoPendiente, 0),
+              labelTotal: "Deuda total vencida",
+              colorTotal: "#ef4444",
+              filas: facturasFiltradas.filter(f => f.estado === "Vencido").map(f => ({
+                nombre: f.clienteNombre,
+                detalle: f.clienteDireccion || f.concepto,
+                estado: "Vencido",
+                monto: f.saldoPendiente,
+              })),
+            }),
+          },
+        ];
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px,1fr))", gap: 10, marginBottom: 18 }}>
+            {tarjetas.map(({ label, val, color, tooltip, getTirilla }) => (
+              <div key={label}
+                onClick={() => setTirilla(getTirilla())}
+                title={tooltip}
+                style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px", cursor: "pointer", transition: "box-shadow 0.15s", boxShadow: "0 1px 4px #0001" }}
+                onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 16px " + color + "33"}
+                onMouseLeave={e => e.currentTarget.style.boxShadow = "0 1px 4px #0001"}
+              >
+                <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>{label}</div>
+                <div style={{ fontWeight: 800, color, fontSize: 15 }}>{val}</div>
+                <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>Toca para ver detalle →</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        );
+      })()}
+
+      {/* ── TIRILLA DE DETALLE ── */}
+      {tirilla && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9500, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={e => e.target === e.currentTarget && setTirilla(null)}>
+          <div style={{ background: "#fff", borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 560, maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 -8px 40px #00000022" }}>
+            {/* Encabezado */}
+            <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>{tirilla.titulo}</div>
+                <button onClick={() => setTirilla(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+              </div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>{tirilla.subtitulo}</div>
+            </div>
+            {/* Lista */}
+            <div style={{ overflowY: "auto", flex: 1, padding: "12px 20px" }}>
+              {tirilla.filas.length === 0 ? (
+                <div style={{ textAlign: "center", color: "#94a3b8", padding: 30, fontSize: 13 }}>Sin registros para mostrar</div>
+              ) : (
+                <>
+                  {/* Cabecera columnas */}
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#94a3b8", textTransform: "uppercase", fontWeight: 700, marginBottom: 6, padding: "0 2px" }}>
+                    <span>Cliente / Concepto</span><span>Monto</span>
+                  </div>
+                  {tirilla.filas.map((fila, i) => {
+                    const colorEstadoBadge = { "Pagado": "#22c55e", "Pendiente": "#f59e0b", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444" }[fila.estado] || "#94a3b8";
+                    return (
+                      <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid #f8fafc", gap: 10 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.nombre}</div>
+                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.detalle}</div>
+                          <span style={{ fontSize: 10, background: colorEstadoBadge + "22", color: colorEstadoBadge, borderRadius: 6, padding: "1px 6px", fontWeight: 700, marginTop: 2, display: "inline-block" }}>{fila.estado}</span>
+                        </div>
+                        <div style={{ fontWeight: 800, color: tirilla.colorTotal, fontSize: 14, whiteSpace: "nowrap" }}>{formatCOP(fila.monto)}</div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+            {/* Total */}
+            <div style={{ padding: "14px 20px", borderTop: "2px solid #f1f5f9", background: "#f8fafc", borderRadius: "0 0 0 0", flexShrink: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 11, color: "#64748b" }}>{tirilla.labelTotal}</div>
+                  <div style={{ fontSize: 10, color: "#94a3b8" }}>{tirilla.filas.length} registro{tirilla.filas.length !== 1 ? "s" : ""}</div>
+                </div>
+                <div style={{ fontWeight: 900, fontSize: 20, color: tirilla.colorTotal }}>{formatCOP(tirilla.total)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Búsqueda y filtros */}
       <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
