@@ -232,9 +232,9 @@ const db = {
 // ZONAS
 // ══════════════════════════════════════════════════════════════
 const initialZonas = [
-  { id: "z001", nombre: "Vijes", color: GC.info, activa: true },
-  { id: "z002", nombre: "Yumbo", color: GC.brand, activa: true },
-  { id: "z003", nombre: "La Cumbre", color: GC.warning, activa: true },
+  { id: "z001", nombre: "Vijes",     color: "#2563eb", activa: true },
+  { id: "z002", nombre: "Yumbo",     color: "#16a34a", activa: true },
+  { id: "z003", nombre: "La Cumbre", color: "#d97706", activa: true },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -285,13 +285,13 @@ const initialTickets = [];
 const initialOrdenes = [];
 const initialPropaganda = [
   {
-    id: "pr001", categoria: "promocion", titulo: "🎉 Promoción Especial Abril", descripcion: "Contrata nuestro plan Estándar 50MB y obtén el primer mes gratis. ¡Oferta por tiempo limitado!", activo: true, fecha: "2026-04-30", imagen: "📡", color: GC.info
+    id: "pr001", categoria: "promocion", titulo: "🎉 Promoción Especial Abril", descripcion: "Contrata nuestro plan Estándar 50MB y obtén el primer mes gratis. ¡Oferta por tiempo limitado!", activo: true, fecha: "2026-04-30", imagen: "📡", color: "#2563eb"
   },
   {
-    id: "pr002", categoria: "equipos", titulo: "💻 Venta de Routers", descripcion: "Routers WiFi 6 doble banda disponibles desde $150,000. Compatibles con todos nuestros planes.", activo: true, fecha: "2026-12-31", imagen: "📶", color: GC.brand
+    id: "pr002", categoria: "equipos", titulo: "💻 Venta de Routers", descripcion: "Routers WiFi 6 doble banda disponibles desde $150,000. Compatibles con todos nuestros planes.", activo: true, fecha: "2026-12-31", imagen: "📶", color: "#16a34a"
   },
   {
-    id: "pr003", categoria: "camaras", titulo: "📷 Kits de Cámaras de Seguridad", descripcion: "Kits desde 2 hasta 8 cámaras HD con grabación en la nube. Instalación incluida en tu zona.", activo: true, fecha: "2026-12-31", imagen: "🎥", color: GC.purple
+    id: "pr003", categoria: "camaras", titulo: "📷 Kits de Cámaras de Seguridad", descripcion: "Kits desde 2 hasta 8 cámaras HD con grabación en la nube. Instalación incluida en tu zona.", activo: true, fecha: "2026-12-31", imagen: "🎥", color: "#7c3aed"
   },
 ];
 
