@@ -710,9 +710,9 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
     <>
       {/* Botón hamburguesa */}
       <button onClick={() => setOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 8px", lineHeight: 1, display: "flex", flexDirection: "column", gap: 4, alignItems: "center", justifyContent: "center" }}>
-        <span style={{ width: 18, height: 2, background: GC.ink, borderRadius: 2, display: "block" }} />
-        <span style={{ width: 18, height: 2, background: GC.ink, borderRadius: 2, display: "block" }} />
-        <span style={{ width: 18, height: 2, background: GC.ink, borderRadius: 2, display: "block" }} />
+        <span style={{ width: 18, height: 2, background: "#ffffff", borderRadius: 2, display: "block" }} />
+        <span style={{ width: 18, height: 2, background: "#ffffff", borderRadius: 2, display: "block" }} />
+        <span style={{ width: 18, height: 2, background: "#ffffff", borderRadius: 2, display: "block" }} />
       </button>
 
       {/* Overlay */}
