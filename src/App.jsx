@@ -232,9 +232,9 @@ const db = {
 // ZONAS
 // ══════════════════════════════════════════════════════════════
 const initialZonas = [
-  { id: "z001", nombre: "Vijes", color: "#0ea5e9", activa: true },
-  { id: "z002", nombre: "Yumbo", color: "#22c55e", activa: true },
-  { id: "z003", nombre: "La Cumbre", color: "#f59e0b", activa: true },
+  { id: "z001", nombre: "Vijes", color: GC.info, activa: true },
+  { id: "z002", nombre: "Yumbo", color: GC.brand, activa: true },
+  { id: "z003", nombre: "La Cumbre", color: GC.warning, activa: true },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -285,13 +285,13 @@ const initialTickets = [];
 const initialOrdenes = [];
 const initialPropaganda = [
   {
-    id: "pr001", categoria: "promocion", titulo: "🎉 Promoción Especial Abril", descripcion: "Contrata nuestro plan Estándar 50MB y obtén el primer mes gratis. ¡Oferta por tiempo limitado!", activo: true, fecha: "2026-04-30", imagen: "📡", color: "#0ea5e9"
+    id: "pr001", categoria: "promocion", titulo: "🎉 Promoción Especial Abril", descripcion: "Contrata nuestro plan Estándar 50MB y obtén el primer mes gratis. ¡Oferta por tiempo limitado!", activo: true, fecha: "2026-04-30", imagen: "📡", color: GC.info
   },
   {
-    id: "pr002", categoria: "equipos", titulo: "💻 Venta de Routers", descripcion: "Routers WiFi 6 doble banda disponibles desde $150,000. Compatibles con todos nuestros planes.", activo: true, fecha: "2026-12-31", imagen: "📶", color: "#22c55e"
+    id: "pr002", categoria: "equipos", titulo: "💻 Venta de Routers", descripcion: "Routers WiFi 6 doble banda disponibles desde $150,000. Compatibles con todos nuestros planes.", activo: true, fecha: "2026-12-31", imagen: "📶", color: GC.brand
   },
   {
-    id: "pr003", categoria: "camaras", titulo: "📷 Kits de Cámaras de Seguridad", descripcion: "Kits desde 2 hasta 8 cámaras HD con grabación en la nube. Instalación incluida en tu zona.", activo: true, fecha: "2026-12-31", imagen: "🎥", color: "#8b5cf6"
+    id: "pr003", categoria: "camaras", titulo: "📷 Kits de Cámaras de Seguridad", descripcion: "Kits desde 2 hasta 8 cámaras HD con grabación en la nube. Instalación incluida en tu zona.", activo: true, fecha: "2026-12-31", imagen: "🎥", color: GC.purple
   },
 ];
 
@@ -299,11 +299,44 @@ const initialPropaganda = [
 // CONSTANTES Y UTILIDADES
 // ══════════════════════════════════════════════════════════════
 const ROLES = { superusuario: "Superusuario", admin: "Administrador", secretario: "Secretario/a", tecnico: "Técnico", cliente: "Cliente" };
-const ROL_COLOR = { superusuario: "#dc2626", admin: "#8b5cf6", secretario: "#0ea5e9", tecnico: "#f59e0b", cliente: "#22c55e" };
-const ESTADO_COLOR = { "Al día": "#22c55e", Pendiente: "#f59e0b", Vencido: "#ef4444" };
-const TICKET_COLOR = { Abierto: "#f59e0b", "En proceso": "#3b82f6", Resuelto: "#22c55e" };
-const ORDEN_COLOR = { Pendiente: "#f59e0b", "En camino": "#3b82f6", Completada: "#22c55e", Cancelada: "#ef4444" };
-const TIPO_COLOR = { Mantenimiento: "#3b82f6", Falla: "#ef4444", Información: "#8b5cf6" };
+// ── GC HOGAR Design System — Brand Tokens ──────────────────
+// Verde marca: #16a34a | Negro: #0d0d0d | Superficie: #f9fafb
+const GC = {
+  brand:       "#16a34a",
+  brandDark:   "#15803d",
+  brandLight:  "#dcfce7",
+  brandMid:    "#bbf7d0",
+  brandText:   "#14532d",
+  ink:         "#0d0d0d",
+  ink2:        "#374151",
+  ink3:        "#6b7280",
+  ink4:        "#9ca3af",
+  bg:          "#ffffff",
+  bg2:         "#f9fafb",
+  bg3:         "#f3f4f6",
+  border:      "#e5e7eb",
+  border2:     "#d1d5db",
+  danger:      "#ef4444",
+  dangerBg:    "#fef2f2",
+  dangerBdr:   "#fecaca",
+  warning:     "#d97706",
+  warningBg:   "#fffbeb",
+  warningBdr:  "#fde68a",
+  info:        "#2563eb",
+  infoBg:      "#eff6ff",
+  infoBdr:     "#bfdbfe",
+  purple:      "#7c3aed",
+  purpleBg:    "#faf5ff",
+  purpleBdr:   "#e9d5ff",
+};
+
+const ROL_COLOR = { superusuario: GC.danger, admin: GC.brand, secretario: GC.purple, tecnico: GC.warning, cliente: GC.brand };
+const ROL_BG_MAP = { superusuario: GC.dangerBg, admin: GC.brandLight, secretario: GC.purpleBg, tecnico: GC.warningBg, cliente: GC.brandLight };
+const ROL_TEXT_MAP = { superusuario: "#991b1b", admin: GC.brandText, secretario: "#6b21a8", tecnico: "#92400e", cliente: GC.brandText };
+const ESTADO_COLOR = { "Al día": GC.brand, Pendiente: GC.warning, Vencido: GC.danger };
+const TICKET_COLOR = { Abierto: GC.warning, "En proceso": GC.info, Resuelto: GC.brand };
+const ORDEN_COLOR = { Pendiente: GC.warning, "En camino": GC.info, Completada: GC.brand, Cancelada: GC.danger };
+const TIPO_COLOR = { Mantenimiento: GC.info, Falla: GC.danger, Información: GC.purple };
 
 const TIPOS_ORDEN = ["Revisión / diagnóstico", "Instalación nueva", "Punto adicional de TV", "Punto adicional de Internet", "Cotización", "Traslado / cambio de domicilio", "Reubicación de router", "Otro"];
 
@@ -443,16 +476,16 @@ function WisproSyncBanner({ onSync }) {
     }}>
       <span style={{ fontSize: 22 }}>📡</span>
       <div style={{ flex: 1, minWidth: 160 }}>
-        <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 13 }}>
+        <div style={{ fontWeight: 700, color: GC.ink, fontSize: 13 }}>
           Sincronización con Wispro Cloud
         </div>
         {lastSync ? (
-          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+          <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>
             {cs.icon} {formatRelativo(lastSync.ts)} · {lastSync.clientesActualizados} clientes actualizados
             {lastSync.errores > 0 && <span style={{ color: "#d97706", marginLeft: 6 }}>· {lastSync.errores} con error</span>}
           </div>
         ) : (
-          <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>Sin sincronización registrada</div>
+          <div style={{ fontSize: 12, color: GC.ink4, marginTop: 2 }}>Sin sincronización registrada</div>
         )}
         {error && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>⚠️ {error}</div>}
       </div>
@@ -480,33 +513,60 @@ function WisproSyncBanner({ onSync }) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// COMPONENTES BASE
+// COMPONENTES BASE — GC HOGAR Design System
 // ══════════════════════════════════════════════════════════════
-const Badge = ({ text, color }) => (
-  <span style={{ background: color + "22", color, border: "1px solid " + color + "44", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>{text}</span>
-);
+const Badge = ({ text, color }) => {
+  const bgMap = {
+    [GC.brand]: GC.brandLight, [GC.brandDark]: GC.brandLight,
+    [GC.danger]: GC.dangerBg, [GC.warning]: GC.warningBg,
+    [GC.info]: GC.infoBg, [GC.purple]: GC.purpleBg,
+  };
+  const txtMap = {
+    [GC.brand]: GC.brandText, [GC.brandDark]: GC.brandText,
+    [GC.danger]: "#991b1b", [GC.warning]: "#92400e",
+    [GC.info]: "#1e40af", [GC.purple]: "#6b21a8",
+  };
+  const bg  = bgMap[color]  || color + "18";
+  const txt = txtMap[color] || color;
+  const bdr = bgMap[color]  ? color + "66" : color + "44";
+  return (
+    <span style={{ background: bg, color: txt, border: "1px solid " + bdr, borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap", fontFamily: "inherit" }}>{text}</span>
+  );
+};
 
 const Card = ({ children, style = {} }) => (
-  <div style={{ background: "#ffffff", border: "1px solid #1e293b", borderRadius: 14, padding: 20, ...style }}>{children}</div>
+  <div style={{ background: GC.bg, border: "1px solid " + GC.border, borderRadius: 12, padding: 20, ...style }}>{children}</div>
 );
 
 const Inp = ({ style: s = {}, ...props }) => (
-  <input style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", ...s }} {...props} />
+  <input style={{ background: GC.bg, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", fontFamily: "inherit", transition: "border-color .15s", ...s }}
+    onFocus={e => e.target.style.borderColor = GC.brand}
+    onBlur={e => e.target.style.borderColor = GC.border2}
+    {...props} />
 );
 
 const Sel = ({ children, style: s = {}, ...props }) => (
-  <select style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", ...s }} {...props}>{children}</select>
+  <select style={{ background: GC.bg, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", fontFamily: "inherit", ...s }} {...props}>{children}</select>
 );
 
 const Btn = ({ children, variant = "primary", style: s = {}, disabled, ...props }) => {
-  const bg = variant === "primary" ? "#0ea5e9" : variant === "danger" ? "#ef4444" : variant === "success" ? "#22c55e" : variant === "purple" ? "#8b5cf6" : "#e2e8f0";
-  const color = variant === "ghost" ? "#475569" : "#fff";
-  return <button disabled={disabled} style={{ background: bg, color, border: "none", borderRadius: 8, padding: "9px 18px", cursor: disabled ? "not-allowed" : "pointer", fontWeight: 700, fontSize: 14, opacity: disabled ? 0.5 : 1, ...s }} {...props}>{children}</button>;
+  const styles = {
+    primary: { background: GC.brand,     color: "#fff",      border: "none" },
+    dark:    { background: GC.ink,       color: "#fff",      border: "none" },
+    danger:  { background: GC.dangerBg,  color: GC.danger,   border: "1px solid " + GC.dangerBdr },
+    success: { background: GC.brandLight,color: GC.brandText,border: "1px solid " + GC.brandMid },
+    ghost:   { background: GC.bg,        color: GC.ink2,     border: "1px solid " + GC.border2 },
+    purple:  { background: GC.purpleBg,  color: GC.purple,   border: "1px solid " + GC.purpleBdr },
+  };
+  const st = styles[variant] || styles.primary;
+  return (
+    <button disabled={disabled} style={{ ...st, borderRadius: 8, padding: "9px 18px", cursor: disabled ? "not-allowed" : "pointer", fontWeight: 600, fontSize: 14, opacity: disabled ? 0.5 : 1, fontFamily: "inherit", ...s }} {...props}>{children}</button>
+  );
 };
 
 const Field = ({ label, children }) => (
   <div style={{ marginBottom: 14 }}>
-    <label style={{ display: "block", fontSize: 11, color: "#475569", marginBottom: 5, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</label>
+    <label style={{ display: "block", fontSize: 11, color: GC.ink3, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 600 }}>{label}</label>
     {children}
   </div>
 );
@@ -535,15 +595,15 @@ function ChatTicket({ ticket, onSend, autorActual, nombreActual, usuarios }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ padding: "10px 16px", borderBottom: "1px solid #1e293b", background: "#0f172a" }}>
+      <div style={{ padding: "10px 16px", borderBottom: "1px solid #1e293b", background: GC.ink }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontSize: 16 }}>{opcion?.emoji || "🔧"}</span>
-          <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 14, flex: 1 }}>{ticket.titulo}</span>
+          <span style={{ fontWeight: 700, color: GC.ink, fontSize: 14, flex: 1 }}>{ticket.titulo}</span>
           <Badge text={ticket.estado} color={TICKET_COLOR[ticket.estado]} />
           {ticket.categoria === "solicitudes" && <Badge text="📋 SOLICITUD" color="#0ea5e9" />}
           {ticket.prioridad === "alta" && <Badge text="🔴 EMPRESA" color="#ef4444" />}
         </div>
-        <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+        <div style={{ fontSize: 11, color: GC.ink3, marginTop: 4 }}>
           {ticket.clienteNombre} · {formatTime(ticket.fechaCreacion)}
         </div>
       </div>
@@ -553,15 +613,15 @@ function ChatTicket({ ticket, onSend, autorActual, nombreActual, usuarios }) {
           const esSistema = m.autor === "sistema";
           if (esSistema) return (
             <div key={i} style={{ textAlign: "center" }}>
-              <span style={{ background: "#e2e8f0", color: "#64748b", fontSize: 11, borderRadius: 20, padding: "3px 12px" }}>{m.texto}</span>
+              <span style={{ background: GC.bg3, color: GC.ink3, fontSize: 11, borderRadius: 20, padding: "3px 12px" }}>{m.texto}</span>
             </div>
           );
           return (
             <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: esPropio ? "flex-end" : "flex-start" }}>
-              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 3 }}>
+              <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 3 }}>
                 {getNombre(m.autor)} · {formatTime(m.ts)}
               </div>
-              <div style={{ maxWidth: "82%", padding: "10px 14px", borderRadius: esPropio ? "16px 16px 4px 16px" : "16px 16px 16px 4px", background: esPropio ? "#0ea5e9" : "#e2e8f0", color: "#0f172a", fontSize: 14, lineHeight: 1.5 }}>
+              <div style={{ maxWidth: "82%", padding: "10px 14px", borderRadius: esPropio ? "16px 16px 4px 16px" : "16px 16px 16px 4px", background: esPropio ? GC.brand : "#e2e8f0", color: GC.ink, fontSize: 14, lineHeight: 1.5 }}>
                 {m.texto}
               </div>
             </div>
@@ -575,7 +635,7 @@ function ChatTicket({ ticket, onSend, autorActual, nombreActual, usuarios }) {
           <Btn onClick={enviar} style={{ padding: "10px 16px" }}>Enviar</Btn>
         </div>
       ) : (
-        <div style={{ padding: 12, borderTop: "1px solid #1e293b", textAlign: "center", color: "#22c55e", fontSize: 13, fontWeight: 600 }}>✅ Ticket resuelto</div>
+        <div style={{ padding: 12, borderTop: "1px solid #1e293b", textAlign: "center", color: GC.brand, fontSize: 13, fontWeight: 600 }}>✅ Ticket resuelto</div>
       )}
     </div>
   );
@@ -592,6 +652,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
   const [open, setOpen] = React.useState(false);
 
   const ROL_ICON = { superusuario: "👑", admin: "🛡️", secretario: "🗂️", tecnico: "🔧" };
+  const ROL_LABEL = { superusuario: "Superusuario", admin: "Administrador", secretario: "Secretario/a", tecnico: "Técnico" };
 
   const MENUS = {
     superusuario: [
@@ -625,51 +686,70 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "micuenta",    icon: "🔐", label: "Mi cuenta" },
     ],
     secretario: [
-      { key: "tickets",     icon: "🎫", label: "Tickets" },
-      { key: "ordenes",     icon: "📋", label: "Órdenes" },
-      { key: "clientes",    icon: "👥", label: "Clientes" },
-      { key: "facturacion", icon: "🧾", label: "Cobros" },
+      { key: "tickets",         icon: "🎫", label: "Tickets" },
+      { key: "ordenes",         icon: "📋", label: "Órdenes" },
+      { key: "clientes",        icon: "👥", label: "Clientes" },
+      { key: "facturacion",     icon: "🧾", label: "Cobros" },
       { key: "equipos_morosos", icon: "📦", label: "Equipos morosos" },
-      { key: "equipo",      icon: "👷", label: "Equipo de trabajo" },
-      { key: "avisos",      icon: "📢", label: "Avisos" },
-      { key: "promo",       icon: "🎁", label: "Promos" },
+      { key: "equipo",          icon: "👷", label: "Equipo de trabajo" },
+      { key: "avisos",          icon: "📢", label: "Avisos" },
+      { key: "promo",           icon: "🎁", label: "Promos" },
     ],
     tecnico: [
-      { key: "hoy",      icon: "📅", label: "Hoy" },
-      { key: "todas",    icon: "📋", label: "Todas" },
-      { key: "historial",icon: "✅", label: "Historial" },
-      { key: "equipo",   icon: "👷", label: "Equipo de trabajo" },
+      { key: "hoy",       icon: "📅", label: "Hoy" },
+      { key: "todas",     icon: "📋", label: "Todas" },
+      { key: "historial", icon: "✅", label: "Historial" },
+      { key: "equipo",    icon: "👷", label: "Equipo de trabajo" },
     ],
   };
 
   const items = MENUS[sesion.rol] || [];
-  const ROL_BG = { superusuario: "#dc2626", admin: "#8b5cf6", secretario: "#0ea5e9", tecnico: "#f59e0b" };
-  const bg = ROL_BG[sesion.rol] || "#64748b";
+  const initials = sesion.nombre ? sesion.nombre.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() : "U";
 
   return (
     <>
       {/* Botón hamburguesa */}
-      <button onClick={() => setOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 8px", fontSize: 22, color: "#0f172a", lineHeight: 1 }}>☰</button>
+      <button onClick={() => setOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: "4px 8px", lineHeight: 1, display: "flex", flexDirection: "column", gap: 4, alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: 18, height: 2, background: GC.ink, borderRadius: 2, display: "block" }} />
+        <span style={{ width: 18, height: 2, background: GC.ink, borderRadius: 2, display: "block" }} />
+        <span style={{ width: 18, height: 2, background: GC.ink, borderRadius: 2, display: "block" }} />
+      </button>
 
       {/* Overlay */}
       {open && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 9999 }} onClick={() => setOpen(false)}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,.35)" }} onClick={() => setOpen(false)}>
           {/* Sidebar */}
-          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 260, background: "#fff", boxShadow: "4px 0 24px #00000018", display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
-            {/* Header del sidebar */}
-            <div style={{ background: bg, padding: "20px 16px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
-                {ROL_ICON[sesion.rol] || "👤"}
+          <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 268, background: GC.ink, display: "flex", flexDirection: "column" }} onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div style={{ padding: "18px 16px 14px", borderBottom: "1px solid rgba(255,255,255,.07)", display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Logo mark */}
+              <div style={{ width: 36, height: 36, background: GC.brand, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M3 10 Q3 4 10 4 Q17 4 17 10" stroke="white" strokeWidth="2" strokeLinecap="round" fill="none"/>
+                  <circle cx="10" cy="14" r="2.2" fill="white"/>
+                  <circle cx="5.5" cy="12" r="1.3" fill="rgba(255,255,255,.5)"/>
+                  <circle cx="14.5" cy="12" r="1.3" fill="rgba(255,255,255,.5)"/>
+                </svg>
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: "#fff", fontSize: 14 }}>{sesion.nombre}</div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)" }}>{sesion.rol === "superusuario" ? "👑 Superusuario" : sesion.rol === "admin" ? "Administrador" : sesion.rol === "secretario" ? "Secretario/a" : "Técnico"}</div>
+                <div style={{ fontWeight: 700, color: "#fff", fontSize: 14, letterSpacing: ".01em" }}>GC HOGAR</div>
+                <div style={{ fontSize: 9, color: "rgba(255,255,255,.35)", letterSpacing: ".12em", textTransform: "uppercase" }}>NET. S.A.S</div>
               </div>
-              <button onClick={() => setOpen(false)} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 8, width: 28, height: 28, cursor: "pointer", color: "#fff", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+              <button onClick={() => setOpen(false)} style={{ background: "rgba(255,255,255,.08)", border: "none", borderRadius: 8, width: 28, height: 28, cursor: "pointer", color: "rgba(255,255,255,.6)", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
             </div>
 
-            {/* Items */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+            {/* User pill */}
+            <div style={{ margin: "12px 10px 4px", background: "rgba(22,163,74,.12)", border: "1px solid rgba(22,163,74,.2)", borderRadius: 10, padding: "8px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 30, height: 30, background: GC.brand, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{initials}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sesion.nombre}</div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,.45)" }}>{ROL_LABEL[sesion.rol] || sesion.rol} · @{sesion.usuario}</div>
+              </div>
+            </div>
+
+            {/* Nav items */}
+            <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
               {items.map(item => {
                 const isActive = tab === item.key;
                 let badge = null;
@@ -677,19 +757,21 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
                 if (item.key === "hoy" && ordenesHoy > 0) badge = ordenesHoy;
                 return (
                   <button key={item.key} onClick={() => { setTab(item.key); setOpen(false); }}
-                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "11px 20px", border: "none", cursor: "pointer", background: isActive ? bg + "15" : "transparent", borderLeft: isActive ? "3px solid " + bg : "3px solid transparent", color: isActive ? bg : "#334155", fontWeight: isActive ? 700 : 500, fontSize: 14, textAlign: "left" }}>
-                    <span style={{ fontSize: 18, width: 24, textAlign: "center" }}>{item.icon}</span>
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: "none", borderLeft: isActive ? "2px solid " + GC.brand : "2px solid transparent", borderRadius: "0 8px 8px 0", cursor: "pointer", background: isActive ? "rgba(22,163,74,.15)" : "transparent", color: isActive ? "#fff" : "rgba(255,255,255,.5)", fontWeight: isActive ? 600 : 400, fontSize: 13, textAlign: "left", fontFamily: "inherit", marginBottom: 1, transition: "background .12s" }}
+                    onMouseOver={e => { if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,.05)"; }}
+                    onMouseOut={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}>
+                    <span style={{ fontSize: 15, width: 20, textAlign: "center", opacity: isActive ? 1 : .7 }}>{item.icon}</span>
                     <span style={{ flex: 1 }}>{item.label}</span>
-                    {badge && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "2px 7px", fontSize: 10, fontWeight: 800 }}>{badge}</span>}
+                    {badge && <span style={{ background: GC.danger, color: "#fff", borderRadius: 20, padding: "1px 7px", fontSize: 10, fontWeight: 700 }}>{badge}</span>}
                   </button>
                 );
               })}
             </div>
 
             {/* Footer */}
-            <div style={{ borderTop: "1px solid #e2e8f0", padding: "12px 16px" }}>
+            <div style={{ borderTop: "1px solid rgba(255,255,255,.07)", padding: "12px 10px" }}>
               <button onClick={() => { cerrarSesion(); setOpen(false); }}
-                style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", border: "1px solid #fecaca", borderRadius: 10, cursor: "pointer", background: "#fef2f2", color: "#dc2626", fontWeight: 700, fontSize: 14 }}>
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", border: "1px solid rgba(239,68,68,.3)", borderRadius: 8, cursor: "pointer", background: "rgba(239,68,68,.08)", color: GC.danger, fontWeight: 600, fontSize: 13, fontFamily: "inherit" }}>
                 <span>🚪</span> Cerrar sesión
               </button>
             </div>
@@ -752,18 +834,18 @@ function PromoCard({ promo: p, usuario, tickets, setTickets }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
           <span style={{ fontSize: 28 }}>{p.imagen}</span>
           <div>
-            <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>{p.titulo}</div>
+            <div style={{ fontWeight: 800, color: GC.ink, fontSize: 15 }}>{p.titulo}</div>
             <Badge text={p.categoria === "promocion" ? "🏷️ Promoción" : p.categoria === "equipos" ? "🖥️ Equipos" : "📷 Cámaras"} color={p.color} />
           </div>
         </div>
-        <p style={{ color: "#475569", fontSize: 14, margin: "0 0 8px", lineHeight: 1.6 }}>{p.descripcion}</p>
-        {p.fecha && <div style={{ fontSize: 11, color: "#64748b" }}>⏳ Válido hasta: {formatDate(p.fecha)}</div>}
+        <p style={{ color: GC.ink2, fontSize: 14, margin: "0 0 8px", lineHeight: 1.6 }}>{p.descripcion}</p>
+        {p.fecha && <div style={{ fontSize: 11, color: GC.ink3 }}>⏳ Válido hasta: {formatDate(p.fecha)}</div>}
         <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
           <Btn style={{ fontSize: 13, padding: "8px 16px", background: p.color }} onClick={() => { setShowModal(true); setEnviado(false); }}>
             💬 Consultar ahora
           </Btn>
           {ticketExistente && (
-            <span style={{ fontSize: 12, color: "#22c55e", fontWeight: 700 }}>✅ Consulta enviada · pendiente respuesta</span>
+            <span style={{ fontSize: 12, color: GC.brand, fontWeight: 700 }}>✅ Consulta enviada · pendiente respuesta</span>
           )}
         </div>
       </div>
@@ -772,36 +854,36 @@ function PromoCard({ promo: p, usuario, tickets, setTickets }) {
       {showModal && (
         <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowModal(false)}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 420, position: "relative" }}>
-            <button onClick={() => setShowModal(false)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+            <button onClick={() => setShowModal(false)} style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
               <span style={{ fontSize: 24 }}>{p.imagen}</span>
               <div>
-                <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>{p.titulo}</div>
-                <div style={{ fontSize: 12, color: "#64748b" }}>Envía tu consulta al equipo</div>
+                <div style={{ fontWeight: 800, color: GC.ink, fontSize: 15 }}>{p.titulo}</div>
+                <div style={{ fontSize: 12, color: GC.ink3 }}>Envía tu consulta al equipo</div>
               </div>
             </div>
 
             {enviado ? (
-              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12, padding: 20, textAlign: "center" }}>
+              <div style={{ background: GC.brandLight, border: "1px solid #bbf7d0", borderRadius: 12, padding: 20, textAlign: "center" }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
-                <div style={{ fontWeight: 700, color: "#16a34a", fontSize: 15 }}>¡Consulta enviada!</div>
-                <div style={{ color: "#475569", fontSize: 13, marginTop: 6, lineHeight: 1.5 }}>
+                <div style={{ fontWeight: 700, color: GC.brand, fontSize: 15 }}>¡Consulta enviada!</div>
+                <div style={{ color: GC.ink2, fontSize: 13, marginTop: 6, lineHeight: 1.5 }}>
                   Un secretario te responderá pronto. Puedes ver la respuesta en la sección <strong>Soporte → Mis solicitudes</strong>.
                 </div>
                 <Btn onClick={() => setShowModal(false)} style={{ marginTop: 14, fontSize: 13 }}>Cerrar</Btn>
               </div>
             ) : (
               <>
-                <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "#475569" }}>
+                <div style={{ background: GC.bg2, border: "1px solid " + GC.border, borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: GC.ink2 }}>
                   {p.descripcion}
                 </div>
                 <div style={{ marginBottom: 12 }}>
-                  <label style={{ display: "block", fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Tu mensaje / pregunta</label>
+                  <label style={{ display: "block", fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Tu mensaje / pregunta</label>
                   <textarea
                     value={mensaje}
                     onChange={e => setMensaje(e.target.value)}
                     placeholder={`Ej: Estoy interesado en ${p.titulo}, ¿cuál es el precio y disponibilidad?`}
-                    style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "10px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 90, resize: "vertical" }}
+                    style={{ background: GC.bg2, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "10px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 90, resize: "vertical" }}
                   />
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -902,9 +984,9 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
     if (!t) { setTicketAbierto(null); return null; }
     return (
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "16px" }}>
-        <button onClick={() => setTicketAbierto(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 12 }}>← Mis reportes</button>
-        {t.id && <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8, fontWeight: 700 }}>Ticket <span style={{ color: "#0ea5e9" }}>#{t.id.slice(0,8).toUpperCase()}</span></div>}
-        <div style={{ background: "#ffffff", border: "1px solid #1e293b", borderRadius: 14, overflow: "hidden", height: 500 }}>
+        <button onClick={() => setTicketAbierto(null)} style={{ background: "transparent", border: "none", color: GC.info, cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 12 }}>← Mis reportes</button>
+        {t.id && <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 8, fontWeight: 700 }}>Ticket <span style={{ color: GC.info }}>#{t.id.slice(0,8).toUpperCase()}</span></div>}
+        <div style={{ background: "#ffffff", border: "1px solid " + GC.border, borderRadius: 14, overflow: "hidden", height: 500 }}>
           <ChatTicket ticket={t} onSend={enviarMsg} autorActual="cliente" nombreActual={usuario.nombre} usuarios={usuarios} />
         </div>
       </div>
@@ -918,7 +1000,7 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
           <span>🏢</span>
           <div>
             <span style={{ color: "#c4b5fd", fontSize: 13, fontWeight: 600 }}>Cliente Empresarial · Atención prioritaria garantizada</span>
-            {usuario.nombreEmpresa && <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{usuario.nombreEmpresa}</div>}
+            {usuario.nombreEmpresa && <div style={{ fontSize: 11, color: GC.ink2, marginTop: 2 }}>{usuario.nombreEmpresa}</div>}
           </div>
         </div>
       )}
@@ -930,9 +1012,9 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
                 <span>{a.tipo === "Falla" ? "⚠️" : a.tipo === "Mantenimiento" ? "🔧" : "ℹ️"}</span>
                 <span style={{ fontWeight: 700, color: TIPO_COLOR[a.tipo], fontSize: 13 }}>{a.titulo}</span>
-                <span style={{ marginLeft: "auto", fontSize: 11, color: "#64748b" }}>Afecta: {a.afecta}</span>
+                <span style={{ marginLeft: "auto", fontSize: 11, color: GC.ink3 }}>Afecta: {a.afecta}</span>
               </div>
-              <p style={{ margin: 0, color: "#475569", fontSize: 13 }}>{a.mensaje}</p>
+              <p style={{ margin: 0, color: GC.ink2, fontSize: 13 }}>{a.mensaje}</p>
             </div>
           ))}
         </div>
@@ -942,7 +1024,7 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
         {[["info", "📋 Mi cuenta"], ["soporte", "🛠️ Soporte"], ["pagos", "💳 Mis pagos"], ["promo", "🎁 Promociones"]].map(([k, v]) => (
           <button key={k} onClick={() => { setTab(k); resetChat(); }} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", cursor: "pointer", background: tab === k ? "#0ea5e9" : "transparent", color: tab === k ? "#fff" : "#64748b", fontWeight: 600, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             {v}
-            {k === "soporte" && conRespuesta > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "1px 7px", fontSize: 10, fontWeight: 800 }}>{conRespuesta}</span>}
+            {k === "soporte" && conRespuesta > 0 && <span style={{ background: GC.danger, color: "#fff", borderRadius: 20, padding: "1px 7px", fontSize: 10, fontWeight: 800 }}>{conRespuesta}</span>}
           </button>
         ))}
       </div>
@@ -955,11 +1037,11 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
         <div>
           <div style={{ textAlign: "center", marginBottom: 18 }}>
             <div style={{ fontSize: 32, marginBottom: 6 }}>🎁</div>
-            <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 17 }}>Promociones y Servicios</div>
-            <div style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>Descubre nuestras ofertas exclusivas</div>
+            <div style={{ fontWeight: 800, color: GC.ink, fontSize: 17 }}>Promociones y Servicios</div>
+            <div style={{ color: GC.ink3, fontSize: 13, marginTop: 4 }}>Descubre nuestras ofertas exclusivas</div>
           </div>
           {propaganda.filter(p => p.activo).length === 0 ? (
-            <div style={{ textAlign: "center", color: "#64748b", padding: 40, fontSize: 14 }}>Sin promociones activas por el momento.</div>
+            <div style={{ textAlign: "center", color: GC.ink3, padding: 40, fontSize: 14 }}>Sin promociones activas por el momento.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {propaganda.filter(p => p.activo).map(p => (
@@ -973,38 +1055,38 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
       {tab === "info" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <Card>
-            <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Servicio activo</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>{usuario.servicio}</div>
-            <div style={{ fontSize: 14, color: "#475569" }}>Plan: {usuario.plan}</div>
-            {zonaUsuario && <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>📍 Zona: <span style={{ color: zonaUsuario.color }}>{zonaUsuario.nombre}</span></div>}
+            <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Servicio activo</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: GC.ink, marginBottom: 4 }}>{usuario.servicio}</div>
+            <div style={{ fontSize: 14, color: GC.ink2 }}>Plan: {usuario.plan}</div>
+            {zonaUsuario && <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>📍 Zona: <span style={{ color: zonaUsuario.color }}>{zonaUsuario.nombre}</span></div>}
           </Card>
           <Card style={{ border: "1px solid " + ESTADO_COLOR[usuario.estado] + "44" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
-                <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Próximo pago</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: "#0f172a" }}>{formatCOP(usuario.monto)}</div>
+                <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Próximo pago</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: GC.ink }}>{formatCOP(usuario.monto)}</div>
                 {usuario.fechaPago ? (
-                  <div style={{ fontSize: 14, color: "#475569", marginTop: 4 }}>Vence: {formatDate(usuario.fechaPago)}</div>
+                  <div style={{ fontSize: 14, color: GC.ink2, marginTop: 4 }}>Vence: {formatDate(usuario.fechaPago)}</div>
                 ) : usuario.perfilPagoId ? (() => {
                   const pf = perfilesPago.find(x => x.id === usuario.perfilPagoId);
-                  return pf ? <div style={{ fontSize: 13, color: "#0ea5e9", marginTop: 4 }}>📅 Paga entre el día {pf.diaInicio} y {pf.diaFin} de cada mes</div>
-                           : <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>📅 Pago mensual</div>;
-                })() : <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>📅 Consulta en oficina</div>}
+                  return pf ? <div style={{ fontSize: 13, color: GC.info, marginTop: 4 }}>📅 Paga entre el día {pf.diaInicio} y {pf.diaFin} de cada mes</div>
+                           : <div style={{ fontSize: 13, color: GC.ink3, marginTop: 4 }}>📅 Pago mensual</div>;
+                })() : <div style={{ fontSize: 13, color: GC.ink3, marginTop: 4 }}>📅 Consulta en oficina</div>}
               </div>
               <Badge text={usuario.estado} color={ESTADO_COLOR[usuario.estado]} />
             </div>
           </Card>
           {usuario.direccion && (
             <Card>
-              <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Dirección de instalación</div>
-              <div style={{ fontSize: 14, color: "#0f172a" }}>📍 {usuario.direccion}</div>
+              <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Dirección de instalación</div>
+              <div style={{ fontSize: 14, color: GC.ink }}>📍 {usuario.direccion}</div>
             </Card>
           )}
           {usuario.claveWifi && (
             <Card style={{ border: "1px solid #0ea5e944" }}>
-              <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Clave WiFi registrada</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: "#0ea5e9", letterSpacing: 2 }}>🔑 {usuario.claveWifi}</div>
-              <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Para cambiarla ve a Soporte → Cambio de clave WiFi</div>
+              <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Clave WiFi registrada</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: GC.info, letterSpacing: 2 }}>🔑 {usuario.claveWifi}</div>
+              <div style={{ fontSize: 11, color: GC.ink3, marginTop: 4 }}>Para cambiarla ve a Soporte → Cambio de clave WiFi</div>
             </Card>
           )}
         </div>
@@ -1015,26 +1097,26 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
           {/* NIVEL 1: Selección de categoría */}
           {!categoriaChat && !seleccion && (
             <div>
-              <p style={{ color: "#475569", fontSize: 14, margin: "0 0 14px", textAlign: "center" }}>
-                Hola <strong style={{ color: "#0f172a" }}>{usuario.nombre.split(" ")[0]}</strong>, ¿qué necesitas?
+              <p style={{ color: GC.ink2, fontSize: 14, margin: "0 0 14px", textAlign: "center" }}>
+                Hola <strong style={{ color: GC.ink }}>{usuario.nombre.split(" ")[0]}</strong>, ¿qué necesitas?
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 9, marginBottom: 20 }}>
                 {CATEGORIAS_SOPORTE.map(cat => (
-                  <button key={cat.id} onClick={() => setCategoriaChat(cat.id)} style={{ background: "#e2e8f0", border: "1px solid #334155", borderRadius: 12, color: "#0f172a", padding: "16px 18px", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 12, fontSize: 15, fontWeight: 700 }}>
+                  <button key={cat.id} onClick={() => setCategoriaChat(cat.id)} style={{ background: GC.bg3, border: "1px solid " + GC.border2, borderRadius: 12, color: GC.ink, padding: "16px 18px", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 12, fontSize: 15, fontWeight: 700 }}>
                     <span style={{ fontSize: 24 }}>{cat.emoji}</span>
                     <div>
                       <div>{cat.label}</div>
-                      <div style={{ fontSize: 12, color: "#64748b", fontWeight: 400, marginTop: 2 }}>
+                      <div style={{ fontSize: 12, color: GC.ink3, fontWeight: 400, marginTop: 2 }}>
                         {cat.id === "solicitudes" ? "Traslados, reubicaciones, cambio de clave WiFi" : "Problemas técnicos, consultas de pago"}
                       </div>
                     </div>
-                    <span style={{ marginLeft: "auto", color: "#64748b" }}>›</span>
+                    <span style={{ marginLeft: "auto", color: GC.ink3 }}>›</span>
                   </button>
                 ))}
               </div>
               {misTickets.length > 0 && (
                 <div>
-                  <div style={{ color: "#64748b", fontSize: 12, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Mis solicitudes y reportes</div>
+                  <div style={{ color: GC.ink3, fontSize: 12, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Mis solicitudes y reportes</div>
                   {[...misTickets].reverse().map(t => {
                     const ult = t.mensajes[t.mensajes.length - 1];
                     const hay = ult?.autor !== "cliente" && ult?.autor !== "sistema" && t.estado !== "Resuelto";
@@ -1042,8 +1124,8 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                     return (
                       <div key={t.id}>
                         {editandoTicket?.id === t.id ? (
-                          <div style={{ background: "#e2e8f0", border: "1px solid #0ea5e944", borderRadius: 12, padding: 14, marginBottom: 8 }}>
-                            <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>✏️ Editar solicitud:</div>
+                          <div style={{ background: GC.bg3, border: "1px solid #0ea5e944", borderRadius: 12, padding: 14, marginBottom: 8 }}>
+                            <div style={{ fontSize: 12, color: GC.ink2, marginBottom: 8 }}>✏️ Editar solicitud:</div>
                             <Inp value={editandoTicket.texto} onChange={e => setEditandoTicket({ ...editandoTicket, texto: e.target.value })} style={{ marginBottom: 10 }} />
                             <div style={{ display: "flex", gap: 8 }}>
                               <Btn onClick={guardarEdicionTicket} style={{ fontSize: 12, padding: "6px 14px" }}>Guardar</Btn>
@@ -1054,17 +1136,17 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                           <div key={t.id} style={{ background: hay ? "#e2e8f0" : "#ffffff", border: hay ? "1px solid #0ea5e944" : "1px solid #1e293b", borderLeft: "4px solid " + (hay ? "#0ea5e9" : TICKET_COLOR[t.estado]), borderRadius: 12, padding: "11px 14px", marginBottom: 8 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <span onClick={() => setTicketAbierto(t.id)} style={{ cursor: "pointer" }}>{ALL_OPCIONES.find(p => p.id === t.tipo)?.emoji || "🔧"}</span>
-                              <span onClick={() => setTicketAbierto(t.id)} style={{ fontWeight: 600, color: "#0f172a", flex: 1, fontSize: 13, cursor: "pointer" }}>{t.titulo}</span>
+                              <span onClick={() => setTicketAbierto(t.id)} style={{ fontWeight: 600, color: GC.ink, flex: 1, fontSize: 13, cursor: "pointer" }}>{t.titulo}</span>
                               {t.categoria === "solicitudes" && <Badge text="Solicitud" color="#0ea5e9" />}
                               <Badge text={t.estado} color={TICKET_COLOR[t.estado]} />
                               {puedeEditar && (
                                 <>
-                                  <button onClick={() => setEditandoTicket({ id: t.id, texto: t.titulo })} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>✏️</button>
-                                  <button onClick={() => setConfirmDeleteTicket(t.id)} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>🗑️</button>
+                                  <button onClick={() => setEditandoTicket({ id: t.id, texto: t.titulo })} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>✏️</button>
+                                  <button onClick={() => setConfirmDeleteTicket(t.id)} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>🗑️</button>
                                 </>
                               )}
                             </div>
-                            {hay && <div style={{ fontSize: 11, color: "#0ea5e9", fontWeight: 700, marginTop: 4 }}>● Nueva respuesta del soporte</div>}
+                            {hay && <div style={{ fontSize: 11, color: GC.info, fontWeight: 700, marginTop: 4 }}>● Nueva respuesta del soporte</div>}
                           </div>
                         )}
                       </div>
@@ -1073,11 +1155,11 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
                   {/* Modal confirmación eliminar */}
                   {confirmDeleteTicket && (
                     <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => { if (e.target === e.currentTarget) setConfirmDeleteTicket(null); }}>
-                      <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 28, maxWidth: 360, textAlign: "center", position: "relative" }}>
-                        <button onClick={() => setConfirmDeleteTicket(null)} style={{ position: "absolute", top: 12, right: 12, background: "#f1f5f9", border: "none", borderRadius: 8, width: 30, height: 30, cursor: "pointer", fontSize: 18, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                      <div style={{ background: "#ffffff", border: "1px solid " + GC.border, borderRadius: 16, padding: 28, maxWidth: 360, textAlign: "center", position: "relative" }}>
+                        <button onClick={() => setConfirmDeleteTicket(null)} style={{ position: "absolute", top: 12, right: 12, background: GC.bg3, border: "none", borderRadius: 8, width: 30, height: 30, cursor: "pointer", fontSize: 18, color: GC.ink3, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
                         <div style={{ fontSize: 36, marginBottom: 10 }}>🗑️</div>
-                        <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 8 }}>¿Eliminar esta solicitud?</div>
-                        <div style={{ color: "#475569", fontSize: 13, marginBottom: 20 }}>Esta acción no se puede deshacer.</div>
+                        <div style={{ fontWeight: 700, color: GC.ink, marginBottom: 8 }}>¿Eliminar esta solicitud?</div>
+                        <div style={{ color: GC.ink2, fontSize: 13, marginBottom: 20 }}>Esta acción no se puede deshacer.</div>
                         <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
                           <Btn variant="danger" onClick={() => eliminarTicket(confirmDeleteTicket)} style={{ fontSize: 13 }}>Sí, eliminar</Btn>
                           <Btn variant="ghost" onClick={() => setConfirmDeleteTicket(null)} style={{ fontSize: 13 }}>Cancelar</Btn>
@@ -1093,15 +1175,15 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
           {/* NIVEL 2: Subcategoría seleccionada */}
           {categoriaChat && !seleccion && (
             <div>
-              <button onClick={() => setCategoriaChat(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
-              <p style={{ color: "#475569", fontSize: 14, margin: "0 0 12px" }}>
+              <button onClick={() => setCategoriaChat(null)} style={{ background: "transparent", border: "none", color: GC.info, cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
+              <p style={{ color: GC.ink2, fontSize: 14, margin: "0 0 12px" }}>
                 {categoriaChat === "solicitudes" ? "📋 Selecciona el tipo de solicitud:" : "⚠️ ¿Cuál es el problema?"}
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                 {ALL_OPCIONES.filter(o => o.categoria === categoriaChat).map(op => (
-                  <button key={op.id} onClick={() => { setSeleccion(op); setReportado(false); setClaveEnviada(false); }} style={{ background: "#e2e8f0", border: "1px solid #334155", borderRadius: 12, color: "#0f172a", padding: "13px 16px", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 12, fontSize: 14, fontWeight: 600 }}>
+                  <button key={op.id} onClick={() => { setSeleccion(op); setReportado(false); setClaveEnviada(false); }} style={{ background: GC.bg3, border: "1px solid " + GC.border2, borderRadius: 12, color: GC.ink, padding: "13px 16px", cursor: "pointer", textAlign: "left", display: "flex", alignItems: "center", gap: 12, fontSize: 14, fontWeight: 600 }}>
                     <span style={{ fontSize: 20 }}>{op.emoji}</span>{op.label}
-                    <span style={{ marginLeft: "auto", color: "#64748b" }}>›</span>
+                    <span style={{ marginLeft: "auto", color: GC.ink3 }}>›</span>
                   </button>
                 ))}
               </div>
@@ -1111,11 +1193,11 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
           {/* NIVEL 3: Detalle de consulta de pago */}
           {seleccion && seleccion.id === "pago" && (
             <div>
-              <button onClick={() => setSeleccion(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
+              <button onClick={() => setSeleccion(null)} style={{ background: "transparent", border: "none", color: GC.info, cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
               <Card>
-                <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Tu próximo pago</div>
-                <div style={{ fontSize: 30, fontWeight: 800, color: "#0f172a" }}>{formatCOP(usuario.monto)}</div>
-                <div style={{ fontSize: 14, color: "#475569", marginTop: 4 }}>Vence: {formatDate(usuario.fechaPago)}</div>
+                <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Tu próximo pago</div>
+                <div style={{ fontSize: 30, fontWeight: 800, color: GC.ink }}>{formatCOP(usuario.monto)}</div>
+                <div style={{ fontSize: 14, color: GC.ink2, marginTop: 4 }}>Vence: {formatDate(usuario.fechaPago)}</div>
                 <div style={{ marginTop: 10 }}><Badge text={usuario.estado} color={ESTADO_COLOR[usuario.estado]} /></div>
               </Card>
             </div>
@@ -1124,39 +1206,39 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
           {/* NIVEL 3: Cambio de clave WiFi */}
           {seleccion && seleccion.id === "cambio_clave_wifi" && (
             <div>
-              <button onClick={() => setSeleccion(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
+              <button onClick={() => setSeleccion(null)} style={{ background: "transparent", border: "none", color: GC.info, cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                 <span style={{ fontSize: 24 }}>🔑</span>
-                <h3 style={{ color: "#0f172a", margin: 0, fontSize: 16 }}>Cambio de clave WiFi</h3>
+                <h3 style={{ color: GC.ink, margin: 0, fontSize: 16 }}>Cambio de clave WiFi</h3>
               </div>
               {usuario.claveWifi && (
                 <Card style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Clave actual registrada:</div>
-                  <div style={{ fontSize: 16, color: "#f59e0b", fontWeight: 700 }}>{usuario.claveWifi}</div>
+                  <div style={{ fontSize: 12, color: GC.ink3, marginBottom: 4 }}>Clave actual registrada:</div>
+                  <div style={{ fontSize: 16, color: GC.warning, fontWeight: 700 }}>{usuario.claveWifi}</div>
                 </Card>
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
                 {(PASOS[seleccion.id] || []).map((paso, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, background: "#e2e8f0", borderRadius: 12, padding: "10px 14px", alignItems: "flex-start" }}>
-                    <span style={{ background: "#0ea5e9", color: "#fff", borderRadius: "50%", width: 22, height: 22, minWidth: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
-                    <span style={{ color: "#475569", fontSize: 13, lineHeight: 1.5 }}>{paso}</span>
+                  <div key={i} style={{ display: "flex", gap: 10, background: GC.bg3, borderRadius: 12, padding: "10px 14px", alignItems: "flex-start" }}>
+                    <span style={{ background: GC.info, color: "#fff", borderRadius: "50%", width: 22, height: 22, minWidth: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
+                    <span style={{ color: GC.ink2, fontSize: 13, lineHeight: 1.5 }}>{paso}</span>
                   </div>
                 ))}
               </div>
               {claveEnviada ? (
                 <div style={{ background: "#22c55e22", border: "1px solid #22c55e44", borderRadius: 12, padding: 16, textAlign: "center" }}>
                   <div style={{ fontSize: 26, marginBottom: 6 }}>✅</div>
-                  <div style={{ fontWeight: 700, color: "#22c55e" }}>¡Clave registrada exitosamente!</div>
-                  <div style={{ color: "#475569", fontSize: 13, marginTop: 4 }}>Tu nueva clave WiFi ha sido guardada y el equipo técnico la aplicará en tu router.</div>
+                  <div style={{ fontWeight: 700, color: GC.brand }}>¡Clave registrada exitosamente!</div>
+                  <div style={{ color: GC.ink2, fontSize: 13, marginTop: 4 }}>Tu nueva clave WiFi ha sido guardada y el equipo técnico la aplicará en tu router.</div>
                   <Btn onClick={resetChat} style={{ marginTop: 12, fontSize: 13 }}>Ver mis solicitudes</Btn>
                 </div>
               ) : (
-                <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 12, padding: 14 }}>
+                <div style={{ background: "#ffffff", border: "1px solid " + GC.border2, borderRadius: 12, padding: 14 }}>
                   <Field label="Nueva clave WiFi (mínimo 8 caracteres)">
                     <Inp value={nuevaClave} onChange={e => setNuevaClave(e.target.value)} placeholder="Ej: MiClave2024" type="text" />
                   </Field>
                   {nuevaClave.length > 0 && nuevaClave.length < 8 && (
-                    <div style={{ color: "#f59e0b", fontSize: 12, marginBottom: 8 }}>⚠️ La clave debe tener mínimo 8 caracteres</div>
+                    <div style={{ color: GC.warning, fontSize: 12, marginBottom: 8 }}>⚠️ La clave debe tener mínimo 8 caracteres</div>
                   )}
                   <Btn onClick={solicitarCambioWifi} disabled={nuevaClave.length < 8} style={{ width: "100%", fontSize: 14 }}>🔑 Guardar nueva clave WiFi</Btn>
                 </div>
@@ -1167,28 +1249,28 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
           {/* NIVEL 3: Solicitudes (traslado, reubicación, instalación) */}
           {seleccion && seleccion.categoria === "solicitudes" && seleccion.id !== "cambio_clave_wifi" && (
             <div>
-              <button onClick={() => setSeleccion(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
+              <button onClick={() => setSeleccion(null)} style={{ background: "transparent", border: "none", color: GC.info, cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                 <span style={{ fontSize: 24 }}>{seleccion.emoji}</span>
-                <h3 style={{ color: "#0f172a", margin: 0, fontSize: 16 }}>{seleccion.label}</h3>
+                <h3 style={{ color: GC.ink, margin: 0, fontSize: 16 }}>{seleccion.label}</h3>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
                 {(PASOS[seleccion.id] || []).map((paso, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, background: "#e2e8f0", borderRadius: 12, padding: "10px 14px", alignItems: "flex-start" }}>
-                    <span style={{ background: "#8b5cf6", color: "#fff", borderRadius: "50%", width: 22, height: 22, minWidth: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
-                    <span style={{ color: "#475569", fontSize: 13, lineHeight: 1.5 }}>{paso}</span>
+                  <div key={i} style={{ display: "flex", gap: 10, background: GC.bg3, borderRadius: 12, padding: "10px 14px", alignItems: "flex-start" }}>
+                    <span style={{ background: GC.purple, color: "#fff", borderRadius: "50%", width: 22, height: 22, minWidth: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
+                    <span style={{ color: GC.ink2, fontSize: 13, lineHeight: 1.5 }}>{paso}</span>
                   </div>
                 ))}
               </div>
               {reportado ? (
                 <div style={{ background: "#22c55e22", border: "1px solid #22c55e44", borderRadius: 12, padding: 16, textAlign: "center" }}>
                   <div style={{ fontSize: 26, marginBottom: 6 }}>✅</div>
-                  <div style={{ fontWeight: 700, color: "#22c55e" }}>¡Solicitud enviada!</div>
-                  <div style={{ color: "#475569", fontSize: 13, marginTop: 4 }}>El equipo te contactará pronto para coordinar.</div>
+                  <div style={{ fontWeight: 700, color: GC.brand }}>¡Solicitud enviada!</div>
+                  <div style={{ color: GC.ink2, fontSize: 13, marginTop: 4 }}>El equipo te contactará pronto para coordinar.</div>
                   <Btn onClick={resetChat} style={{ marginTop: 12, fontSize: 13 }}>Ver mis solicitudes</Btn>
                 </div>
               ) : (
-                <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 12, padding: 14, textAlign: "center" }}>
+                <div style={{ background: "#ffffff", border: "1px solid " + GC.border2, borderRadius: 12, padding: 14, textAlign: "center" }}>
                   <Btn variant="purple" onClick={() => crearTicket()} style={{ width: "100%", fontSize: 14 }}>{seleccion.emoji} Enviar solicitud</Btn>
                 </div>
               )}
@@ -1198,30 +1280,30 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
           {/* NIVEL 3: Reportes de problemas técnicos */}
           {seleccion && seleccion.categoria === "reportes" && seleccion.id !== "pago" && (
             <div>
-              <button onClick={() => { setSeleccion(null); setReportado(false); }} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
+              <button onClick={() => { setSeleccion(null); setReportado(false); }} style={{ background: "transparent", border: "none", color: GC.info, cursor: "pointer", fontSize: 14, padding: 0, marginBottom: 14 }}>← Volver</button>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                 <span style={{ fontSize: 24 }}>{seleccion.emoji}</span>
-                <h3 style={{ color: "#0f172a", margin: 0, fontSize: 16 }}>{seleccion.label}</h3>
+                <h3 style={{ color: GC.ink, margin: 0, fontSize: 16 }}>{seleccion.label}</h3>
               </div>
-              <p style={{ color: "#475569", fontSize: 13, marginBottom: 12 }}>Intenta estos pasos primero:</p>
+              <p style={{ color: GC.ink2, fontSize: 13, marginBottom: 12 }}>Intenta estos pasos primero:</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
                 {(PASOS[seleccion.id] || []).map((paso, i) => (
-                  <div key={i} style={{ display: "flex", gap: 10, background: "#e2e8f0", borderRadius: 12, padding: "10px 14px", alignItems: "flex-start" }}>
-                    <span style={{ background: "#0ea5e9", color: "#fff", borderRadius: "50%", width: 22, height: 22, minWidth: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
-                    <span style={{ color: "#475569", fontSize: 13, lineHeight: 1.5 }}>{paso}</span>
+                  <div key={i} style={{ display: "flex", gap: 10, background: GC.bg3, borderRadius: 12, padding: "10px 14px", alignItems: "flex-start" }}>
+                    <span style={{ background: GC.info, color: "#fff", borderRadius: "50%", width: 22, height: 22, minWidth: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800 }}>{i + 1}</span>
+                    <span style={{ color: GC.ink2, fontSize: 13, lineHeight: 1.5 }}>{paso}</span>
                   </div>
                 ))}
               </div>
               {reportado ? (
                 <div style={{ background: "#22c55e22", border: "1px solid #22c55e44", borderRadius: 12, padding: 16, textAlign: "center" }}>
                   <div style={{ fontSize: 26, marginBottom: 6 }}>✅</div>
-                  <div style={{ fontWeight: 700, color: "#22c55e" }}>¡Reporte enviado!</div>
-                  <div style={{ color: "#475569", fontSize: 13, marginTop: 4 }}>El equipo te responderá pronto.</div>
+                  <div style={{ fontWeight: 700, color: GC.brand }}>¡Reporte enviado!</div>
+                  <div style={{ color: GC.ink2, fontSize: 13, marginTop: 4 }}>El equipo te responderá pronto.</div>
                   <Btn onClick={resetChat} style={{ marginTop: 12, fontSize: 13 }}>Ver mis reportes</Btn>
                 </div>
               ) : (
-                <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 12, padding: 14, textAlign: "center" }}>
-                  <p style={{ color: "#64748b", fontSize: 13, margin: "0 0 10px" }}>¿No se resolvió?</p>
+                <div style={{ background: "#ffffff", border: "1px solid " + GC.border2, borderRadius: 12, padding: 14, textAlign: "center" }}>
+                  <p style={{ color: GC.ink3, fontSize: 13, margin: "0 0 10px" }}>¿No se resolvió?</p>
                   <Btn variant="danger" onClick={() => crearTicket()} style={{ width: "100%", fontSize: 14 }}>📢 Reportar falla al soporte</Btn>
                 </div>
               )}
@@ -1451,14 +1533,14 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
     return (
       <div style={{ maxWidth: 700, margin: "0 auto", padding: 16 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
-          <button onClick={() => setTicketAbierto(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0 }}>← Tickets</button>
+          <button onClick={() => setTicketAbierto(null)} style={{ background: "transparent", border: "none", color: GC.info, cursor: "pointer", fontSize: 14, padding: 0 }}>← Tickets</button>
           <div style={{ flex: 1 }} />
           <Sel style={{ width: "auto" }} value={t.estado} onChange={e => cambiarEstadoTicket(t.id, e.target.value)}>
             <option>Abierto</option><option>En proceso</option><option>Resuelto</option>
           </Sel>
           {!t.ordenId && <Btn onClick={() => { setModalOrden(t); setTicketAbierto(null); }} style={{ fontSize: 13, padding: "7px 14px" }}>🔧 Crear orden</Btn>}
         </div>
-        <div style={{ background: "#ffffff", border: "1px solid #1e293b", borderRadius: 14, overflow: "hidden", height: 500 }}>
+        <div style={{ background: "#ffffff", border: "1px solid " + GC.border, borderRadius: 14, overflow: "hidden", height: 500 }}>
           <ChatTicket ticket={t} onSend={enviarMsg} autorActual={usuario.id} nombreActual={usuario.nombre} usuarios={usuarios} />
         </div>
       </div>
@@ -1467,22 +1549,22 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
 
   const TabTickets = ({ lista, titulo }) => (
     <div style={{ marginBottom: 20 }}>
-      <div style={{ color: "#64748b", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>{titulo} ({lista.length})</div>
-      {lista.length === 0 ? <div style={{ color: "#475569", fontSize: 13, padding: "10px 0" }}>Sin tickets</div> : lista.map(t => {
+      <div style={{ color: GC.ink3, fontSize: 12, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>{titulo} ({lista.length})</div>
+      {lista.length === 0 ? <div style={{ color: GC.ink2, fontSize: 13, padding: "10px 0" }}>Sin tickets</div> : lista.map(t => {
         const ult = t.mensajes[t.mensajes.length - 1];
         const opcion = ALL_OPCIONES.find(p => p.id === t.tipo);
         return (
           <div key={t.id} onClick={() => setTicketAbierto(t.id)} style={{ background: "#ffffff", border: "1px solid " + (t.prioridad === "alta" ? "#8b5cf644" : "#e2e8f0"), borderLeft: "4px solid " + (t.prioridad === "alta" ? "#8b5cf6" : TICKET_COLOR[t.estado]), borderRadius: 12, padding: "11px 14px", cursor: "pointer", marginBottom: 8 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span>{opcion?.emoji || "🔧"}</span>
-              {t.numero && <span style={{ fontSize: 11, color: "#64748b", fontWeight: 700, background: "#e2e8f0", borderRadius: 6, padding: "1px 7px" }}>#{t.numero}</span>}
-              <span style={{ fontWeight: 700, color: "#0f172a", flex: 1, fontSize: 14 }}>{t.titulo}</span>
+              {t.numero && <span style={{ fontSize: 11, color: GC.ink3, fontWeight: 700, background: GC.bg3, borderRadius: 6, padding: "1px 7px" }}>#{t.numero}</span>}
+              <span style={{ fontWeight: 700, color: GC.ink, flex: 1, fontSize: 14 }}>{t.titulo}</span>
               {t.categoria === "solicitudes" && <Badge text="📋 Solicitud" color="#0ea5e9" />}
               {t.prioridad === "alta" && <Badge text="🏢 PRIORIDAD" color="#8b5cf6" />}
               <Badge text={t.estado} color={TICKET_COLOR[t.estado]} />
             </div>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{t.clienteNombre} · {formatTime(t.fechaCreacion)}</div>
-            <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>{ult?.texto?.slice(0, 60)}{(ult?.texto?.length || 0) > 60 ? "..." : ""}</div>
+            <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>{t.clienteNombre} · {formatTime(t.fechaCreacion)}</div>
+            <div style={{ fontSize: 12, color: GC.ink2, marginTop: 3 }}>{ult?.texto?.slice(0, 60)}{(ult?.texto?.length || 0) > 60 ? "..." : ""}</div>
           </div>
         );
       })}
@@ -1495,7 +1577,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
         <div style={{ background: zonaSecretario.color + "15", border: "1px solid " + zonaSecretario.color + "33", borderRadius: 10, padding: "8px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
           <span>📍</span>
           <span style={{ color: zonaSecretario.color, fontSize: 13, fontWeight: 700 }}>Zona: {zonaSecretario.nombre}</span>
-          <span style={{ color: "#64748b", fontSize: 12 }}>· Solo ves clientes y técnicos de tu zona</span>
+          <span style={{ color: GC.ink3, fontSize: 12 }}>· Solo ves clientes y técnicos de tu zona</span>
         </div>
       )}
       {/* Título sección activa */}
@@ -1507,8 +1589,8 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
         return (
           <div style={{ marginBottom: 20, paddingBottom: 12, borderBottom: "2px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 22 }}>{emoji}</span>
-            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0f172a" }}>{titulo}</h2>
-            {tab === "tickets" && pendientes.length > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{pendientes.length} nuevos</span>}
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: GC.ink }}>{titulo}</h2>
+            {tab === "tickets" && pendientes.length > 0 && <span style={{ background: GC.danger, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{pendientes.length} nuevos</span>}
           </div>
         );
       })()}
@@ -1524,7 +1606,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
               style={{ flex: 1 }}
             />
             {busqTicket && (
-              <button onClick={() => setBusqTicket("")} style={{ background: "#e2e8f0", color: "#64748b", border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>
+              <button onClick={() => setBusqTicket("")} style={{ background: GC.bg3, color: GC.ink3, border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>
             )}
           </div>
           {(() => {
@@ -1559,7 +1641,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
         <div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
             <Inp placeholder="🔍  Buscar..." value={busqCliente} onChange={e => setBusqCliente(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-            {busqCliente && <button onClick={() => setBusqCliente("")} style={{ background: "#334155", color: "#475569", border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
+            {busqCliente && <button onClick={() => setBusqCliente("")} style={{ background: GC.ink2, color: GC.ink2, border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
             <Sel value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)} style={{ width: "auto", minWidth: 130 }}>
               <option value="todos">Todos</option>
               <option value="final">Solo finales</option>
@@ -1568,13 +1650,13 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             </Sel>
             <Btn onClick={() => { setEditCliente(emptyCliente); setShowFormCliente(true); }} style={{ fontSize: 13 }}>+ Nuevo</Btn>
           </div>
-          <div style={{ color: "#64748b", fontSize: 12, marginBottom: 10 }}>{clientesFiltrados.length} de {clientes.length} clientes</div>
+          <div style={{ color: GC.ink3, fontSize: 12, marginBottom: 10 }}>{clientesFiltrados.length} de {clientes.length} clientes</div>
           {showFormCliente && editCliente && (
             <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && (setShowFormCliente(false), setEditCliente(null))}>
             <div style={{ background: "#ffffff", borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{editCliente.id ? "✏️ Editar cliente" : "➕ Nuevo cliente"} — Zona: {zonaSecretario?.nombre}</h3>
-              <button onClick={() => { setShowFormCliente(false); setEditCliente(null); }} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: 20, color: "#64748b" }}>×</button>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: GC.ink }}>{editCliente.id ? "✏️ Editar cliente" : "➕ Nuevo cliente"} — Zona: {zonaSecretario?.nombre}</h3>
+              <button onClick={() => { setShowFormCliente(false); setEditCliente(null); }} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: 20, color: GC.ink3 }}>×</button>
             </div>
             <div style={{ padding: 20 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
@@ -1602,7 +1684,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                       <option key={p.id} value={p.id}>{p.nombre} · {formatCOP(p.precio)}</option>
                     ))}
                   </Sel>
-                  {editCliente.plan && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4 }}>✓ Plan seleccionado: <strong>{editCliente.plan}</strong></div>}
+                  {editCliente.plan && <div style={{ fontSize: 11, color: GC.brand, marginTop: 4 }}>✓ Plan seleccionado: <strong>{editCliente.plan}</strong></div>}
                 </Field>
                 
                 <Field label="Perfil de pago">
@@ -1614,7 +1696,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   </Sel>
                   {editCliente.perfilPagoId && (() => {
                     const pf = perfilesPago.find(x => x.id === editCliente.perfilPagoId);
-                    return pf ? <div style={{ fontSize: 11, color: "#0ea5e9", marginTop: 4 }}>📅 Paga entre el día {pf.diaInicio} y {pf.diaFin} de cada mes</div> : null;
+                    return pf ? <div style={{ fontSize: 11, color: GC.info, marginTop: 4 }}>📅 Paga entre el día {pf.diaInicio} y {pf.diaFin} de cada mes</div> : null;
                   })()}
                 </Field>
                 <Field label="Estado de cuenta">
@@ -1636,24 +1718,24 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             {clientesFiltrados.map(c => (
               <div key={c.id} style={{ background: "#ffffff", border: "1px solid " + (c.tipo === "empresa" ? "#8b5cf633" : "#e2e8f0"), borderLeft: "4px solid " + (c.tipo === "empresa" ? "#8b5cf6" : "#0ea5e9"), borderRadius: 12, padding: "12px 16px", opacity: c.activo ? 1 : 0.5, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 150 }}>
-                  <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
                     {c.nombre}
                     {c.tipo === "empresa" && <Badge text="🏢 Empresa" color="#8b5cf6" />}
                   </div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>@{c.usuario} · CC/NIT: {c.cedula}</div>
-                  {c.telefono && <div style={{ fontSize: 11, color: "#0ea5e9" }}>📞 {c.telefono}</div>}
-                  {c.direccion && <div style={{ fontSize: 11, color: "#64748b" }}>📍 {c.direccion}</div>}
-                  {c.claveWifi && <div style={{ fontSize: 11, color: "#0ea5e9" }}>🔑 WiFi: {c.claveWifi}</div>}
-                  {c.perfilPagoId && (() => { const pf = perfilesPago.find(x => x.id === c.perfilPagoId); return pf ? <div style={{ fontSize: 11, color: "#8b5cf6" }}>📅 {pf.nombre} (días {pf.diaInicio}-{pf.diaFin})</div> : null; })()}
+                  <div style={{ fontSize: 12, color: GC.ink3 }}>@{c.usuario} · CC/NIT: {c.cedula}</div>
+                  {c.telefono && <div style={{ fontSize: 11, color: GC.info }}>📞 {c.telefono}</div>}
+                  {c.direccion && <div style={{ fontSize: 11, color: GC.ink3 }}>📍 {c.direccion}</div>}
+                  {c.claveWifi && <div style={{ fontSize: 11, color: GC.info }}>🔑 WiFi: {c.claveWifi}</div>}
+                  {c.perfilPagoId && (() => { const pf = perfilesPago.find(x => x.id === c.perfilPagoId); return pf ? <div style={{ fontSize: 11, color: GC.purple }}>📅 {pf.nombre} (días {pf.diaInicio}-{pf.diaFin})</div> : null; })()}
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 700, color: "#0ea5e9", fontSize: 14 }}>{c.monto ? formatCOP(c.monto) : "—"}</div>
-                  <div style={{ fontSize: 11, color: "#64748b" }}>{c.plan}</div>
+                  <div style={{ fontWeight: 700, color: GC.info, fontSize: 14 }}>{c.monto ? formatCOP(c.monto) : "—"}</div>
+                  <div style={{ fontSize: 11, color: GC.ink3 }}>{c.plan}</div>
                 </div>
                 {c.estado && <Badge text={c.estado} color={ESTADO_COLOR[c.estado] || "#64748b"} />}
                 <div style={{ display: "flex", gap: 6 }}>
                   <button onClick={() => toggleCliente(c.id)} style={{ background: c.activo ? "#f0fdf4" : "#f1f5f9", color: c.activo ? "#16a34a" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{c.activo ? "Activo" : "Inactivo"}</button>
-                  <button onClick={() => { setEditCliente(c); setShowFormCliente(true); }} style={{ background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                  <button onClick={() => { setEditCliente(c); setShowFormCliente(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
                   <button title="Cambiar clave" onClick={async () => {
                     const nuevaClave = prompt(`Nueva clave para ${c.nombre}:`);
                     if (!nuevaClave || nuevaClave.length < 4) { alert("La clave debe tener al menos 4 caracteres."); return; }
@@ -1662,8 +1744,8 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                       setUsuarios(p => p.map(u => u.id === c.id ? { ...u, clave: nuevaClave.trim() } : u));
                       alert(`✅ Clave actualizada para ${c.nombre}`);
                     } catch (err) { alert("Error al cambiar clave: " + err.message); }
-                  }} style={{ background: "#f1f5f9", color: "#0ea5e9", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🔑</button>
-                  <button onClick={() => setConfirmElimSecretario({ accion: () => deleteCliente(c.id), titulo: "¿Eliminar cliente?", mensaje: `Se eliminará a "${c.nombre}" del sistema.` })} style={{ background: "#f1f5f9", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                  }} style={{ background: GC.bg3, color: GC.info, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🔑</button>
+                  <button onClick={() => setConfirmElimSecretario({ accion: () => deleteCliente(c.id), titulo: "¿Eliminar cliente?", mensaje: `Se eliminará a "${c.nombre}" del sistema.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                 </div>
               </div>
             ))}
@@ -1678,12 +1760,12 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       {tab === "avisos" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ color: "#475569", fontSize: 14 }}>{avisos.length} avisos</span>
+            <span style={{ color: GC.ink2, fontSize: 14 }}>{avisos.length} avisos</span>
             <Btn onClick={() => { setEditAviso({ ...emptyAviso, id: genId() }); setShowFormAviso(true); }} style={{ fontSize: 13 }}>+ Nuevo aviso</Btn>
           </div>
           {showFormAviso && editAviso && (
-            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>Nuevo aviso general</h3>
+            <div style={{ background: "#ffffff", border: "1px solid " + GC.border2, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ color: GC.ink, marginTop: 0, marginBottom: 16, fontSize: 15 }}>Nuevo aviso general</h3>
               <Field label="Tipo">
                 <Sel value={editAviso.tipo} onChange={e => setEditAviso({ ...editAviso, tipo: e.target.value })}>
                   <option>Información</option><option>Mantenimiento</option><option>Falla</option>
@@ -1691,7 +1773,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
               </Field>
               <Field label="Título"><Inp value={editAviso.titulo} onChange={e => setEditAviso({ ...editAviso, titulo: e.target.value })} /></Field>
               <Field label="Mensaje">
-                <textarea value={editAviso.mensaje} onChange={e => setEditAviso({ ...editAviso, mensaje: e.target.value })} style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
+                <textarea value={editAviso.mensaje} onChange={e => setEditAviso({ ...editAviso, mensaje: e.target.value })} style={{ background: GC.bg2, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
               </Field>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
                 <Field label="Afecta">
@@ -1712,11 +1794,11 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
               <div key={a.id} style={{ background: "#ffffff", border: "1px solid " + TIPO_COLOR[a.tipo] + "33", borderLeft: "4px solid " + TIPO_COLOR[a.tipo], borderRadius: 12, padding: "12px 16px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <Badge text={a.tipo} color={TIPO_COLOR[a.tipo]} />
-                  <span style={{ fontWeight: 700, color: "#0f172a", flex: 1 }}>{a.titulo}</span>
+                  <span style={{ fontWeight: 700, color: GC.ink, flex: 1 }}>{a.titulo}</span>
                   <button onClick={() => toggleAviso(a.id)} style={{ background: a.activo ? "#22c55e22" : "#e2e8f0", color: a.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 20, padding: "3px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{a.activo ? "Activo" : "Inactivo"}</button>
-                  <button onClick={() => setConfirmElimSecretario({ accion: () => deleteAviso(a.id), titulo: "¿Eliminar aviso?", mensaje: `Se eliminará el aviso "${a.titulo}".` })} style={{ background: "transparent", color: "#ef4444", border: "none", cursor: "pointer", fontSize: 16 }}>🗑️</button>
+                  <button onClick={() => setConfirmElimSecretario({ accion: () => deleteAviso(a.id), titulo: "¿Eliminar aviso?", mensaje: `Se eliminará el aviso "${a.titulo}".` })} style={{ background: "transparent", color: GC.danger, border: "none", cursor: "pointer", fontSize: 16 }}>🗑️</button>
                 </div>
-                <p style={{ margin: "6px 0 0", color: "#475569", fontSize: 13 }}>{a.mensaje}</p>
+                <p style={{ margin: "6px 0 0", color: GC.ink2, fontSize: 13 }}>{a.mensaje}</p>
               </div>
             ))}
           </div>
@@ -1725,12 +1807,12 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
 
       {tab === "promo" && (
         <div>
-          <div style={{ background: "#e2e8f0", borderRadius: 10, padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ background: GC.bg3, borderRadius: 10, padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
             <span>👁️</span>
-            <span style={{ color: "#475569", fontSize: 13 }}>Vista previa de las promociones visibles para los clientes. Solo el administrador puede editar este contenido.</span>
+            <span style={{ color: GC.ink2, fontSize: 13 }}>Vista previa de las promociones visibles para los clientes. Solo el administrador puede editar este contenido.</span>
           </div>
           {propaganda.filter(p => p.activo).length === 0 ? (
-            <div style={{ textAlign: "center", color: "#64748b", padding: 40, fontSize: 14 }}>Sin promociones activas.</div>
+            <div style={{ textAlign: "center", color: GC.ink3, padding: 40, fontSize: 14 }}>Sin promociones activas.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {propaganda.filter(p => p.activo).map(p => (
@@ -1738,12 +1820,12 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                     <span style={{ fontSize: 28 }}>{p.imagen}</span>
                     <div>
-                      <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>{p.titulo}</div>
+                      <div style={{ fontWeight: 800, color: GC.ink, fontSize: 15 }}>{p.titulo}</div>
                       <Badge text={p.categoria === "promocion" ? "🏷️ Promoción" : p.categoria === "equipos" ? "🖥️ Equipos" : "📷 Cámaras"} color={p.color} />
                     </div>
                   </div>
-                  <p style={{ color: "#475569", fontSize: 14, margin: 0, lineHeight: 1.6 }}>{p.descripcion}</p>
-                  {p.fecha && <div style={{ fontSize: 11, color: "#64748b", marginTop: 8 }}>⏳ Válido hasta: {formatDate(p.fecha)}</div>}
+                  <p style={{ color: GC.ink2, fontSize: 14, margin: 0, lineHeight: 1.6 }}>{p.descripcion}</p>
+                  {p.fecha && <div style={{ fontSize: 11, color: GC.ink3, marginTop: 8 }}>⏳ Válido hasta: {formatDate(p.fecha)}</div>}
                 </div>
               ))}
             </div>
@@ -1754,16 +1836,16 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       {/* Modal crear orden desde ticket */}
       {modalOrden && (
         <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => { if (e.target === e.currentTarget) setModalOrden(null); }}>
-          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
-            <button onClick={() => setModalOrden(null)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>×</button>
-            <h3 style={{ color: "#0f172a", margin: "0 0 16px", fontSize: 16 }}>🔧 Crear orden de trabajo</h3>
-            <div style={{ background: "#e2e8f0", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
-              <div style={{ fontWeight: 600, color: "#0f172a", fontSize: 14 }}>{modalOrden.titulo}</div>
-              <div style={{ fontSize: 12, color: "#64748b" }}>Cliente: {modalOrden.clienteNombre}</div>
+          <div style={{ background: "#ffffff", border: "1px solid " + GC.border, borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
+            <button onClick={() => setModalOrden(null)} style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>×</button>
+            <h3 style={{ color: GC.ink, margin: "0 0 16px", fontSize: 16 }}>🔧 Crear orden de trabajo</h3>
+            <div style={{ background: GC.bg3, borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+              <div style={{ fontWeight: 600, color: GC.ink, fontSize: 14 }}>{modalOrden.titulo}</div>
+              <div style={{ fontSize: 12, color: GC.ink3 }}>Cliente: {modalOrden.clienteNombre}</div>
               {(() => { const c = usuarios.find(u => u.id === modalOrden.clienteId); return c ? (
                 <div style={{ marginTop: 6, display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  {c.telefono && <span style={{ fontSize: 12, color: "#0ea5e9" }}>📞 {c.telefono}</span>}
-                  {c.direccion && <span style={{ fontSize: 12, color: "#475569" }}>📍 {c.direccion}</span>}
+                  {c.telefono && <span style={{ fontSize: 12, color: GC.info }}>📞 {c.telefono}</span>}
+                  {c.direccion && <span style={{ fontSize: 12, color: GC.ink2 }}>📍 {c.direccion}</span>}
                 </div>
               ) : null; })()}
             </div>
@@ -1779,13 +1861,13 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             )}
             {nuevaOrden.tipo === "Traslado / cambio de domicilio" && (
               <div style={{ background: "#f59e0b11", border: "1px solid #f59e0b33", borderRadius: 12, padding: 14, marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700, marginBottom: 10 }}>🏠 Nueva dirección de destino</div>
-                {(() => { const c = usuarios.find(u => u.id === modalOrden.clienteId); return c?.direccion ? <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>Dir. actual: {c.direccion}</div> : null; })()}
+                <div style={{ fontSize: 12, color: GC.warning, fontWeight: 700, marginBottom: 10 }}>🏠 Nueva dirección de destino</div>
+                {(() => { const c = usuarios.find(u => u.id === modalOrden.clienteId); return c?.direccion ? <div style={{ fontSize: 12, color: GC.ink2, marginBottom: 8 }}>Dir. actual: {c.direccion}</div> : null; })()}
                 <Inp value={nuevaOrden.nuevaDireccionTraslado || ""} onChange={e => setNuevaOrden({ ...nuevaOrden, nuevaDireccionTraslado: e.target.value })} placeholder="Nueva dirección a donde se traslada el cliente" />
               </div>
             )}
             <Field label="Descripción / instrucciones">
-              <textarea value={nuevaOrden.descripcion} onChange={e => setNuevaOrden({ ...nuevaOrden, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
+              <textarea value={nuevaOrden.descripcion} onChange={e => setNuevaOrden({ ...nuevaOrden, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: GC.bg2, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
             </Field>
             <Field label={`Asignar técnico · Zona: ${zonaSecretario?.nombre || ""}`}>
               <Sel value={nuevaOrden.tecnicoId} onChange={e => setNuevaOrden({ ...nuevaOrden, tecnicoId: e.target.value })}>
@@ -1808,10 +1890,10 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       {/* Modal orden manual */}
       {showModalOrdenManual && (
         <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => { if (e.target === e.currentTarget) { setShowModalOrdenManual(false); setErroresOrdenManual({}); } }}>
-          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 24, width: "100%", maxWidth: 500, maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
-            <button onClick={() => { setShowModalOrdenManual(false); setErroresOrdenManual({}); }} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>×</button>
-            <h3 style={{ color: "#0f172a", margin: "0 0 4px", fontSize: 16 }}>➕ Nueva orden manual</h3>
-            <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 16px" }}>Asigna una orden sin necesidad de que exista un ticket</p>
+          <div style={{ background: "#ffffff", border: "1px solid " + GC.border, borderRadius: 16, padding: 24, width: "100%", maxWidth: 500, maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
+            <button onClick={() => { setShowModalOrdenManual(false); setErroresOrdenManual({}); }} style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>×</button>
+            <h3 style={{ color: GC.ink, margin: "0 0 4px", fontSize: 16 }}>➕ Nueva orden manual</h3>
+            <p style={{ color: GC.ink3, fontSize: 12, margin: "0 0 16px" }}>Asigna una orden sin necesidad de que exista un ticket</p>
 
             <Field label="Tipo de orden">
               <Sel value={ordenManual.tipo} onChange={e => setOrdenManual({ ...ordenManual, tipo: e.target.value })}>
@@ -1827,19 +1909,19 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             {/* INSTALACIÓN NUEVA: datos del nuevo cliente */}
             {ordenManual.tipo === "Instalación nueva" ? (
               <div style={{ background: "#0ea5e911", border: "1px solid #0ea5e933", borderRadius: 12, padding: 14, marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: "#0ea5e9", fontWeight: 700, marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.8 }}>📋 Datos del nuevo cliente</div>
+                <div style={{ fontSize: 12, color: GC.info, fontWeight: 700, marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.8 }}>📋 Datos del nuevo cliente</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
                   <Field label="Nombre completo *">
                     <Inp value={ordenManual.nuevoNombre} onChange={e => setOrdenManual({ ...ordenManual, nuevoNombre: e.target.value })} placeholder="Nombres y apellidos" style={{ borderColor: erroresOrdenManual.nuevoNombre ? "#ef4444" : undefined }} />
-                    {erroresOrdenManual.nuevoNombre && <div style={{ color: "#ef4444", fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
+                    {erroresOrdenManual.nuevoNombre && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
                   </Field>
                   <Field label="N° de cédula *">
                     <Inp value={ordenManual.nuevaCedula} onChange={e => setOrdenManual({ ...ordenManual, nuevaCedula: e.target.value })} placeholder="Ej: 1234567890" style={{ borderColor: erroresOrdenManual.nuevaCedula ? "#ef4444" : undefined }} />
-                    {erroresOrdenManual.nuevaCedula && <div style={{ color: "#ef4444", fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
+                    {erroresOrdenManual.nuevaCedula && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
                   </Field>
                   <Field label="N° de teléfono *">
                     <Inp value={ordenManual.nuevoTelefono} onChange={e => setOrdenManual({ ...ordenManual, nuevoTelefono: e.target.value })} placeholder="Ej: 3001234567" style={{ borderColor: erroresOrdenManual.nuevoTelefono ? "#ef4444" : undefined }} />
-                    {erroresOrdenManual.nuevoTelefono && <div style={{ color: "#ef4444", fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
+                    {erroresOrdenManual.nuevoTelefono && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
                   </Field>
                   <Field label="Correo electrónico (opcional)">
                     <Inp type="email" value={ordenManual.nuevoCorreo} onChange={e => setOrdenManual({ ...ordenManual, nuevoCorreo: e.target.value })} placeholder="correo@ejemplo.com" />
@@ -1847,9 +1929,9 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 </div>
                 <Field label="Dirección de instalación *">
                   <Inp value={ordenManual.nuevaDireccion} onChange={e => setOrdenManual({ ...ordenManual, nuevaDireccion: e.target.value })} placeholder="Calle / Carrera, barrio, municipio" style={{ borderColor: erroresOrdenManual.nuevaDireccion ? "#ef4444" : undefined }} />
-                  {erroresOrdenManual.nuevaDireccion && <div style={{ color: "#ef4444", fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
+                  {erroresOrdenManual.nuevaDireccion && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
                 </Field>
-                <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>* Campos obligatorios · El correo electrónico es opcional</div>
+                <div style={{ fontSize: 11, color: GC.ink3, marginTop: 4 }}>* Campos obligatorios · El correo electrónico es opcional</div>
               </div>
             ) : (
               /* OTROS TIPOS: seleccionar cliente existente */
@@ -1860,17 +1942,17 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   onChange={id => setOrdenManual({ ...ordenManual, clienteExistente: id })}
                   error={erroresOrdenManual.clienteExistente}
                 />
-                {erroresOrdenManual.clienteExistente && <div style={{ color: "#ef4444", fontSize: 11, marginTop: 3 }}>Debes seleccionar un cliente</div>}
+                {erroresOrdenManual.clienteExistente && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Debes seleccionar un cliente</div>}
               </Field>
             )}
 
             {/* Campo nueva dirección para traslados */}
             {ordenManual.tipo === "Traslado / cambio de domicilio" && (
               <div style={{ background: "#f59e0b11", border: "1px solid #f59e0b33", borderRadius: 12, padding: 14, marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>🏠 Traslado de domicilio</div>
+                <div style={{ fontSize: 12, color: GC.warning, fontWeight: 700, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>🏠 Traslado de domicilio</div>
                 {ordenManual.clienteExistente && (() => {
                   const c = usuarios.find(u => u.id === ordenManual.clienteExistente);
-                  return c?.direccion ? <div style={{ fontSize: 12, color: "#475569", marginBottom: 10 }}>📍 Dirección actual: <span style={{ color: "#0f172a" }}>{c.direccion}</span></div> : null;
+                  return c?.direccion ? <div style={{ fontSize: 12, color: GC.ink2, marginBottom: 10 }}>📍 Dirección actual: <span style={{ color: GC.ink }}>{c.direccion}</span></div> : null;
                 })()}
                 <Field label="Nueva dirección de destino *">
                   <Inp value={ordenManual.nuevaDireccionTraslado || ""} onChange={e => setOrdenManual({ ...ordenManual, nuevaDireccionTraslado: e.target.value })} placeholder="Calle / Carrera, barrio, municipio del nuevo domicilio" />
@@ -1879,14 +1961,14 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             )}
 
             <Field label="Descripción / instrucciones">
-              <textarea value={ordenManual.descripcion} onChange={e => setOrdenManual({ ...ordenManual, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 60, resize: "vertical" }} />
+              <textarea value={ordenManual.descripcion} onChange={e => setOrdenManual({ ...ordenManual, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: GC.bg2, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 60, resize: "vertical" }} />
             </Field>
             <Field label={`Asignar técnico · Zona: ${zonaSecretario?.nombre || ""}`}>
               <Sel value={ordenManual.tecnicoId} onChange={e => setOrdenManual({ ...ordenManual, tecnicoId: e.target.value })} style={{ borderColor: erroresOrdenManual.tecnicoId ? "#ef4444" : undefined }}>
                 <option value="">— Seleccionar técnico —</option>
                 {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
               </Sel>
-              {erroresOrdenManual.tecnicoId && <div style={{ color: "#ef4444", fontSize: 11, marginTop: 3 }}>Debes asignar un técnico</div>}
+              {erroresOrdenManual.tecnicoId && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Debes asignar un técnico</div>}
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
               <Field label="Fecha"><Inp type="date" value={ordenManual.fecha} onChange={e => setOrdenManual({ ...ordenManual, fecha: e.target.value })} /></Field>
@@ -1942,16 +2024,16 @@ function ClienteBuscador({ clientes, value, onChange, error, placeholder = "🔍
     <div ref={ref} style={{ position: "relative" }}>
       {/* Campo de búsqueda / cliente seleccionado */}
       {seleccionado ? (
-        <div style={{ background: "#f0fdf4", border: "1px solid " + (error ? "#ef4444" : "#86efac"), borderRadius: 8, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ background: GC.brandLight, border: "1px solid " + (error ? "#ef4444" : "#86efac"), borderRadius: 8, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>✅ {seleccionado.nombre}</div>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2, display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>✅ {seleccionado.nombre}</div>
+            <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2, display: "flex", gap: 12, flexWrap: "wrap" }}>
               <span>CC: {seleccionado.cedula || "—"}</span>
               {seleccionado.telefono && <span>📞 {seleccionado.telefono}</span>}
               {seleccionado.direccion && <span>📍 {seleccionado.direccion}</span>}
             </div>
           </div>
-          <button onClick={limpiar} style={{ background: "#e2e8f0", border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 13, color: "#64748b", flexShrink: 0 }}>
+          <button onClick={limpiar} style={{ background: GC.bg3, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 13, color: GC.ink3, flexShrink: 0 }}>
             ✕ Cambiar
           </button>
         </div>
@@ -1967,13 +2049,13 @@ function ClienteBuscador({ clientes, value, onChange, error, placeholder = "🔍
 
       {/* Dropdown resultados */}
       {abierto && !seleccionado && (
-        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, boxShadow: "0 8px 24px #00000018", zIndex: 9999, maxHeight: 280, overflowY: "auto", marginTop: 4 }}>
+        <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid " + GC.border, borderRadius: 10, boxShadow: "0 8px 24px #00000018", zIndex: 9999, maxHeight: 280, overflowY: "auto", marginTop: 4 }}>
           {busq.length < 1 ? (
-            <div style={{ padding: "12px 14px", fontSize: 13, color: "#94a3b8", textAlign: "center" }}>
+            <div style={{ padding: "12px 14px", fontSize: 13, color: GC.ink4, textAlign: "center" }}>
               Escribe nombre, cédula o teléfono para buscar...
             </div>
           ) : resultados.length === 0 ? (
-            <div style={{ padding: "12px 14px", fontSize: 13, color: "#94a3b8", textAlign: "center" }}>
+            <div style={{ padding: "12px 14px", fontSize: 13, color: GC.ink4, textAlign: "center" }}>
               Sin resultados para "<strong>{busq}</strong>"
             </div>
           ) : (
@@ -1985,8 +2067,8 @@ function ClienteBuscador({ clientes, value, onChange, error, placeholder = "🔍
                 onMouseEnter={e => e.currentTarget.style.background = "#f0f9ff"}
                 onMouseLeave={e => e.currentTarget.style.background = "#fff"}
               >
-                <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{c.nombre}</div>
-                <div style={{ fontSize: 12, color: "#64748b", display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{c.nombre}</div>
+                <div style={{ fontSize: 12, color: GC.ink3, display: "flex", gap: 12, flexWrap: "wrap" }}>
                   {c.cedula && <span>CC: {c.cedula}</span>}
                   {c.telefono && <span>📞 {c.telefono}</span>}
                   {c.plan && <span>📦 {c.plan}</span>}
@@ -2025,13 +2107,13 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
     const zona = zonas.find(z => z.id === o.zonaId);
     const colorEstado = { Pendiente: "#f59e0b", "En camino": "#0ea5e9", Completada: "#22c55e", Cancelada: "#ef4444" };
     return (
-      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderLeft: `4px solid ${colorEstado[o.estado] || "#94a3b8"}`, borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
+      <div style={{ background: "#fff", border: "1px solid " + GC.border, borderLeft: `4px solid ${colorEstado[o.estado] || "#94a3b8"}`, borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: "#0f172a" }}>{o.tipo} — {o.clienteNombre}</div>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>📅 {o.fecha} {o.hora} {zona ? `· ${zona.nombre}` : ""}</div>
-            {o.direccion && <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>📍 {o.direccion}</div>}
-            {tecnico && <div style={{ fontSize: 12, color: "#8b5cf6", marginTop: 2 }}>🔧 {tecnico.nombre}</div>}
+            <div style={{ fontWeight: 700, fontSize: 14, color: GC.ink }}>{o.tipo} — {o.clienteNombre}</div>
+            <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>📅 {o.fecha} {o.hora} {zona ? `· ${zona.nombre}` : ""}</div>
+            {o.direccion && <div style={{ fontSize: 12, color: GC.ink2, marginTop: 2 }}>📍 {o.direccion}</div>}
+            {tecnico && <div style={{ fontSize: 12, color: GC.purple, marginTop: 2 }}>🔧 {tecnico.nombre}</div>}
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <span style={{ background: colorEstado[o.estado] + "22", color: colorEstado[o.estado], borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{o.estado}</span>
@@ -2064,11 +2146,11 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
           <option value="">Todos los técnicos</option>
           {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
         </Sel>
-        {(filtroFecha || filtroTecnico) && <button onClick={() => { setFiltroFecha(""); setFiltroTecnico(""); }} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 13 }}>✕ Limpiar</button>}
+        {(filtroFecha || filtroTecnico) && <button onClick={() => { setFiltroFecha(""); setFiltroTecnico(""); }} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 13 }}>✕ Limpiar</button>}
       </div>
       <div>
         {listaActual.length === 0 ? (
-          <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>Sin órdenes activas.</div>
+          <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>Sin órdenes activas.</div>
         ) : listaActual.map(o => <OrdenCardSec key={o.id} o={o} />)}
       </div>
     </div>
@@ -2121,38 +2203,38 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
       <div style={{ background: "#ffffff", border: "1px solid " + (orden.prioridad === "alta" ? "#8b5cf633" : "#e2e8f0"), borderLeft: "4px solid " + ORDEN_COLOR[orden.estado], borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
         <div onClick={() => setAbierta(!abierta)} style={{ padding: "12px 16px", cursor: "pointer" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontWeight: 700, color: "#0f172a", flex: 1, fontSize: 14 }}>{orden.tipo}</span>
+            <span style={{ fontWeight: 700, color: GC.ink, flex: 1, fontSize: 14 }}>{orden.tipo}</span>
             {orden.prioridad === "alta" && <Badge text="🏢 Prioridad" color="#8b5cf6" />}
             <Badge text={orden.estado} color={ORDEN_COLOR[orden.estado]} />
           </div>
-          <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+          <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>
             👤 {orden.clienteNombre} · 📅 {orden.fecha} {orden.hora}
           </div>
           {/* Teléfono del cliente */}
           {orden.telefonoCliente && (
-            <div style={{ fontSize: 12, color: "#0ea5e9", marginTop: 3, fontWeight: 600 }}>📞 {orden.telefonoCliente}</div>
+            <div style={{ fontSize: 12, color: GC.info, marginTop: 3, fontWeight: 600 }}>📞 {orden.telefonoCliente}</div>
           )}
           {orden.datosInstalacion?.telefono && !orden.telefonoCliente && (
-            <div style={{ fontSize: 12, color: "#0ea5e9", marginTop: 3, fontWeight: 600 }}>📞 {orden.datosInstalacion.telefono}</div>
+            <div style={{ fontSize: 12, color: GC.info, marginTop: 3, fontWeight: 600 }}>📞 {orden.datosInstalacion.telefono}</div>
           )}
           {/* Dirección: traslado muestra vieja y nueva, instalación solo la nueva, resto la actual */}
           {esTraslado ? (
             <div style={{ background: "#f59e0b11", border: "1px solid #f59e0b33", borderRadius: 8, padding: "8px 10px", marginTop: 6, fontSize: 12 }}>
-              <div style={{ color: "#f59e0b", fontWeight: 700, marginBottom: 4 }}>🏠 Traslado de domicilio</div>
-              {orden.direccionAnterior && <div style={{ color: "#475569" }}>📍 Dirección anterior: <span style={{ color: "#0f172a" }}>{orden.direccionAnterior}</span></div>}
-              {orden.direccionNueva && <div style={{ color: "#475569", marginTop: 3 }}>📍 Nueva dirección: <span style={{ color: "#22c55e", fontWeight: 600 }}>{orden.direccionNueva}</span></div>}
-              {!orden.direccionNueva && orden.direccion && <div style={{ color: "#475569" }}>📍 {orden.direccion}</div>}
+              <div style={{ color: GC.warning, fontWeight: 700, marginBottom: 4 }}>🏠 Traslado de domicilio</div>
+              {orden.direccionAnterior && <div style={{ color: GC.ink2 }}>📍 Dirección anterior: <span style={{ color: GC.ink }}>{orden.direccionAnterior}</span></div>}
+              {orden.direccionNueva && <div style={{ color: GC.ink2, marginTop: 3 }}>📍 Nueva dirección: <span style={{ color: GC.brand, fontWeight: 600 }}>{orden.direccionNueva}</span></div>}
+              {!orden.direccionNueva && orden.direccion && <div style={{ color: GC.ink2 }}>📍 {orden.direccion}</div>}
             </div>
           ) : (
-            orden.direccion && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>📍 {orden.direccion}</div>
+            orden.direccion && <div style={{ fontSize: 12, color: GC.ink2, marginTop: 3 }}>📍 {orden.direccion}</div>
           )}
-          {orden.descripcion && <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>{orden.descripcion}</div>}
+          {orden.descripcion && <div style={{ fontSize: 12, color: GC.ink2, marginTop: 3 }}>{orden.descripcion}</div>}
           {orden.datosInstalacion && (
             <div style={{ background: "#0ea5e911", border: "1px solid #0ea5e922", borderRadius: 8, padding: "7px 10px", marginTop: 5, fontSize: 12 }}>
-              <div style={{ color: "#0ea5e9", fontWeight: 700, marginBottom: 2 }}>📋 Datos instalación nueva</div>
-              <div style={{ color: "#475569" }}>CC: {orden.datosInstalacion.cedula} · Tel: {orden.datosInstalacion.telefono}</div>
-              {orden.datosInstalacion.correo && <div style={{ color: "#475569" }}>✉️ {orden.datosInstalacion.correo}</div>}
-              {orden.datosInstalacion.direccion && <div style={{ color: "#475569" }}>📍 {orden.datosInstalacion.direccion}</div>}
+              <div style={{ color: GC.info, fontWeight: 700, marginBottom: 2 }}>📋 Datos instalación nueva</div>
+              <div style={{ color: GC.ink2 }}>CC: {orden.datosInstalacion.cedula} · Tel: {orden.datosInstalacion.telefono}</div>
+              {orden.datosInstalacion.correo && <div style={{ color: GC.ink2 }}>✉️ {orden.datosInstalacion.correo}</div>}
+              {orden.datosInstalacion.direccion && <div style={{ color: GC.ink2 }}>📍 {orden.datosInstalacion.direccion}</div>}
             </div>
           )}
         </div>
@@ -2160,10 +2242,10 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
           <div style={{ borderTop: "1px solid #1e293b", padding: "12px 16px" }}>
             {(orden.notas || []).length > 0 && (
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Notas</div>
+                <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Notas</div>
                 {orden.notas.map((n, i) => (
-                  <div key={i} style={{ background: "#e2e8f0", borderRadius: 8, padding: "7px 10px", marginBottom: 6, fontSize: 13, color: "#475569" }}>
-                    {n.texto} <span style={{ color: "#64748b", fontSize: 11 }}>· {formatTime(n.ts)}</span>
+                  <div key={i} style={{ background: GC.bg3, borderRadius: 8, padding: "7px 10px", marginBottom: 6, fontSize: 13, color: GC.ink2 }}>
+                    {n.texto} <span style={{ color: GC.ink3, fontSize: 11 }}>· {formatTime(n.ts)}</span>
                   </div>
                 ))}
               </div>
@@ -2204,14 +2286,14 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
         return (
           <div style={{ marginBottom: 20, paddingBottom: 12, borderBottom: "2px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 22 }}>{emoji}</span>
-            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#0f172a" }}>{titulo}</h2>
-            {tab === "hoy" && ordenesHoy.length > 0 && <span style={{ background: "#f59e0b", color: "#000", borderRadius: 20, padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{ordenesHoy.length} pendientes</span>}
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: GC.ink }}>{titulo}</h2>
+            {tab === "hoy" && ordenesHoy.length > 0 && <span style={{ background: GC.warning, color: "#000", borderRadius: 20, padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{ordenesHoy.length} pendientes</span>}
           </div>
         );
       })()}
-      {tab === "hoy" && (ordenesHoy.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>🎉 Sin órdenes para hoy</div> : ordenesHoy.sort((a, b) => (b.prioridad === "alta" ? 1 : 0) - (a.prioridad === "alta" ? 1 : 0)).map(o => <OrdenCard key={o.id} orden={o} />))}
-      {tab === "todas" && (ordenesActivas.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>Sin órdenes activas</div> : ordenesActivas.map(o => <OrdenCard key={o.id} orden={o} />))}
-      {tab === "historial" && (completadas.length === 0 ? <div style={{ textAlign: "center", color: "#64748b", padding: 50 }}>Sin órdenes completadas aún</div> : [...completadas].reverse().map(o => <OrdenCard key={o.id} orden={o} />))}
+      {tab === "hoy" && (ordenesHoy.length === 0 ? <div style={{ textAlign: "center", color: GC.ink3, padding: 50 }}>🎉 Sin órdenes para hoy</div> : ordenesHoy.sort((a, b) => (b.prioridad === "alta" ? 1 : 0) - (a.prioridad === "alta" ? 1 : 0)).map(o => <OrdenCard key={o.id} orden={o} />))}
+      {tab === "todas" && (ordenesActivas.length === 0 ? <div style={{ textAlign: "center", color: GC.ink3, padding: 50 }}>Sin órdenes activas</div> : ordenesActivas.map(o => <OrdenCard key={o.id} orden={o} />))}
+      {tab === "historial" && (completadas.length === 0 ? <div style={{ textAlign: "center", color: GC.ink3, padding: 50 }}>Sin órdenes completadas aún</div> : [...completadas].reverse().map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} rolFiltro={["admin","secretario","tecnico"]} zonaId={usuario.zonaId} />}
     </div>
   );
@@ -2246,12 +2328,12 @@ function ModalConfirm({ titulo, mensaje, icono, onConfirm, onCancel }) {
       <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px #00000033", overflow: "hidden" }}>
         <div style={{ padding: "28px 24px 20px", textAlign: "center" }}>
           <div style={{ fontSize: 44, marginBottom: 12 }}>{icono || "🗑️"}</div>
-          <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a", marginBottom: 8 }}>{titulo || "¿Eliminar?"}</div>
-          <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>{mensaje || "Esta acción no se puede deshacer."}</div>
+          <div style={{ fontWeight: 800, fontSize: 16, color: GC.ink, marginBottom: 8 }}>{titulo || "¿Eliminar?"}</div>
+          <div style={{ fontSize: 13, color: GC.ink3, lineHeight: 1.5 }}>{mensaje || "Esta acción no se puede deshacer."}</div>
         </div>
         <div style={{ display: "flex", borderTop: "1px solid #f1f5f9" }}>
-          <button onClick={onCancel} style={{ flex: 1, padding: "14px 0", border: "none", background: "#f8fafc", color: "#64748b", fontWeight: 700, fontSize: 14, cursor: "pointer", borderRight: "1px solid #f1f5f9" }}>Cancelar</button>
-          <button onClick={onConfirm} style={{ flex: 1, padding: "14px 0", border: "none", background: "#fef2f2", color: "#ef4444", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>Sí, eliminar</button>
+          <button onClick={onCancel} style={{ flex: 1, padding: "14px 0", border: "none", background: GC.bg2, color: GC.ink3, fontWeight: 700, fontSize: 14, cursor: "pointer", borderRight: "1px solid #f1f5f9" }}>Cancelar</button>
+          <button onClick={onConfirm} style={{ flex: 1, padding: "14px 0", border: "none", background: "#fef2f2", color: GC.danger, fontWeight: 800, fontSize: 14, cursor: "pointer" }}>Sí, eliminar</button>
         </div>
       </div>
     </div>
@@ -2271,10 +2353,10 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
         {/* Botones acción */}
         <div style={{ display: "flex", gap: 8, padding: "14px 16px", borderBottom: "1px solid #e2e8f0" }}>
           <Btn onClick={imprimir} style={{ flex: 1, fontSize: 13 }}>🖨️ Imprimir</Btn>
-          <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#64748b" }}>Cerrar</button>
+          <button onClick={onClose} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: GC.ink3 }}>Cerrar</button>
         </div>
         {/* Cuerpo del recibo */}
-        <div id="recibo-print" style={{ padding: "24px 28px", fontFamily: "monospace", fontSize: 13, color: "#0f172a" }}>
+        <div id="recibo-print" style={{ padding: "24px 28px", fontFamily: "monospace", fontSize: 13, color: GC.ink }}>
           <div style={{ textAlign: "center", marginBottom: 16 }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>{nombreEmpresa || "GC HOGAR.NET SAS"}</div>
             <div style={{ fontSize: 12 }}>OFICINA VIJES</div>
@@ -2293,10 +2375,10 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
           </div>
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontWeight: 700 }}>{factura.clienteNombre}</div>
-            <div style={{ fontSize: 12, color: "#475569" }}>{factura.clienteDireccion || "—"}</div>
+            <div style={{ fontSize: 12, color: GC.ink2 }}>{factura.clienteDireccion || "—"}</div>
           </div>
           <div style={{ borderTop: "1px dashed #94a3b8", padding: "10px 0" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontWeight: 700, fontSize: 11, color: "#64748b" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontWeight: 700, fontSize: 11, color: GC.ink3 }}>
               <span>CONCEPTO</span><span>VALOR</span>
             </div>
             <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8 }}>
@@ -2324,7 +2406,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
           </div>
           {abonos.length > 0 && (
             <div style={{ borderTop: "1px dashed #94a3b8", padding: "8px 0" }}>
-              <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4, fontWeight: 700 }}>ABONOS REGISTRADOS</div>
+              <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4, fontWeight: 700 }}>ABONOS REGISTRADOS</div>
               {abonos.map((a, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                   <span>{a.fecha} · {a.metodoPago}</span>
@@ -2349,7 +2431,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
             <div style={{ marginBottom: 16, fontStyle: "italic" }}>{numeroALetras(factura.monto)}</div>
             <div>Firma: _______________________</div>
           </div>
-          {factura.notas && <div style={{ marginTop: 10, fontSize: 11, color: "#64748b", textAlign: "center" }}>{factura.notas}</div>}
+          {factura.notas && <div style={{ marginTop: 10, fontSize: 11, color: GC.ink3, textAlign: "center" }}>{factura.notas}</div>}
         </div>
         <style>{`@media print { @page { size: 76mm auto; margin: 2mm; } body * { visibility: hidden; } #recibo-print, #recibo-print * { visibility: visible; } #recibo-print { position: fixed; top: 0; left: 0; width: 72mm; font-size: 11px; padding: 2mm; } }`}</style>
       </div>
@@ -2608,8 +2690,8 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
         ))}
         <div style={{ flex: 1 }} />
         {esAdmin && <>
-          <button onClick={() => setModalExport("mes")} disabled={exportando} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #22c55e", background: "#f0fdf4", color: "#16a34a", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel mes</button>
-          <button onClick={() => setModalExport("anio")} disabled={exportando} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #0ea5e9", background: "#eff6ff", color: "#0ea5e9", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel año</button>
+          <button onClick={() => setModalExport("mes")} disabled={exportando} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #22c55e", background: GC.brandLight, color: GC.brand, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel mes</button>
+          <button onClick={() => setModalExport("anio")} disabled={exportando} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #0ea5e9", background: "#eff6ff", color: GC.info, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel año</button>
         </>}
       </div>
 
@@ -2632,22 +2714,22 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
         <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setModalExport(null)}>
           <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 380, boxShadow: "0 20px 60px #00000033" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #e2e8f0" }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: GC.ink }}>
                 {modalExport === "mes" ? "📊 Exportar por mes" : "📊 Exportar por año"}
               </h3>
-              <button onClick={() => setModalExport(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+              <button onClick={() => setModalExport(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
             </div>
             <div style={{ padding: 20 }}>
               {modalExport === "mes" ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
                   <div>
-                    <label style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Mes</label>
+                    <label style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Mes</label>
                     <Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))}>
                       {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
                     </Sel>
                   </div>
                   <div>
-                    <label style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Año</label>
+                    <label style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Año</label>
                     <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))}>
                       {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
                     </Sel>
@@ -2655,13 +2737,13 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                 </div>
               ) : (
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Año</label>
+                  <label style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Año</label>
                   <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))}>
                     {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
                   </Sel>
                 </div>
               )}
-              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#475569" }}>
+              <div style={{ background: GC.bg2, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: GC.ink2 }}>
                 {modalExport === "mes"
                   ? <>Se exportarán las facturas de <strong>{MESES[filtroMes-1]} {filtroAnio}</strong> ({facturas.filter(f => f.mes === filtroMes && f.anio === filtroAnio).length} registros)</>
                   : <>Se exportarán todas las facturas del año <strong>{filtroAnio}</strong> ({facturas.filter(f => f.anio === filtroAnio).length} registros)</>
@@ -2672,7 +2754,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                   style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "none", background: modalExport === "mes" ? "#22c55e" : "#0ea5e9", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
                   {exportando ? "Exportando..." : "⬇️ Descargar CSV"}
                 </button>
-                <button onClick={() => setModalExport(null)} style={{ padding: "10px 16px", borderRadius: 9, border: "1px solid #e2e8f0", background: "#f8fafc", color: "#64748b", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+                <button onClick={() => setModalExport(null)} style={{ padding: "10px 16px", borderRadius: 9, border: "1px solid " + GC.border, background: GC.bg2, color: GC.ink3, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
                   Cancelar
                 </button>
               </div>
@@ -2685,7 +2767,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
         <div>
           {/* Filtros */}
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>🔍 Auditoría</span>
+            <span style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>🔍 Auditoría</span>
             <Sel value={filtroAuditAnio} onChange={e => setFiltroAuditAnio(Number(e.target.value))} style={{ width: "auto", minWidth: 90 }}>
               {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
             </Sel>
@@ -2708,11 +2790,11 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
             />
             {(filtroAuditMes > 0 || filtroAuditDia || filtroAuditNombre) && (
               <button onClick={() => { setFiltroAuditMes(0); setFiltroAuditDia(""); setFiltroAuditNombre(""); }}
-                style={{ background: "#e2e8f0", border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 13, color: "#475569" }}>
+                style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 13, color: GC.ink2 }}>
                 ✕ Limpiar
               </button>
             )}
-            <span style={{ fontSize: 12, color: "#64748b" }}>{facturasAudit.length} registros</span>
+            <span style={{ fontSize: 12, color: GC.ink3 }}>{facturasAudit.length} registros</span>
           </div>
           {/* Totales de la auditoría filtrada */}
           {facturasAudit.length > 0 && (
@@ -2723,7 +2805,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                 ["Saldo pendiente", formatCOP(facturasAudit.reduce((s,f)=>s+f.saldoPendiente,0)), "#ef4444"],
               ].map(([label,val,color]) => (
                 <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderRadius: 10, padding: "8px 14px" }}>
-                  <div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</div>
+                  <div style={{ fontSize: 10, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</div>
                   <div style={{ fontWeight: 800, color, fontSize: 14 }}>{val}</div>
                 </div>
               ))}
@@ -2732,34 +2814,34 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
-                <tr style={{ background: "#f8fafc", borderBottom: "2px solid #e2e8f0" }}>
+                <tr style={{ background: GC.bg2, borderBottom: "2px solid #e2e8f0" }}>
                   {["#Recibo","Fecha","Cliente","Cédula","Mes","Total","Saldo","Estado","Creado por",""].map(h => (
-                    <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: "#64748b", fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>
+                    <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: GC.ink3, fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {facturasAudit.map(f => (
                   <tr key={f.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                    <td style={{ padding: "8px 12px", color: "#0ea5e9", fontWeight: 700 }}>#{f.numeroRecibo || f.id?.slice(-6)}</td>
-                    <td style={{ padding: "8px 12px", color: "#475569" }}>{f.fechaEmision}</td>
+                    <td style={{ padding: "8px 12px", color: GC.info, fontWeight: 700 }}>#{f.numeroRecibo || f.id?.slice(-6)}</td>
+                    <td style={{ padding: "8px 12px", color: GC.ink2 }}>{f.fechaEmision}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 600 }}>{f.clienteNombre}</td>
-                    <td style={{ padding: "8px 12px", color: "#475569" }}>{f.clienteCedula}</td>
-                    <td style={{ padding: "8px 12px", color: "#475569" }}>{MESES[(f.mes||1)-1]} {f.anio}</td>
+                    <td style={{ padding: "8px 12px", color: GC.ink2 }}>{f.clienteCedula}</td>
+                    <td style={{ padding: "8px 12px", color: GC.ink2 }}>{MESES[(f.mes||1)-1]} {f.anio}</td>
                     <td style={{ padding: "8px 12px", fontWeight: 700 }}>{formatCOP(f.monto)}</td>
                     <td style={{ padding: "8px 12px", color: f.saldoPendiente > 0 ? "#ef4444" : "#22c55e", fontWeight: 700 }}>{formatCOP(f.saldoPendiente)}</td>
                     <td style={{ padding: "8px 12px" }}><span style={{ background: COLOR_ESTADO[f.estado]+"22", color: COLOR_ESTADO[f.estado]||"#64748b", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 11 }}>{f.estado}</span></td>
-                    <td style={{ padding: "8px 12px", color: "#94a3b8" }}>{usuarios.find(u=>u.id===f.creadoPor)?.nombre || "—"}</td>
+                    <td style={{ padding: "8px 12px", color: GC.ink4 }}>{usuarios.find(u=>u.id===f.creadoPor)?.nombre || "—"}</td>
                     <td style={{ padding: "8px 6px" }}>
                       <button onClick={() => setConfirmDelete({ id: f.id, nombre: f.clienteNombre })}
-                        style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", fontSize: 13 }}
+                        style={{ background: "#fef2f2", color: GC.danger, border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", fontSize: 13 }}
                         title="Eliminar factura">🗑️</button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {facturasAudit.length === 0 && <div style={{ textAlign: "center", color: "#94a3b8", padding: 30 }}>Sin registros para {filtroAuditAnio}</div>}
+            {facturasAudit.length === 0 && <div style={{ textAlign: "center", color: GC.ink4, padding: 30 }}>Sin registros para {filtroAuditAnio}</div>}
           </div>
         </div>
       )}
@@ -2782,7 +2864,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
       {(() => {
         const tarjetas = [
           {
-            label: "💰 Total mes", val: formatCOP(totalMes), color: "#0ea5e9",
+            label: "💰 Total mes", val: formatCOP(totalMes), color: GC.info,
             tooltip: `Suma de todas las facturas de ${MESES[filtroMes-1]} ${filtroAnio}`,
             getTirilla: () => ({
               titulo: `💰 Total mes — ${MESES[filtroMes-1]} ${filtroAnio}`,
@@ -2799,7 +2881,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
             }),
           },
           {
-            label: "📅 Cobrado hoy", val: formatCOP(totalDia), color: "#8b5cf6",
+            label: "📅 Cobrado hoy", val: formatCOP(totalDia), color: GC.purple,
             tooltip: "Dinero efectivamente cobrado en facturas cuya fecha de pago o emisión es hoy",
             getTirilla: () => {
               const hoyFacts = facturas.filter(f => f.fechaPago === hoyStr || f.fechaEmision === hoyStr);
@@ -2819,7 +2901,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
             },
           },
           {
-            label: "🏦 Total en caja", val: formatCOP(totalCaja), color: "#22c55e",
+            label: "🏦 Total en caja", val: formatCOP(totalCaja), color: GC.brand,
             tooltip: "Suma histórica de TODO el dinero real que ha ingresado (pagos completos + abonos de todos los tiempos)",
             getTirilla: () => {
               const pagadas = facturas.filter(f => f.monto - f.saldoPendiente > 0);
@@ -2839,7 +2921,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
             },
           },
           {
-            label: "⏳ Pendiente", val: formatCOP(totalPendiente), color: "#f59e0b",
+            label: "⏳ Pendiente", val: formatCOP(totalPendiente), color: GC.warning,
             tooltip: `Saldo que aún no se ha cobrado en facturas de ${MESES[filtroMes-1]} ${filtroAnio}`,
             getTirilla: () => ({
               titulo: `⏳ Pendiente — ${MESES[filtroMes-1]} ${filtroAnio}`,
@@ -2856,7 +2938,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
             }),
           },
           {
-            label: "🔴 Morosos", val: morosos + " clientes", color: "#ef4444",
+            label: "🔴 Morosos", val: morosos + " clientes", color: GC.danger,
             tooltip: `Clientes con facturas en estado Vencido en ${MESES[filtroMes-1]} ${filtroAnio}`,
             getTirilla: () => ({
               titulo: `🔴 Morosos — ${MESES[filtroMes-1]} ${filtroAnio}`,
@@ -2883,9 +2965,9 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                 onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 16px " + color + "33"}
                 onMouseLeave={e => e.currentTarget.style.boxShadow = "0 1px 4px #0001"}
               >
-                <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4 }}>{label}</div>
                 <div style={{ fontWeight: 800, color, fontSize: 15 }}>{val}</div>
-                <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>Toca para ver detalle →</div>
+                <div style={{ fontSize: 10, color: GC.ink4, marginTop: 4 }}>Toca para ver detalle →</div>
               </div>
             ))}
           </div>
@@ -2902,7 +2984,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
               {/* Encabezado */}
               <div style={{ padding: "18px 20px 12px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>{tirilla.titulo}</div>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: GC.ink }}>{tirilla.titulo}</div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={async () => {
                       const fecha = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -2992,19 +3074,19 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                       const w = window.open("", "_blank", "width=340,height=700");
                       w.document.write(html);
                       w.document.close();
-                    }} style={{ background: "#f0fdf4", color: "#16a34a", border: "none", borderRadius: 8, padding: "0 12px", height: 32, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>🖨️ Imprimir</button>
-                    <button onClick={() => setTirilla(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b", lineHeight: 1 }}>×</button>
+                    }} style={{ background: GC.brandLight, color: GC.brand, border: "none", borderRadius: 8, padding: "0 12px", height: 32, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>🖨️ Imprimir</button>
+                    <button onClick={() => setTirilla(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3, lineHeight: 1 }}>×</button>
                   </div>
                 </div>
-                <div style={{ fontSize: 12, color: "#64748b" }}>{tirilla.subtitulo}</div>
+                <div style={{ fontSize: 12, color: GC.ink3 }}>{tirilla.subtitulo}</div>
               </div>
               {/* Lista scrollable */}
               <div style={{ overflowY: "auto", flex: 1, padding: "12px 20px" }}>
                 {tirilla.filas.length === 0 ? (
-                  <div style={{ textAlign: "center", color: "#94a3b8", padding: 30, fontSize: 13 }}>Sin registros para mostrar</div>
+                  <div style={{ textAlign: "center", color: GC.ink4, padding: 30, fontSize: 13 }}>Sin registros para mostrar</div>
                 ) : (
                   <>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#94a3b8", textTransform: "uppercase", fontWeight: 700, marginBottom: 6, padding: "0 2px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: GC.ink4, textTransform: "uppercase", fontWeight: 700, marginBottom: 6, padding: "0 2px" }}>
                       <span>Cliente / Concepto</span><span>Monto</span>
                     </div>
                     {tirilla.filas.map((fila, i) => {
@@ -3012,8 +3094,8 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                       return (
                         <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid #f8fafc", gap: 10 }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.nombre}</div>
-                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.detalle}</div>
+                            <div style={{ fontWeight: 700, fontSize: 13, color: GC.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.nombre}</div>
+                            <div style={{ fontSize: 11, color: GC.ink3, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.detalle}</div>
                             <span style={{ fontSize: 10, background: colorEstadoBadge + "22", color: colorEstadoBadge, borderRadius: 6, padding: "1px 6px", fontWeight: 700, marginTop: 2, display: "inline-block" }}>{fila.estado}</span>
                           </div>
                           <div style={{ fontWeight: 800, color: tirilla.colorTotal, fontSize: 14, whiteSpace: "nowrap" }}>{formatCOP(fila.monto)}</div>
@@ -3024,11 +3106,11 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                 )}
               </div>
               {/* Pie con total */}
-              <div style={{ padding: "14px 20px", borderTop: "2px solid #f1f5f9", background: "#f8fafc", borderRadius: "0 0 20px 20px", flexShrink: 0 }}>
+              <div style={{ padding: "14px 20px", borderTop: "2px solid #f1f5f9", background: GC.bg2, borderRadius: "0 0 20px 20px", flexShrink: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>{tirilla.labelTotal}</div>
-                    <div style={{ fontSize: 10, color: "#94a3b8" }}>{tirilla.filas.length} registro{tirilla.filas.length !== 1 ? "s" : ""}</div>
+                    <div style={{ fontSize: 11, color: GC.ink3, fontWeight: 600 }}>{tirilla.labelTotal}</div>
+                    <div style={{ fontSize: 10, color: GC.ink4 }}>{tirilla.filas.length} registro{tirilla.filas.length !== 1 ? "s" : ""}</div>
                   </div>
                   <div style={{ fontWeight: 900, fontSize: 22, color: tirilla.colorTotal }}>{formatCOP(tirilla.total)}</div>
                 </div>
@@ -3051,46 +3133,46 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
 
       {/* Lista facturas */}
       {cargando ? (
-        <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>Cargando facturas...</div>
+        <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>Cargando facturas...</div>
       ) : facturasFiltradas.length === 0 ? (
         <div style={{ textAlign: "center", padding: 50 }}>
           <div style={{ fontSize: 40, marginBottom: 10 }}>🧾</div>
-          <div style={{ color: "#64748b", fontSize: 14 }}>No hay facturas para {MESES[filtroMes-1]} {filtroAnio}</div>
-          <div style={{ color: "#94a3b8", fontSize: 13, marginTop: 6 }}>Usa "Generar todas" para crear las facturas del mes en un clic.</div>
+          <div style={{ color: GC.ink3, fontSize: 14 }}>No hay facturas para {MESES[filtroMes-1]} {filtroAnio}</div>
+          <div style={{ color: GC.ink4, fontSize: 13, marginTop: 6 }}>Usa "Generar todas" para crear las facturas del mes en un clic.</div>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {facturasFiltradas.map(f => (
-            <div key={f.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderLeft: "4px solid " + (COLOR_ESTADO[f.estado] || "#e2e8f0"), borderRadius: 12, padding: "12px 16px" }}>
+            <div key={f.id} style={{ background: "#fff", border: "1px solid " + GC.border, borderLeft: "4px solid " + (COLOR_ESTADO[f.estado] || "#e2e8f0"), borderRadius: 12, padding: "12px 16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 160 }}>
-                  <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>
+                  <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>
                     {f.clienteNombre}
-                    {f.numeroRecibo && <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 8 }}>#{f.numeroRecibo}</span>}
+                    {f.numeroRecibo && <span style={{ fontSize: 11, color: GC.ink4, marginLeft: 8 }}>#{f.numeroRecibo}</span>}
                   </div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>{f.concepto}</div>
-                  {f.clienteDireccion && <div style={{ fontSize: 11, color: "#94a3b8" }}>📍 {f.clienteDireccion}</div>}
+                  <div style={{ fontSize: 12, color: GC.ink3 }}>{f.concepto}</div>
+                  {f.clienteDireccion && <div style={{ fontSize: 11, color: GC.ink4 }}>📍 {f.clienteDireccion}</div>}
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>{formatCOP(f.monto)}</div>
+                  <div style={{ fontWeight: 800, color: GC.ink, fontSize: 15 }}>{formatCOP(f.monto)}</div>
                   {f.saldoPendiente > 0 && f.saldoPendiente < f.monto && (
-                    <div style={{ fontSize: 12, color: "#f59e0b" }}>Saldo: {formatCOP(f.saldoPendiente)}</div>
+                    <div style={{ fontSize: 12, color: GC.warning }}>Saldo: {formatCOP(f.saldoPendiente)}</div>
                   )}
                 </div>
                 <Badge text={f.estado} color={COLOR_ESTADO[f.estado] || "#64748b"} />
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => abrirDetalle(f)} style={{ background: "#eff6ff", color: "#0ea5e9", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                  <button onClick={() => abrirDetalle(f)} style={{ background: "#eff6ff", color: GC.info, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                     {f.estado === "Pagado" ? "👁️ Ver" : "💵 Registrar pago"}
                   </button>
                   <button onClick={async () => {
                     const abs = await db.getAbonos(f.id).catch(() => []);
                     setModalRecibo({ factura: f, abonos: abs });
-                  }} style={{ background: "#f0fdf4", color: "#16a34a", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                  }} style={{ background: GC.brandLight, color: GC.brand, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                     🖨️
                   </button>
                   {esAdmin && <>
                     <button onClick={() => setModalEditFactura({ ...f })} style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✏️</button>
-                    <button onClick={() => setConfirmDelete({ id: f.id, nombre: f.clienteNombre })} style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>🗑️</button>
+                    <button onClick={() => setConfirmDelete({ id: f.id, nombre: f.clienteNombre })} style={{ background: "#fef2f2", color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>🗑️</button>
                   </>}
                 </div>
               </div>
@@ -3107,7 +3189,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
           <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 440, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff" }}>
               <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>✏️ Editar factura #{modalEditFactura.numeroRecibo}</h3>
-              <button onClick={() => setModalEditFactura(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: 20, color: "#64748b" }}>×</button>
+              <button onClick={() => setModalEditFactura(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: 20, color: GC.ink3 }}>×</button>
             </div>
             <div style={{ padding: 20 }}>
               <Field label="Estado">
@@ -3152,19 +3234,19 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
       {modalAbono && (
         <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => { if (e.target === e.currentTarget) { setModalAbono(null); setErrAbono(""); } }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
-            <button onClick={() => { setModalAbono(null); setErrAbono(""); }} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
-            <h3 style={{ margin: "0 0 4px", color: "#0f172a", fontSize: 16 }}>💵 Pago / Abono</h3>
-            <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: 13 }}>{modalAbono.clienteNombre} · {modalAbono.concepto}</p>
+            <button onClick={() => { setModalAbono(null); setErrAbono(""); }} style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+            <h3 style={{ margin: "0 0 4px", color: GC.ink, fontSize: 16 }}>💵 Pago / Abono</h3>
+            <p style={{ margin: "0 0 16px", color: GC.ink3, fontSize: 13 }}>{modalAbono.clienteNombre} · {modalAbono.concepto}</p>
 
             {/* Resumen */}
-            <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
+            <div style={{ background: GC.bg2, border: "1px solid " + GC.border, borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 13, color: "#64748b" }}>Total factura:</span>
+                <span style={{ fontSize: 13, color: GC.ink3 }}>Total factura:</span>
                 <strong>{formatCOP(modalAbono.monto)}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 13, color: "#64748b" }}>Total abonado:</span>
-                <span style={{ color: "#22c55e" }}>{formatCOP(modalAbono.monto - modalAbono.saldoPendiente)}</span>
+                <span style={{ fontSize: 13, color: GC.ink3 }}>Total abonado:</span>
+                <span style={{ color: GC.brand }}>{formatCOP(modalAbono.monto - modalAbono.saldoPendiente)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #e2e8f0", paddingTop: 6, marginTop: 4 }}>
                 <span style={{ fontSize: 14, fontWeight: 700 }}>Saldo pendiente:</span>
@@ -3175,14 +3257,14 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
             {/* Historial de abonos */}
             {abonosModal.length > 0 && (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Abonos anteriores</div>
+                <div style={{ fontSize: 11, color: GC.ink3, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Abonos anteriores</div>
                 {abonosModal.map((a, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 12px", marginBottom: 6, fontSize: 13 }}>
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", background: GC.brandLight, border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 12px", marginBottom: 6, fontSize: 13 }}>
                     <div>
-                      <span style={{ fontWeight: 600, color: "#16a34a" }}>{formatCOP(a.monto)}</span>
-                      <span style={{ color: "#64748b", marginLeft: 8 }}>{a.metodoPago}</span>
+                      <span style={{ fontWeight: 600, color: GC.brand }}>{formatCOP(a.monto)}</span>
+                      <span style={{ color: GC.ink3, marginLeft: 8 }}>{a.metodoPago}</span>
                     </div>
-                    <span style={{ color: "#94a3b8", fontSize: 12 }}>{a.fecha}</span>
+                    <span style={{ color: GC.ink4, fontSize: 12 }}>{a.fecha}</span>
                   </div>
                 ))}
               </div>
@@ -3191,12 +3273,12 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
             {/* Formulario nuevo abono */}
             {modalAbono.saldoPendiente > 0 && (
               <div>
-                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>Registrar pago / abono</div>
+                <div style={{ fontSize: 11, color: GC.ink3, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>Registrar pago / abono</div>
                 <Field label="Monto a registrar (COP)">
                   <Inp type="number" value={nuevoAbono.monto} onChange={e => setNuevoAbono({ ...nuevoAbono, monto: e.target.value })} placeholder={`Máx: ${formatCOP(modalAbono.saldoPendiente)}`} />
                   <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                     {[modalAbono.saldoPendiente, Math.round(modalAbono.saldoPendiente / 2)].filter(v => v > 0).map(v => (
-                      <button key={v} onClick={() => setNuevoAbono({ ...nuevoAbono, monto: String(v) })} style={{ background: "#eff6ff", color: "#0ea5e9", border: "1px solid #bfdbfe", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                      <button key={v} onClick={() => setNuevoAbono({ ...nuevoAbono, monto: String(v) })} style={{ background: "#eff6ff", color: GC.info, border: "1px solid #bfdbfe", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                         {v === modalAbono.saldoPendiente ? "Pago completo" : "50%"} ({formatCOP(v)})
                       </button>
                     ))}
@@ -3217,14 +3299,14 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                 <Field label="Observación (opcional)">
                   <Inp value={nuevoAbono.observacion} onChange={e => setNuevoAbono({ ...nuevoAbono, observacion: e.target.value })} placeholder="Ej: Pago a domicilio" />
                 </Field>
-                {errAbono && <div style={{ color: "#ef4444", fontSize: 13, marginBottom: 10 }}>⚠️ {errAbono}</div>}
+                {errAbono && <div style={{ color: GC.danger, fontSize: 13, marginBottom: 10 }}>⚠️ {errAbono}</div>}
                 <Btn onClick={registrarAbono} style={{ width: "100%", padding: "12px 0", fontSize: 15 }}>✅ Registrar pago</Btn>
               </div>
             )}
             {modalAbono.saldoPendiente <= 0 && (
-              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: 16, textAlign: "center" }}>
+              <div style={{ background: GC.brandLight, border: "1px solid #bbf7d0", borderRadius: 10, padding: 16, textAlign: "center" }}>
                 <div style={{ fontSize: 28, marginBottom: 6 }}>✅</div>
-                <div style={{ fontWeight: 700, color: "#16a34a" }}>Factura cancelada en su totalidad</div>
+                <div style={{ fontWeight: 700, color: GC.brand }}>Factura cancelada en su totalidad</div>
               </div>
             )}
           </div>
@@ -3252,10 +3334,10 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
               {/* Header */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>⚡ Generar facturas</h3>
-                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{MESES[filtroMes-1]} {filtroAnio} · {clientesSinFactura.length} clientes pendientes</div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: GC.ink }}>⚡ Generar facturas</h3>
+                  <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>{MESES[filtroMes-1]} {filtroAnio} · {clientesSinFactura.length} clientes pendientes</div>
                 </div>
-                <button onClick={() => setShowGenerarMasivo(false)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+                <button onClick={() => setShowGenerarMasivo(false)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
               </div>
 
               <div style={{ padding: "16px 24px 24px" }}>
@@ -3280,14 +3362,14 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
 
                 {/* Separador */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "14px 0 10px" }}>
-                  <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
-                  <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8 }}>O por perfil de pago</span>
-                  <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+                  <div style={{ flex: 1, height: 1, background: GC.bg3 }} />
+                  <span style={{ fontSize: 11, color: GC.ink4, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8 }}>O por perfil de pago</span>
+                  <div style={{ flex: 1, height: 1, background: GC.bg3 }} />
                 </div>
 
                 {/* Por perfil */}
                 {clientesPorPerfil.length === 0 && clientesSinPerfil.length === 0 && (
-                  <div style={{ textAlign: "center", color: "#94a3b8", padding: 20 }}>
+                  <div style={{ textAlign: "center", color: GC.ink4, padding: 20 }}>
                     ✅ Todos los clientes ya tienen factura para {MESES[filtroMes-1]} {filtroAnio}
                   </div>
                 )}
@@ -3297,30 +3379,30 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                          <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>📅 {pf.nombre}</span>
+                          <span style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>📅 {pf.nombre}</span>
                           {venceHoy && (
-                            <span style={{ background: "#22c55e", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>
+                            <span style={{ background: GC.brand, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>
                               🟢 VENCE ESTE MES (días {pf.diaInicio}-{pf.diaFin})
                             </span>
                           )}
                           {!venceHoy && (
-                            <span style={{ background: "#e2e8f0", color: "#64748b", borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
+                            <span style={{ background: GC.bg3, color: GC.ink3, borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
                               Días {pf.diaInicio}-{pf.diaFin}
                             </span>
                           )}
                         </div>
-                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>
+                        <div style={{ fontSize: 12, color: GC.ink3, marginTop: 3 }}>
                           👥 {lista.length} cliente{lista.length !== 1 ? "s" : ""} sin factura
-                          {venceHoy && <span style={{ color: "#16a34a", fontWeight: 700, marginLeft: 6 }}>· Recomendado generar ahora</span>}
+                          {venceHoy && <span style={{ color: GC.brand, fontWeight: 700, marginLeft: 6 }}>· Recomendado generar ahora</span>}
                         </div>
                         {/* Mini lista de clientes */}
                         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5 }}>
                           {lista.slice(0, 4).map(c => (
-                            <span key={c.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 6, padding: "2px 8px", fontSize: 11, color: "#475569" }}>
+                            <span key={c.id} style={{ background: "#fff", border: "1px solid " + GC.border, borderRadius: 6, padding: "2px 8px", fontSize: 11, color: GC.ink2 }}>
                               {c.nombre.split(" ")[0]} {c.nombre.split(" ")[1]?.[0] || ""}.
                             </span>
                           ))}
-                          {lista.length > 4 && <span style={{ fontSize: 11, color: "#94a3b8" }}>+{lista.length - 4} más</span>}
+                          {lista.length > 4 && <span style={{ fontSize: 11, color: GC.ink4 }}>+{lista.length - 4} más</span>}
                         </div>
                       </div>
                       <Btn
@@ -3356,7 +3438,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                       <Btn
                         disabled={generandoMasivo}
                         onClick={() => generarFacturasMasivas("sin_perfil")}
-                        style={{ fontSize: 13, padding: "8px 14px", background: "#f59e0b", whiteSpace: "nowrap" }}
+                        style={{ fontSize: 13, padding: "8px 14px", background: GC.warning, whiteSpace: "nowrap" }}
                       >
                         {generandoMasivo ? "..." : `⚡ Generar (${clientesSinPerfil.length})`}
                       </Btn>
@@ -3373,15 +3455,15 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
       {showFormManual && (
         <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowFormManual(false)}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
-            <button onClick={() => setShowFormManual(false)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
-            <h3 style={{ margin: "0 0 16px", color: "#0f172a" }}>🧾 Nueva factura manual</h3>
+            <button onClick={() => setShowFormManual(false)} style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+            <h3 style={{ margin: "0 0 16px", color: GC.ink }}>🧾 Nueva factura manual</h3>
             <Field label="Buscar cliente (nombre o cédula)">
               <Inp placeholder="🔍 Escribe nombre o cédula..." value={facturaManual.busqCliente || ""} onChange={e => setFacturaManual({ ...facturaManual, busqCliente: e.target.value, clienteId: "" })} />
               {facturaManual.busqCliente && facturaManual.busqCliente.length >= 2 && (() => {
                 const q = facturaManual.busqCliente.toLowerCase();
                 const res = clientesVisibles.filter(c => c.nombre.toLowerCase().includes(q) || (c.cedula||"").toLowerCase().includes(q)).slice(0,8);
                 return res.length > 0 ? (
-                  <div style={{ border: "1px solid #e2e8f0", borderRadius: 8, marginTop: 4, overflow: "hidden", boxShadow: "0 4px 12px #00000011" }}>
+                  <div style={{ border: "1px solid " + GC.border, borderRadius: 8, marginTop: 4, overflow: "hidden", boxShadow: "0 4px 12px #00000011" }}>
                     {res.map(c => (
                       <button key={c.id} onClick={() => {
                         const mesNombre = MESES[facturaManual.mes - 1];
@@ -3391,13 +3473,13 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                         if (itemsAuto.length > 0) { const suma = itemsAuto.reduce((s,i)=>s+i.monto,0); if (suma !== (c?.monto||0)) itemsAuto[itemsAuto.length-1].monto += ((c?.monto||0) - suma); }
                         setFacturaManual({ ...facturaManual, clienteId: c.id, busqCliente: c.nombre, items: itemsAuto.length > 0 ? itemsAuto : facturaManual.items });
                       }} style={{ width: "100%", display: "block", padding: "10px 14px", border: "none", borderBottom: "1px solid #f1f5f9", background: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13 }}>
-                        <strong>{c.nombre}</strong> <span style={{ color: "#64748b" }}>· {c.cedula}</span>
+                        <strong>{c.nombre}</strong> <span style={{ color: GC.ink3 }}>· {c.cedula}</span>
                       </button>
                     ))}
                   </div>
-                ) : <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>Sin resultados</div>;
+                ) : <div style={{ fontSize: 12, color: GC.ink4, marginTop: 4 }}>Sin resultados</div>;
               })()}
-              {facturaManual.clienteId && <div style={{ fontSize: 12, color: "#22c55e", marginTop: 4 }}>✅ Cliente seleccionado</div>}
+              {facturaManual.clienteId && <div style={{ fontSize: 12, color: GC.brand, marginTop: 4 }}>✅ Cliente seleccionado</div>}
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
               <Field label="Mes">
@@ -3415,7 +3497,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
             {/* ── Ítems de servicio ── */}
             <div style={{ marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <label style={{ fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>Servicios / Líneas de cobro</label>
+                <label style={{ fontSize: 11, color: GC.ink4, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>Servicios / Líneas de cobro</label>
                 <div style={{ display: "flex", gap: 6 }}>
                   {facturaManual.clienteId && (() => {
                     const c = clientesVisibles.find(x => x.id === facturaManual.clienteId);
@@ -3449,21 +3531,21 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                         }
                         const total = newItems.reduce((s, i) => s + (Number(i.monto) || 0), 0);
                         setFacturaManual({ ...facturaManual, items: newItems, monto: total });
-                      }} style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                      }} style={{ background: GC.brandLight, color: GC.brand, border: "1px solid #bbf7d0", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                         📅 + Mes extra ({mesesAgregados}/{maxMeses})
                       </button>
                     ) : (
-                      <span style={{ fontSize: 12, color: "#94a3b8" }}>Máx. {maxMeses} meses</span>
+                      <span style={{ fontSize: 12, color: GC.ink4 }}>Máx. {maxMeses} meses</span>
                     );
                   })()}
                   <button onClick={() => setFacturaManual({ ...facturaManual, items: [...facturaManual.items, { concepto: "", monto: 0 }] })}
-                    style={{ background: "#eff6ff", color: "#0ea5e9", border: "1px solid #bfdbfe", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                    style={{ background: "#eff6ff", color: GC.info, border: "1px solid #bfdbfe", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                     + Agregar línea
                   </button>
                 </div>
               </div>
               {facturaManual.items.length === 0 && (
-                <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: "#94a3b8", textAlign: "center" }}>
+                <div style={{ background: GC.bg2, border: "1px dashed #cbd5e1", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: GC.ink4, textAlign: "center" }}>
                   Sin líneas — agrega al menos un servicio
                 </div>
               )}
@@ -3502,7 +3584,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
               ))}
               {facturaManual.items.length > 0 && (
                 <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid #e2e8f0", paddingTop: 8, marginTop: 4 }}>
-                  <span style={{ fontWeight: 800, color: "#0f172a", fontSize: 15 }}>
+                  <span style={{ fontWeight: 800, color: GC.ink, fontSize: 15 }}>
                     Total: {formatCOP(facturaManual.items.reduce((s,i) => s + (Number(i.monto)||0), 0))}
                   </span>
                 </div>
@@ -3552,24 +3634,24 @@ function FacturacionCliente({ usuario }) {
         <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderLeft: "4px solid #ef4444", borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
           <div style={{ fontWeight: 700, color: "#dc2626", fontSize: 14 }}>⚠️ Tienes saldo pendiente</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "#dc2626" }}>{formatCOP(totalPendiente)}</div>
-          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>Acércate a la oficina o llama para regularizar tu pago.</div>
+          <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>Acércate a la oficina o llama para regularizar tu pago.</div>
         </div>
       )}
-      {cargando ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>Cargando...</div> :
-        facturas.length === 0 ? <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>Sin facturas registradas aún.</div> :
+      {cargando ? <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>Cargando...</div> :
+        facturas.length === 0 ? <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>Sin facturas registradas aún.</div> :
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {facturas.map(f => (
-            <div key={f.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderLeft: "4px solid " + (COLOR_ESTADO[f.estado] || "#e2e8f0"), borderRadius: 12, padding: "12px 16px" }}>
+            <div key={f.id} style={{ background: "#fff", border: "1px solid " + GC.border, borderLeft: "4px solid " + (COLOR_ESTADO[f.estado] || "#e2e8f0"), borderRadius: 12, padding: "12px 16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                 <div>
-                  <div style={{ fontWeight: 700, color: "#0f172a" }}>{f.concepto}</div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>Emitida: {f.fechaEmision} {f.numeroRecibo ? `· Recibo #${f.numeroRecibo}` : ""}</div>
+                  <div style={{ fontWeight: 700, color: GC.ink }}>{f.concepto}</div>
+                  <div style={{ fontSize: 12, color: GC.ink3 }}>Emitida: {f.fechaEmision} {f.numeroRecibo ? `· Recibo #${f.numeroRecibo}` : ""}</div>
                   {f.saldoPendiente > 0 && f.saldoPendiente < f.monto && (
-                    <div style={{ fontSize: 12, color: "#f59e0b", marginTop: 2 }}>Abonado: {formatCOP(f.monto - f.saldoPendiente)} · Saldo: {formatCOP(f.saldoPendiente)}</div>
+                    <div style={{ fontSize: 12, color: GC.warning, marginTop: 2 }}>Abonado: {formatCOP(f.monto - f.saldoPendiente)} · Saldo: {formatCOP(f.saldoPendiente)}</div>
                   )}
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>{formatCOP(f.monto)}</div>
+                  <div style={{ fontWeight: 800, fontSize: 16, color: GC.ink }}>{formatCOP(f.monto)}</div>
                   <Badge text={f.estado} color={COLOR_ESTADO[f.estado] || "#64748b"} />
                 </div>
               </div>
@@ -3585,7 +3667,7 @@ function FacturacionCliente({ usuario }) {
 // SECCIÓN EQUIPO DE TRABAJO
 // ══════════════════════════════════════════════════════════════
 function SeccionEquipoTrabajo({ usuarios, zonas, zonaId }) {
-  const ROL_BG = { admin: "#8b5cf6", secretario: "#0ea5e9", tecnico: "#f59e0b" };
+  const ROL_BG = { admin: GC.brand, secretario: GC.purple, tecnico: GC.warning };
   const ROL_ICON = { admin: "🛡️", secretario: "🗂️", tecnico: "🔧" };
   const miembros = usuarios.filter(u =>
     ["admin","secretario","tecnico"].includes(u.rol) && u.activo &&
@@ -3597,7 +3679,7 @@ function SeccionEquipoTrabajo({ usuarios, zonas, zonaId }) {
 
   return (
     <div>
-      <div style={{ fontSize: 13, color: "#64748b", marginBottom: 16 }}>
+      <div style={{ fontSize: 13, color: GC.ink3, marginBottom: 16 }}>
         {miembros.length} miembros en el equipo
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px,1fr))", gap: 14 }}>
@@ -3605,7 +3687,7 @@ function SeccionEquipoTrabajo({ usuarios, zonas, zonaId }) {
           const zona = zonas.find(z => z.id === u.zonaId);
           const bg = ROL_BG[u.rol] || "#64748b";
           return (
-            <div key={u.id} style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 8px #00000008" }}>
+            <div key={u.id} style={{ background: "#fff", border: "1px solid " + GC.border, borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 8px #00000008" }}>
               {/* Header color */}
               <div style={{ background: bg, padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ width: 40, height: 40, borderRadius: "50%", background: "rgba(255,255,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
@@ -3623,23 +3705,23 @@ function SeccionEquipoTrabajo({ usuarios, zonas, zonaId }) {
                 {u.telefono && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
                     <span>📞</span>
-                    <a href={`tel:${u.telefono}`} style={{ color: "#0ea5e9", fontWeight: 600, textDecoration: "none" }}>{u.telefono}</a>
+                    <a href={`tel:${u.telefono}`} style={{ color: GC.info, fontWeight: 600, textDecoration: "none" }}>{u.telefono}</a>
                   </div>
                 )}
                 {zona && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
                     <span style={{ color: zona.color }}>📍</span>
-                    <span style={{ color: "#64748b" }}>Zona {zona.nombre}</span>
+                    <span style={{ color: GC.ink3 }}>Zona {zona.nombre}</span>
                   </div>
                 )}
-                {!u.telefono && <div style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic" }}>Sin teléfono registrado</div>}
+                {!u.telefono && <div style={{ fontSize: 12, color: GC.ink4, fontStyle: "italic" }}>Sin teléfono registrado</div>}
               </div>
             </div>
           );
         })}
       </div>
       {miembros.length === 0 && (
-        <div style={{ textAlign: "center", color: "#94a3b8", padding: 50 }}>
+        <div style={{ textAlign: "center", color: GC.ink4, padding: 50 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>👷</div>
           No hay miembros del equipo en esta zona.
         </div>
@@ -3709,17 +3791,17 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
         ].map(([label, val, color]) => (
           <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
             <div style={{ fontWeight: 800, fontSize: 22, color }}>{val}</div>
-            <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{label}</div>
+            <div style={{ fontSize: 11, color: GC.ink3, marginTop: 4 }}>{label}</div>
           </div>
         ))}
       </div>
 
       {/* Lista de morosos */}
-      <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: GC.ink3, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>
         Clientes con estado Vencido — pendiente recoger equipo
       </div>
       {morosos.length === 0 ? (
-        <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>
+        <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>✅</div>
           No hay clientes morosos en esta zona.
         </div>
@@ -3728,13 +3810,13 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
         return (
           <div key={c.id} style={{ background: "#fff", border: "1px solid " + (yaAsignada ? "#bbf7d0" : "#fecaca"), borderLeft: "4px solid " + (yaAsignada ? "#22c55e" : "#ef4444"), borderRadius: 12, padding: "12px 16px", marginBottom: 10, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 160 }}>
-              <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{c.nombre}</div>
-              <div style={{ fontSize: 12, color: "#64748b" }}>CC: {c.cedula}</div>
-              {c.telefono && <div style={{ fontSize: 12, color: "#0ea5e9" }}>📞 {c.telefono}</div>}
-              {c.direccion && <div style={{ fontSize: 12, color: "#64748b" }}>📍 {c.direccion}</div>}
+              <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{c.nombre}</div>
+              <div style={{ fontSize: 12, color: GC.ink3 }}>CC: {c.cedula}</div>
+              {c.telefono && <div style={{ fontSize: 12, color: GC.info }}>📞 {c.telefono}</div>}
+              {c.direccion && <div style={{ fontSize: 12, color: GC.ink3 }}>📍 {c.direccion}</div>}
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              {yaAsignada && <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 700, background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "4px 10px" }}>✅ Asignada</span>}
+              {yaAsignada && <span style={{ fontSize: 11, color: GC.brand, fontWeight: 700, background: GC.brandLight, border: "1px solid #bbf7d0", borderRadius: 8, padding: "4px 10px" }}>✅ Asignada</span>}
               <Btn onClick={() => setModalRecogida(c)} style={{ fontSize: 12, padding: "7px 12px", background: yaAsignada ? "#64748b" : "#ef4444" }}>
                 📦 {yaAsignada ? "Ver / reasignar" : "Asignar recogida"}
               </Btn>
@@ -3746,15 +3828,15 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
       {/* Historial recogidas */}
       {recogidas.length > 0 && (
         <div style={{ marginTop: 28 }}>
-          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>Historial de recogidas asignadas</div>
+          <div style={{ fontSize: 12, color: GC.ink3, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>Historial de recogidas asignadas</div>
           {recogidas.map(r => (
-            <div key={r.id} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div key={r.id} style={{ background: GC.bg2, border: "1px solid " + GC.border, borderRadius: 10, padding: "10px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 13, color: "#0f172a" }}>{r.clienteNombre}</div>
-                <div style={{ fontSize: 12, color: "#64748b" }}>🔧 {r.tecnicoNombre} · 📅 {r.fecha}</div>
-                <div style={{ fontSize: 12, color: "#475569" }}>📦 {r.descripcionEquipo}</div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: GC.ink }}>{r.clienteNombre}</div>
+                <div style={{ fontSize: 12, color: GC.ink3 }}>🔧 {r.tecnicoNombre} · 📅 {r.fecha}</div>
+                <div style={{ fontSize: 12, color: GC.ink2 }}>📦 {r.descripcionEquipo}</div>
               </div>
-              <button onClick={() => setShowActa(r)} style={{ background: "#eff6ff", color: "#0ea5e9", border: "1px solid #bfdbfe", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+              <button onClick={() => setShowActa(r)} style={{ background: "#eff6ff", color: GC.info, border: "1px solid #bfdbfe", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                 🖨️ Acta
               </button>
             </div>
@@ -3766,9 +3848,9 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
       {modalRecogida && (
         <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setModalRecogida(null)}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 440, position: "relative" }}>
-            <button onClick={() => setModalRecogida(null)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
-            <h3 style={{ margin: "0 0 4px", color: "#0f172a" }}>📦 Asignar recogida de equipo</h3>
-            <p style={{ margin: "0 0 16px", color: "#64748b", fontSize: 13 }}>{modalRecogida.nombre} · {modalRecogida.direccion}</p>
+            <button onClick={() => setModalRecogida(null)} style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+            <h3 style={{ margin: "0 0 4px", color: GC.ink }}>📦 Asignar recogida de equipo</h3>
+            <p style={{ margin: "0 0 16px", color: GC.ink3, fontSize: 13 }}>{modalRecogida.nombre} · {modalRecogida.direccion}</p>
             <Field label="Técnico asignado">
               <Sel value={formRecogida.tecnicoId} onChange={e => setFormRecogida({ ...formRecogida, tecnicoId: e.target.value })}>
                 <option value="">— Seleccionar técnico —</option>
@@ -3795,7 +3877,7 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
           <div style={{ background: "#fff", borderRadius: 16, maxWidth: 420, width: "100%", overflow: "hidden", boxShadow: "0 20px 60px #00000033" }}>
             <div style={{ display: "flex", gap: 8, padding: "14px 16px", borderBottom: "1px solid #e2e8f0" }}>
               <Btn onClick={() => window.print()} style={{ flex: 1, fontSize: 13 }}>🖨️ Imprimir</Btn>
-              <button onClick={() => setShowActa(null)} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: "#64748b" }}>Cerrar</button>
+              <button onClick={() => setShowActa(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: GC.ink3 }}>Cerrar</button>
             </div>
             <div id="acta-print" style={{ padding: "24px 28px", fontFamily: "monospace", fontSize: 13 }}>
               <div style={{ textAlign: "center", marginBottom: 16 }}>
@@ -3888,7 +3970,7 @@ function ModuloCaja({ usuario }) {
           ["💼 Saldo", formatCOP(saldo), saldo >= 0 ? "#0ea5e9" : "#ef4444"],
         ].map(([label, val, color]) => (
           <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px" }}>
-            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>{label}</div>
+            <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4 }}>{label}</div>
             <div style={{ fontWeight: 800, color, fontSize: 15 }}>{val}</div>
           </div>
         ))}
@@ -3903,7 +3985,7 @@ function ModuloCaja({ usuario }) {
         </Sel>
         <div style={{ flex: 1 }} />
         <button onClick={() => { setNuevoMov({ tipo: "Ingreso", concepto: "", monto: "", fecha: new Date().toISOString().split("T")[0], observacion: "" }); setShowForm(true); setErrMsg(""); }}
-          style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+          style={{ background: GC.brandLight, color: GC.brand, border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
           💚 + Ingreso
         </button>
         <button onClick={() => { setNuevoMov({ tipo: "Egreso", concepto: "", monto: "", fecha: new Date().toISOString().split("T")[0], observacion: "" }); setShowForm(true); setErrMsg(""); }}
@@ -3916,7 +3998,7 @@ function ModuloCaja({ usuario }) {
       {showForm && (
         <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowForm(false)}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 420, position: "relative" }}>
-            <button onClick={() => setShowForm(false)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+            <button onClick={() => setShowForm(false)} style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
             <h3 style={{ margin: "0 0 16px", color: nuevoMov.tipo === "Ingreso" ? "#16a34a" : "#dc2626", fontSize: 16 }}>
               {nuevoMov.tipo === "Ingreso" ? "💚 Registrar Ingreso" : "🔴 Registrar Egreso"}
             </h3>
@@ -3938,7 +4020,7 @@ function ModuloCaja({ usuario }) {
             <Field label="Observación (opcional)">
               <Inp value={nuevoMov.observacion} onChange={e => setNuevoMov({ ...nuevoMov, observacion: e.target.value })} placeholder="Detalle adicional..." />
             </Field>
-            {errMsg && <div style={{ color: "#ef4444", fontSize: 13, marginBottom: 10 }}>⚠️ {errMsg}</div>}
+            {errMsg && <div style={{ color: GC.danger, fontSize: 13, marginBottom: 10 }}>⚠️ {errMsg}</div>}
             <div style={{ display: "flex", gap: 8 }}>
               <Btn onClick={guardar} variant={nuevoMov.tipo === "Ingreso" ? "success" : "danger"} style={{ flex: 1 }}>✅ Guardar</Btn>
               <Btn variant="ghost" onClick={() => setShowForm(false)}>Cancelar</Btn>
@@ -3949,9 +4031,9 @@ function ModuloCaja({ usuario }) {
 
       {/* Lista movimientos */}
       {cargando ? (
-        <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>Cargando...</div>
+        <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>Cargando...</div>
       ) : filtrados.length === 0 ? (
-        <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>
+        <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>💼</div>
           <div>No hay movimientos registrados.</div>
         </div>
@@ -3960,14 +4042,14 @@ function ModuloCaja({ usuario }) {
           {filtrados.map(m => (
             <div key={m.id} style={{ background: "#fff", border: "1px solid " + (m.tipo === "Ingreso" ? "#bbf7d0" : "#fecaca"), borderLeft: "4px solid " + (m.tipo === "Ingreso" ? "#22c55e" : "#ef4444"), borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 160 }}>
-                <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{m.concepto}</div>
-                <div style={{ fontSize: 12, color: "#64748b" }}>📅 {m.fecha} {m.observacion ? "· " + m.observacion : ""}</div>
+                <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{m.concepto}</div>
+                <div style={{ fontSize: 12, color: GC.ink3 }}>📅 {m.fecha} {m.observacion ? "· " + m.observacion : ""}</div>
               </div>
               <div style={{ fontWeight: 800, fontSize: 16, color: m.tipo === "Ingreso" ? "#16a34a" : "#dc2626" }}>
                 {m.tipo === "Ingreso" ? "+" : "-"}{formatCOP(m.monto)}
               </div>
               <span style={{ background: m.tipo === "Ingreso" ? "#f0fdf4" : "#fef2f2", color: m.tipo === "Ingreso" ? "#16a34a" : "#dc2626", border: "1px solid " + (m.tipo === "Ingreso" ? "#bbf7d0" : "#fecaca"), borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{m.tipo}</span>
-              <button onClick={() => setConfirmDel(m)} style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+              <button onClick={() => setConfirmDel(m)} style={{ background: "#fef2f2", color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
             </div>
           ))}
         </div>
@@ -3984,9 +4066,9 @@ function ModuloCaja({ usuario }) {
 
       {/* SQL — solo visible si hay error de conexión con la tabla */}
       {errorCarga && (
-        <div style={{ marginTop: 24, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "14px 16px" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8 }}>⚙️ Si ves errores, ejecuta este SQL en Supabase → SQL Editor:</div>
-        <pre style={{ background: "#0f172a", color: "#22c55e", borderRadius: 8, padding: "10px 14px", fontSize: 11, margin: 0, overflowX: "auto", lineHeight: 1.6 }}>{`CREATE TABLE IF NOT EXISTS public.caja_movimientos (
+        <div style={{ marginTop: 24, background: GC.bg2, border: "1px solid " + GC.border, borderRadius: 10, padding: "14px 16px" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: GC.ink2, marginBottom: 8 }}>⚙️ Si ves errores, ejecuta este SQL en Supabase → SQL Editor:</div>
+        <pre style={{ background: GC.ink, color: GC.brand, borderRadius: 8, padding: "10px 14px", fontSize: 11, margin: 0, overflowX: "auto", lineHeight: 1.6 }}>{`CREATE TABLE IF NOT EXISTS public.caja_movimientos (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   tipo text NOT NULL CHECK (tipo IN ('Ingreso','Egreso')),
   concepto text NOT NULL,
@@ -4001,7 +4083,7 @@ CREATE POLICY "allow_all" ON public.caja_movimientos FOR ALL USING (true);`}</pr
         <button onClick={() => {
           const sql = `CREATE TABLE IF NOT EXISTS public.caja_movimientos (\n  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,\n  tipo text NOT NULL CHECK (tipo IN ('Ingreso','Egreso')),\n  concepto text NOT NULL,\n  monto numeric NOT NULL,\n  fecha date NOT NULL DEFAULT CURRENT_DATE,\n  registrado_por text DEFAULT NULL,\n  observacion text DEFAULT '',\n  created_at timestamptz DEFAULT now()\n);\nALTER TABLE public.caja_movimientos ENABLE ROW LEVEL SECURITY;\nCREATE POLICY "allow_all" ON public.caja_movimientos FOR ALL USING (true);`;
           navigator.clipboard.writeText(sql).then(() => alert("✅ SQL copiado al portapapeles")).catch(() => alert("Copia el SQL manualmente del recuadro de arriba"));
-        }} style={{ marginTop: 10, background: "#0ea5e9", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+        }} style={{ marginTop: 10, background: GC.info, color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
           📋 Copiar SQL
         </button>
       </div>
@@ -4036,15 +4118,15 @@ function TabPerfiles({ perfilesPago, setPerfilesPago, usuarios }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <span style={{ color: "#475569", fontSize: 14 }}>{perfilesPago.length} perfiles configurados</span>
+        <span style={{ color: GC.ink2, fontSize: 14 }}>{perfilesPago.length} perfiles configurados</span>
         <Btn onClick={() => { setEditPerfil({ ...emptyPerfil }); setShowFormPerfil(true); }} style={{ fontSize: 13 }}>+ Nuevo perfil</Btn>
       </div>
       <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderLeft: "4px solid #0ea5e9", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#1e40af" }}>
         📅 Los perfiles de pago definen el rango de días del mes en que cada cliente debe pagar.
       </div>
       {showFormPerfil && editPerfil && (
-        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, marginBottom: 16, boxShadow: "0 2px 8px #00000010" }}>
-          <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editPerfil.id ? "✏️ Editar perfil" : "📅 Nuevo perfil de pago"}</h3>
+        <div style={{ background: "#ffffff", border: "1px solid " + GC.border, borderRadius: 14, padding: 20, marginBottom: 16, boxShadow: "0 2px 8px #00000010" }}>
+          <h3 style={{ color: GC.ink, marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editPerfil.id ? "✏️ Editar perfil" : "📅 Nuevo perfil de pago"}</h3>
           <Field label="Nombre del perfil"><Inp value={editPerfil.nombre} onChange={e => setEditPerfil({ ...editPerfil, nombre: e.target.value })} placeholder="Ej: Quincena 1, Fin de mes..." /></Field>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
             <Field label="Día inicio"><Inp type="number" min="1" max="28" value={editPerfil.diaInicio} onChange={e => setEditPerfil({ ...editPerfil, diaInicio: Number(e.target.value) })} /></Field>
@@ -4059,23 +4141,23 @@ function TabPerfiles({ perfilesPago, setPerfilesPago, usuarios }) {
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {perfilesPago.length === 0 ? (
-          <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>
+          <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>
             <div style={{ fontSize: 36, marginBottom: 8 }}>📅</div>
             <div>No hay perfiles creados aún.</div>
           </div>
         ) : perfilesPago.map(p => (
-          <div key={p.id} style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderLeft: "4px solid #0ea5e9", borderRadius: 12, padding: "14px 16px", opacity: p.activo ? 1 : 0.5 }}>
+          <div key={p.id} style={{ background: "#ffffff", border: "1px solid " + GC.border, borderLeft: "4px solid #0ea5e9", borderRadius: 12, padding: "14px 16px", opacity: p.activo ? 1 : 0.5 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 15 }}>📅 {p.nombre}</div>
-                <div style={{ fontSize: 13, color: "#0ea5e9", fontWeight: 600, marginTop: 2 }}>Días {p.diaInicio} al {p.diaFin} de cada mes</div>
-                {p.descripcion && <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{p.descripcion}</div>}
-                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>👥 {clientesPorPerfil(p.id)} clientes asignados</div>
+                <div style={{ fontWeight: 700, color: GC.ink, fontSize: 15 }}>📅 {p.nombre}</div>
+                <div style={{ fontSize: 13, color: GC.info, fontWeight: 600, marginTop: 2 }}>Días {p.diaInicio} al {p.diaFin} de cada mes</div>
+                {p.descripcion && <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>{p.descripcion}</div>}
+                <div style={{ fontSize: 11, color: GC.ink4, marginTop: 4 }}>👥 {clientesPorPerfil(p.id)} clientes asignados</div>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 <button onClick={() => togglePerfil(p.id)} style={{ background: p.activo ? "#f0fdf4" : "#f1f5f9", color: p.activo ? "#16a34a" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.activo ? "Activo" : "Inactivo"}</button>
-                <button onClick={() => { setEditPerfil(p); setShowFormPerfil(true); }} style={{ background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                <button onClick={() => setConfirmPerfil(p)} style={{ background: "#f1f5f9", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                <button onClick={() => { setEditPerfil(p); setShowFormPerfil(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                <button onClick={() => setConfirmPerfil(p)} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
               </div>
             </div>
           </div>
@@ -4145,14 +4227,14 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
     return (
       <div style={{ maxWidth: 700, margin: "0 auto" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
-          <button onClick={() => setTicketAbierto(null)} style={{ background: "transparent", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 14, padding: 0 }}>← Tickets</button>
+          <button onClick={() => setTicketAbierto(null)} style={{ background: "transparent", border: "none", color: GC.info, cursor: "pointer", fontSize: 14, padding: 0 }}>← Tickets</button>
           <div style={{ flex: 1 }} />
           <Sel style={{ width: "auto" }} value={t.estado} onChange={e => cambiarEstadoTicket(t.id, e.target.value)}>
             <option>Abierto</option><option>En proceso</option><option>Resuelto</option>
           </Sel>
           {!t.ordenId && <Btn onClick={() => { setModalOrden(t); setTicketAbierto(null); }} style={{ fontSize: 13, padding: "7px 14px" }}>🔧 Crear orden</Btn>}
         </div>
-        <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 14, overflow: "hidden", height: 500 }}>
+        <div style={{ background: "#ffffff", border: "1px solid " + GC.border, borderRadius: 14, overflow: "hidden", height: 500 }}>
           <ChatTicket ticket={t} onSend={enviarMsg} autorActual={sesion.id} nombreActual={sesion.nombre} usuarios={usuarios} />
         </div>
       </div>
@@ -4172,13 +4254,13 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
       <div onClick={() => setTicketAbierto(t.id)} style={{ background: "#fff", border: "1px solid " + (t.prioridad === "alta" ? "#8b5cf644" : "#e2e8f0"), borderLeft: "4px solid " + (t.prioridad === "alta" ? "#8b5cf6" : TICKET_COLOR[t.estado]), borderRadius: 12, padding: "11px 14px", cursor: "pointer", marginBottom: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span>{ALL_OPCIONES.find(p => p.id === t.tipo)?.emoji || "🔧"}</span>
-          <span style={{ fontWeight: 700, color: "#0f172a", flex: 1, fontSize: 14 }}>{t.titulo}</span>
+          <span style={{ fontWeight: 700, color: GC.ink, flex: 1, fontSize: 14 }}>{t.titulo}</span>
           {zona && <span style={{ fontSize: 11, color: zona.color, fontWeight: 700, background: zona.color + "22", borderRadius: 6, padding: "1px 7px" }}>📍 {zona.nombre}</span>}
           {t.prioridad === "alta" && <Badge text="🏢 PRIORIDAD" color="#8b5cf6" />}
           <Badge text={t.estado} color={TICKET_COLOR[t.estado]} />
         </div>
-        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{t.clienteNombre} · {formatTime(t.fechaCreacion)}</div>
-        <div style={{ fontSize: 12, color: "#475569", marginTop: 3 }}>{ult?.texto?.slice(0,60)}{(ult?.texto?.length || 0) > 60 ? "..." : ""}</div>
+        <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>{t.clienteNombre} · {formatTime(t.fechaCreacion)}</div>
+        <div style={{ fontSize: 12, color: GC.ink2, marginTop: 3 }}>{ult?.texto?.slice(0,60)}{(ult?.texto?.length || 0) > 60 ? "..." : ""}</div>
       </div>
     );
   };
@@ -4187,19 +4269,19 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
         <Inp placeholder="🔍 Buscar por cliente, cédula o N° ticket..." value={busqTicket} onChange={e => setBusqTicket(e.target.value)} style={{ flex: 1 }} />
-        {busqTicket && <button onClick={() => setBusqTicket("")} style={{ background: "#e2e8f0", color: "#64748b", border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
+        {busqTicket && <button onClick={() => setBusqTicket("")} style={{ background: GC.bg3, color: GC.ink3, border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
       </div>
       {[
-        { lista: filtrar(pendientes), titulo: "🔴 Abiertos", color: "#ef4444" },
-        { lista: filtrar(enProceso), titulo: "🔵 En proceso", color: "#0ea5e9" },
-        { lista: filtrar(resueltos), titulo: `✅ Resueltos (${resueltos.length})`, color: "#22c55e" },
+        { lista: filtrar(pendientes), titulo: "🔴 Abiertos", color: GC.danger },
+        { lista: filtrar(enProceso), titulo: "🔵 En proceso", color: GC.info },
+        { lista: filtrar(resueltos), titulo: `✅ Resueltos (${resueltos.length})`, color: GC.brand },
       ].map(({ lista, titulo, color }) => (
         <div key={titulo} style={{ marginBottom: 20 }}>
-          <div style={{ color: "#64748b", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ color: GC.ink3, fontSize: 12, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
             {titulo}
             {lista.length > 0 && <span style={{ background: color + "22", color, borderRadius: 20, padding: "1px 8px", fontSize: 11, fontWeight: 800 }}>{lista.length}</span>}
           </div>
-          {lista.length === 0 ? <div style={{ color: "#94a3b8", fontSize: 13, padding: "6px 0" }}>Sin tickets</div> : lista.map(t => <TicketCard key={t.id} t={t} />)}
+          {lista.length === 0 ? <div style={{ color: GC.ink4, fontSize: 13, padding: "6px 0" }}>Sin tickets</div> : lista.map(t => <TicketCard key={t.id} t={t} />)}
         </div>
       ))}
 
@@ -4207,15 +4289,15 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
       {modalOrden && (
         <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setModalOrden(null)}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
-            <button onClick={() => setModalOrden(null)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
-            <h3 style={{ color: "#0f172a", margin: "0 0 16px", fontSize: 16 }}>🔧 Crear orden de trabajo</h3>
+            <button onClick={() => setModalOrden(null)} style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+            <h3 style={{ color: GC.ink, margin: "0 0 16px", fontSize: 16 }}>🔧 Crear orden de trabajo</h3>
             <Field label="Tipo de orden">
               <Sel value={nuevaOrden.tipo} onChange={e => setNuevaOrden({ ...nuevaOrden, tipo: e.target.value })}>
                 {TIPOS_ORDEN.map(t => <option key={t}>{t}</option>)}
               </Sel>
             </Field>
             {nuevaOrden.tipo === "Otro" && <Field label="Especificar"><Inp value={nuevaOrden.otro} onChange={e => setNuevaOrden({ ...nuevaOrden, otro: e.target.value })} /></Field>}
-            <Field label="Descripción"><textarea value={nuevaOrden.descripcion} onChange={e => setNuevaOrden({ ...nuevaOrden, descripcion: e.target.value })} style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} /></Field>
+            <Field label="Descripción"><textarea value={nuevaOrden.descripcion} onChange={e => setNuevaOrden({ ...nuevaOrden, descripcion: e.target.value })} style={{ background: GC.bg2, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} /></Field>
             <Field label="Asignar técnico">
               <Sel value={nuevaOrden.tecnicoId} onChange={e => setNuevaOrden({ ...nuevaOrden, tecnicoId: e.target.value })}>
                 <option value="">— Seleccionar técnico —</option>
@@ -4283,7 +4365,7 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion }) {
         <span style={{ fontSize: 28 }}>👑</span>
         <div>
           <div style={{ fontWeight: 800, color: "#dc2626", fontSize: 15 }}>Panel Superusuario</div>
-          <div style={{ fontSize: 13, color: "#64748b", marginTop: 2 }}>
+          <div style={{ fontSize: 13, color: GC.ink3, marginTop: 2 }}>
             Desde aquí puedes gestionar los administradores del sistema. Solo existe un superusuario y no puede ser eliminado.
           </div>
         </div>
@@ -4292,7 +4374,7 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion }) {
       {msg && (
         <div style={{ background: msg.ok ? "#f0fdf4" : "#fef2f2", border: "1px solid " + (msg.ok ? "#bbf7d0" : "#fecaca"), borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: msg.ok ? "#16a34a" : "#dc2626", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           {msg.texto}
-          <button onClick={() => setMsg(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 16 }}>×</button>
+          <button onClick={() => setMsg(null)} style={{ background: "none", border: "none", cursor: "pointer", color: GC.ink4, fontSize: 16 }}>×</button>
         </div>
       )}
 
@@ -4307,8 +4389,8 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion }) {
       {editU && (
         <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setEditU(null)}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 440, position: "relative" }}>
-            <button onClick={() => setEditU(null)} style={{ position: "absolute", top: 14, right: 14, background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
-            <h3 style={{ margin: "0 0 16px", color: "#0f172a", fontSize: 16 }}>{editU.id ? "✏️ Editar administrador" : "➕ Nuevo administrador"}</h3>
+            <button onClick={() => setEditU(null)} style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+            <h3 style={{ margin: "0 0 16px", color: GC.ink, fontSize: 16 }}>{editU.id ? "✏️ Editar administrador" : "➕ Nuevo administrador"}</h3>
             <Field label="Nombre completo"><Inp value={editU.nombre} onChange={e => setEditU({ ...editU, nombre: e.target.value })} /></Field>
             <Field label="Usuario (login)"><Inp value={editU.usuario} onChange={e => setEditU({ ...editU, usuario: e.target.value })} /></Field>
             <Field label="Clave"><Inp type="text" value={editU.clave} onChange={e => setEditU({ ...editU, clave: e.target.value })} /></Field>
@@ -4328,10 +4410,10 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion }) {
             <div style={{ flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 18 }}>{u.rol === "superusuario" ? "👑" : "🛡️"}</span>
-                <span style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{u.nombre}</span>
+                <span style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{u.nombre}</span>
                 <Badge text={u.rol === "superusuario" ? "Superusuario" : "Administrador"} color={u.rol === "superusuario" ? "#dc2626" : "#8b5cf6"} />
               </div>
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>@{u.usuario} {u.telefono ? "· 📞 " + u.telefono : ""}</div>
+              <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>@{u.usuario} {u.telefono ? "· 📞 " + u.telefono : ""}</div>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               {u.rol !== "superusuario" && (
@@ -4339,12 +4421,12 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion }) {
                   <button onClick={() => toggleActivo(u)} style={{ background: u.activo ? "#f0fdf4" : "#f1f5f9", color: u.activo ? "#16a34a" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                     {u.activo ? "Activo" : "Inactivo"}
                   </button>
-                  <button onClick={() => setEditU({ ...u, privilegios: u.privilegios || [] })} style={{ background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                  <button onClick={() => setConfirm(u)} style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                  <button onClick={() => setEditU({ ...u, privilegios: u.privilegios || [] })} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                  <button onClick={() => setConfirm(u)} style={{ background: "#fef2f2", color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                 </>
               )}
               {u.rol === "superusuario" && u.id === sesion.id && (
-                <button onClick={() => setEditU({ ...u })} style={{ background: "#f1f5f9", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️ Editar mi cuenta</button>
+                <button onClick={() => setEditU({ ...u })} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️ Editar mi cuenta</button>
               )}
             </div>
           </div>
@@ -4393,176 +4475,97 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const emptyU = { id: "", usuario: "", clave: "", rol: "secretario", nombre: "", tipo: "final", cedula: "", servicio: "Internet", plan: "", monto: "", fechaPago: "", estado: "Al día", activo: true, zonaId: "", direccion: "", claveWifi: "", telefono: "", privilegios: [] };
   const emptyA = { id: "", tipo: "Información", titulo: "", mensaje: "", fecha: new Date().toISOString().split("T")[0], afecta: "Internet", activo: true };
   const emptyPlan = { id: "", nombre: "", precio: "", descripcion: "", activo: true };
-  const emptyZona = { id: "", nombre: "", color: "#0ea5e9", activa: true };
-  const emptyPropa = { id: "", categoria: "promocion", titulo: "", descripcion: "", activo: true, fecha: "", imagen: "🎁", color: "#0ea5e9" };
+  const emptyZona = { id: "", nombre: "", color: GC.info, activa: true };
+  const emptyPropa = { id: "", categoria: "promocion", titulo: "", descripcion: "", activo: true, fecha: "", imagen: "🎁", color: GC.info };
 
   const saveU = async (u) => {
-    // ── Validaciones antes de enviar a Supabase ──────────────
-    if (!u.nombre?.trim())   { alert("⚠️ El nombre completo es obligatorio.");       return; }
-    if (!u.usuario?.trim())  { alert("⚠️ El usuario (login) es obligatorio.");       return; }
-    if (!u.clave?.trim())    { alert("⚠️ La clave de acceso es obligatoria.");       return; }
-    if (u.rol !== "admin" && !u.zonaId) { alert("⚠️ Debes asignar una zona al usuario."); return; }
     try {
       const guardado = await db.upsertUsuario(u);
       setUsuarios(p => p.find(x => x.id === guardado.id) ? p.map(x => x.id === guardado.id ? guardado : x) : [...p, guardado]);
       setShowForm(false); setEditU(null); setFormTipo(null);
-    } catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error guardando usuario:", msg);
-      if (msg.includes("duplicate") || msg.includes("unique") || msg.includes("23505")) {
-        alert("⚠️ Ya existe un usuario con ese login. Usa uno diferente.");
-      } else if (msg.includes("usuarios_rol_check")) {
-        alert("⚠️ El rol asignado no está permitido en la base de datos. Verifica el constraint en Supabase.");
-      } else if (msg.includes("409") || msg.includes("conflict")) {
-        alert("⚠️ Conflicto al guardar: el usuario o la cédula ya existen. Revisa los datos e intenta de nuevo.");
-      } else {
-        alert("❌ Error guardando usuario: " + msg);
-      }
-    }
+    } catch (err) { console.error("Error guardando usuario:", err); }
   };
   const deleteU = async (id) => {
     try { await db.deleteUsuario(id); setUsuarios(p => p.filter(u => u.id !== id)); }
-    catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error eliminando usuario:", msg);
-      alert("❌ No se pudo eliminar el usuario: " + msg);
-    }
+    catch (err) { console.error("Error eliminando usuario:", err); }
   };
   const toggleU = async (id) => {
     const u = usuarios.find(x => x.id === id);
     if (!u) return;
     try { await db.toggleUsuario(id, !u.activo); setUsuarios(p => p.map(x => x.id === id ? { ...x, activo: !x.activo } : x)); }
-    catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error toggling usuario:", msg);
-      alert("❌ No se pudo cambiar el estado: " + msg);
-    }
+    catch (err) { console.error("Error toggling usuario:", err); }
   };
 
   const saveA = async (a) => {
-    if (!a.titulo?.trim())   { alert("⚠️ El título del aviso es obligatorio."); return; }
-    if (!a.mensaje?.trim())  { alert("⚠️ El mensaje del aviso es obligatorio."); return; }
     try {
       const guardado = await db.upsertAviso(a);
       setAvisos(p => p.find(x => x.id === guardado.id) ? p.map(x => x.id === guardado.id ? guardado : x) : [...p, guardado]);
       setShowForm(false); setEditA(null); setFormTipo(null);
-    } catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error guardando aviso:", msg);
-      alert("❌ Error guardando aviso: " + msg);
-    }
+    } catch (err) { console.error("Error guardando aviso:", err); }
   };
   const deleteA = async (id) => {
     try { await db.deleteAviso(id); setAvisos(p => p.filter(a => a.id !== id)); }
-    catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error eliminando aviso:", msg);
-      alert("❌ No se pudo eliminar el aviso: " + msg);
-    }
+    catch (err) { console.error("Error eliminando aviso:", err); }
   };
   const toggleA = async (id) => {
     const a = avisos.find(x => x.id === id);
     if (!a) return;
     try { await db.toggleAviso(id, !a.activo); setAvisos(p => p.map(x => x.id === id ? { ...x, activo: !x.activo } : x)); }
-    catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error toggling aviso:", msg);
-      alert("❌ Error cambiando estado del aviso: " + msg);
-    }
+    catch (err) { console.error("Error toggling aviso:", err); }
   };
 
   const savePlan = async (p) => {
-    if (!p.nombre?.trim()) { alert("⚠️ El nombre del plan es obligatorio."); return; }
-    if (!p.precio && p.precio !== 0) { alert("⚠️ El precio del plan es obligatorio."); return; }
     try {
       const guardado = await db.upsertPlan(p);
       setPlanes(prev => prev.find(x => x.id === guardado.id) ? prev.map(x => x.id === guardado.id ? guardado : x) : [...prev, guardado]);
       setShowForm(false); setEditPlan(null); setFormTipo(null);
-    } catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error guardando plan:", msg);
-      alert("❌ Error guardando plan: " + msg);
-    }
+    } catch (err) { console.error("Error guardando plan:", err); }
   };
   const deletePlan = async (id) => {
     try { await db.deletePlan(id); setPlanes(p => p.filter(x => x.id !== id)); }
-    catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error eliminando plan:", msg);
-      alert("❌ No se pudo eliminar el plan: " + msg);
-    }
+    catch (err) { console.error("Error eliminando plan:", err); }
   };
   const togglePlan = async (id) => {
     const p = planes.find(x => x.id === id);
     if (!p) return;
     try { await db.togglePlan(id, !p.activo); setPlanes(prev => prev.map(x => x.id === id ? { ...x, activo: !x.activo } : x)); }
-    catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error toggling plan:", msg);
-      alert("❌ Error cambiando estado del plan: " + msg);
-    }
+    catch (err) { console.error("Error toggling plan:", err); }
   };
 
   const saveZona = async (z) => {
-    if (!z.nombre?.trim()) { alert("⚠️ El nombre de la zona es obligatorio."); return; }
     try {
       const guardada = await db.upsertZona(z);
       setZonas(prev => prev.find(x => x.id === guardada.id) ? prev.map(x => x.id === guardada.id ? guardada : x) : [...prev, guardada]);
       setShowForm(false); setEditZona(null); setFormTipo(null);
-    } catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error guardando zona:", msg);
-      alert("❌ Error guardando zona: " + msg);
-    }
+    } catch (err) { console.error("Error guardando zona:", err); }
   };
   const deleteZona = async (id) => {
     try { await db.deleteZona(id); setZonas(p => p.filter(x => x.id !== id)); }
-    catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error eliminando zona:", msg);
-      alert("❌ No se pudo eliminar la zona: " + msg);
-    }
+    catch (err) { console.error("Error eliminando zona:", err); }
   };
   const toggleZona = async (id) => {
     const z = zonas.find(x => x.id === id);
     if (!z) return;
     try { await db.toggleZona(id, !z.activa); setZonas(p => p.map(x => x.id === id ? { ...x, activa: !x.activa } : x)); }
-    catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error toggling zona:", msg);
-      alert("❌ Error cambiando estado de la zona: " + msg);
-    }
+    catch (err) { console.error("Error toggling zona:", err); }
   };
 
   const savePropa = async (p) => {
-    if (!p.titulo?.trim()) { alert("⚠️ El título de la promoción es obligatorio."); return; }
     try {
       const guardada = await db.upsertPropaganda(p);
       setPropaganda(prev => prev.find(x => x.id === guardada.id) ? prev.map(x => x.id === guardada.id ? guardada : x) : [...prev, guardada]);
       setShowForm(false); setEditPropa(null); setFormTipo(null);
-    } catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error guardando propaganda:", msg);
-      alert("❌ Error guardando promoción: " + msg);
-    }
+    } catch (err) { console.error("Error guardando propaganda:", err); }
   };
   const deletePropa = async (id) => {
     try { await db.deletePropaganda(id); setPropaganda(p => p.filter(x => x.id !== id)); }
-    catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error eliminando propaganda:", msg);
-      alert("❌ No se pudo eliminar la promoción: " + msg);
-    }
+    catch (err) { console.error("Error eliminando propaganda:", err); }
   };
   const togglePropa = async (id) => {
     const p = propaganda.find(x => x.id === id);
     if (!p) return;
     try { await db.togglePropaganda(id, !p.activo); setPropaganda(prev => prev.map(x => x.id === id ? { ...x, activo: !x.activo } : x)); }
-    catch (err) {
-      const msg = err?.message || JSON.stringify(err);
-      console.error("Error toggling propaganda:", msg);
-      alert("❌ Error cambiando estado de la promoción: " + msg);
-    }
+    catch (err) { console.error("Error toggling propaganda:", err); }
   };
 
   // Solo el superusuario puede gestionar admins
@@ -4593,8 +4596,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {/* Título de sección activa */}
       <div style={{ marginBottom: 20, paddingBottom: 12, borderBottom: "2px solid #e2e8f0", display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 22 }}>{LABEL_TAB[tab]?.split(" ")[0]}</span>
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#0f172a" }}>{LABEL_TAB[tab]?.slice(LABEL_TAB[tab]?.indexOf(" ")+1) || tab}</h2>
-        {tab === "tickets" && pendientes.length > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{pendientes.length} nuevos</span>}
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: GC.ink }}>{LABEL_TAB[tab]?.slice(LABEL_TAB[tab]?.indexOf(" ")+1) || tab}</h2>
+        {tab === "tickets" && pendientes.length > 0 && <span style={{ background: GC.danger, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 12, fontWeight: 800 }}>{pendientes.length} nuevos</span>}
         {sesion.rol === "superusuario" && tab !== "superusuario" && (
           <button onClick={() => setTab("superusuario")} style={{ marginLeft: "auto", background: "#dc262611", border: "1px solid #dc262633", borderRadius: 8, padding: "5px 12px", cursor: "pointer", fontSize: 12, color: "#dc2626", fontWeight: 700 }}>
             👑 Panel Superusuario
@@ -4639,11 +4642,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
             try {
               const u = await db.getUsuarios();
               setUsuarios(u);
-            } catch (e) {
-              const msg = e?.message || JSON.stringify(e);
-              console.error("Error recargando usuarios:", msg);
-              alert("❌ Error al recargar usuarios: " + msg);
-            }
+            } catch (e) { console.error("Error recargando usuarios:", e); }
           }} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
             {[
@@ -4656,12 +4655,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
             ].map(([label, val, color]) => (
               <div key={label} style={{ background: "#ffffff", border: "1px solid " + color + "33", borderRadius: 14, padding: 20, textAlign: "center" }}>
                 <div style={{ fontSize: 28, fontWeight: 800, color }}>{val}</div>
-                <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{label}</div>
+                <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>{label}</div>
               </div>
             ))}
           </div>
           {/* Resumen por zonas */}
-          <div style={{ fontSize: 13, color: "#64748b", marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>Distribución por zona</div>
+          <div style={{ fontSize: 13, color: GC.ink3, marginBottom: 10, textTransform: "uppercase", letterSpacing: 0.8 }}>Distribución por zona</div>
           {zonas.map(z => {
             const secZ = usuarios.filter(u => u.rol === "secretario" && u.zonaId === z.id).length;
             const tecZ = usuarios.filter(u => u.rol === "tecnico" && u.zonaId === z.id).length;
@@ -4669,9 +4668,9 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
             return (
               <div key={z.id} style={{ background: "#ffffff", border: "1px solid " + z.color + "33", borderLeft: "4px solid " + z.color, borderRadius: 12, padding: "12px 16px", marginBottom: 8, display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
                 <span style={{ fontWeight: 700, color: z.color, fontSize: 14, minWidth: 80 }}>📍 {z.nombre}</span>
-                <span style={{ fontSize: 12, color: "#64748b" }}>🗂️ {secZ} secretarios</span>
-                <span style={{ fontSize: 12, color: "#64748b" }}>🔧 {tecZ} técnicos</span>
-                <span style={{ fontSize: 12, color: "#64748b" }}>👥 {cliZ} clientes</span>
+                <span style={{ fontSize: 12, color: GC.ink3 }}>🗂️ {secZ} secretarios</span>
+                <span style={{ fontSize: 12, color: GC.ink3 }}>🔧 {tecZ} técnicos</span>
+                <span style={{ fontSize: 12, color: GC.ink3 }}>👥 {cliZ} clientes</span>
               </div>
             );
           })}
@@ -4683,12 +4682,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {/* ── TAB MI CUENTA ── */}
       {tab === "micuenta" && (
         <div style={{ maxWidth: 480, margin: "0 auto" }}>
-          <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 16, padding: 28 }}>
+          <div style={{ background: "#ffffff", border: "1px solid " + GC.border2, borderRadius: 16, padding: 28 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
               <div style={{ width: 48, height: 48, borderRadius: "50%", background: "#8b5cf622", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>🔐</div>
               <div>
-                <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 16 }}>{sesion?.nombre}</div>
-                <div style={{ fontSize: 12, color: "#64748b" }}>Administrador · @{sesion?.usuario}</div>
+                <div style={{ fontWeight: 700, color: GC.ink, fontSize: 16 }}>{sesion?.nombre}</div>
+                <div style={{ fontSize: 12, color: GC.ink3 }}>Administrador · @{sesion?.usuario}</div>
               </div>
             </div>
 
@@ -4738,12 +4737,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {tab === "planes" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ color: "#475569", fontSize: 14 }}>{planes.length} planes configurados</span>
+            <span style={{ color: GC.ink2, fontSize: 14 }}>{planes.length} planes configurados</span>
             <Btn onClick={() => { setEditPlan({ ...emptyPlan }); setFormTipo("plan"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nuevo plan</Btn>
           </div>
           {showForm && formTipo === "plan" && editPlan && (
-            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editPlan.id ? "Editar plan" : "Nuevo plan"}</h3>
+            <div style={{ background: "#ffffff", border: "1px solid " + GC.border2, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ color: GC.ink, marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editPlan.id ? "Editar plan" : "Nuevo plan"}</h3>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                 <Field label="Nombre del plan"><Inp value={editPlan.nombre} onChange={e => setEditPlan({ ...editPlan, nombre: e.target.value })} placeholder="Ej: Premium 100MB" /></Field>
                 <Field label="Precio (COP)"><Inp type="number" value={editPlan.precio} onChange={e => setEditPlan({ ...editPlan, precio: Number(e.target.value) })} placeholder="Ej: 85000" /></Field>
@@ -4759,16 +4758,16 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {planes.map(p => (
-              <div key={p.id} style={{ background: "#ffffff", border: "1px solid #1e293b", borderLeft: "4px solid #0ea5e9", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: p.activo ? 1 : 0.5 }}>
+              <div key={p.id} style={{ background: "#ffffff", border: "1px solid " + GC.border, borderLeft: "4px solid #0ea5e9", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: p.activo ? 1 : 0.5 }}>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{p.nombre}</div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>{p.descripcion}</div>
+                  <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{p.nombre}</div>
+                  <div style={{ fontSize: 12, color: GC.ink3 }}>{p.descripcion}</div>
                 </div>
-                <div style={{ fontWeight: 800, color: "#0ea5e9", fontSize: 16 }}>{formatCOP(p.precio)}</div>
+                <div style={{ fontWeight: 800, color: GC.info, fontSize: 16 }}>{formatCOP(p.precio)}</div>
                 <div style={{ display: "flex", gap: 6 }}>
                   <button onClick={() => togglePlan(p.id)} style={{ background: p.activo ? "#22c55e22" : "#e2e8f0", color: p.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.activo ? "Activo" : "Inactivo"}</button>
-                  <button onClick={() => { setEditPlan(p); setFormTipo("plan"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                  <button onClick={() => setConfirmEliminar({ accion: () => deletePlan(p.id), titulo: "¿Eliminar plan?", mensaje: `Se eliminará el plan "${p.nombre}". Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                  <button onClick={() => { setEditPlan(p); setFormTipo("plan"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                  <button onClick={() => setConfirmEliminar({ accion: () => deletePlan(p.id), titulo: "¿Eliminar plan?", mensaje: `Se eliminará el plan "${p.nombre}". Esta acción no se puede deshacer.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                 </div>
               </div>
             ))}
@@ -4784,18 +4783,18 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {tab === "zonas" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ color: "#475569", fontSize: 14 }}>{zonas.length} zonas configuradas</span>
+            <span style={{ color: GC.ink2, fontSize: 14 }}>{zonas.length} zonas configuradas</span>
             <Btn onClick={() => { setEditZona({ ...emptyZona }); setFormTipo("zona"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nueva zona</Btn>
           </div>
           {showForm && formTipo === "zona" && editZona && (
-            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editZona.id ? "Editar zona" : "Nueva zona"}</h3>
+            <div style={{ background: "#ffffff", border: "1px solid " + GC.border2, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ color: GC.ink, marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editZona.id ? "Editar zona" : "Nueva zona"}</h3>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                 <Field label="Nombre de la zona"><Inp value={editZona.nombre} onChange={e => setEditZona({ ...editZona, nombre: e.target.value })} placeholder="Ej: Vijes" /></Field>
                 <Field label="Color identificador">
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <Inp type="color" value={editZona.color} onChange={e => setEditZona({ ...editZona, color: e.target.value })} style={{ width: 50, padding: 4 }} />
-                    <span style={{ fontSize: 13, color: "#475569" }}>{editZona.color}</span>
+                    <span style={{ fontSize: 13, color: GC.ink2 }}>{editZona.color}</span>
                   </div>
                 </Field>
               </div>
@@ -4817,13 +4816,13 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 800, color: z.color, fontSize: 16 }}>📍 {z.nombre}</div>
                       <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 12, color: "#64748b" }}>🗂️ {secs.length} secretarios: {secs.map(s => s.nombre.split(" ")[0]).join(", ") || "ninguno"}</span>
-                        <span style={{ fontSize: 12, color: "#64748b" }}>🔧 {tecs.length} técnicos: {tecs.map(t => t.nombre.split(" ")[0]).join(", ") || "ninguno"}</span>
-                        <span style={{ fontSize: 12, color: "#64748b" }}>👥 {clis.length} clientes</span>
+                        <span style={{ fontSize: 12, color: GC.ink3 }}>🗂️ {secs.length} secretarios: {secs.map(s => s.nombre.split(" ")[0]).join(", ") || "ninguno"}</span>
+                        <span style={{ fontSize: 12, color: GC.ink3 }}>🔧 {tecs.length} técnicos: {tecs.map(t => t.nombre.split(" ")[0]).join(", ") || "ninguno"}</span>
+                        <span style={{ fontSize: 12, color: GC.ink3 }}>👥 {clis.length} clientes</span>
                       </div>
                       {/* Nombre de empresa asignado por admin */}
                       <div style={{ marginTop: 8 }}>
-                        <span style={{ fontSize: 11, color: "#64748b", marginRight: 6 }}>Nombre empresa en esta zona:</span>
+                        <span style={{ fontSize: 11, color: GC.ink3, marginRight: 6 }}>Nombre empresa en esta zona:</span>
                         <Inp
                           value={z.nombreEmpresa || ""}
                           onChange={e => { const v = e.target.value; setZonas(prev => prev.map(x => x.id === z.id ? { ...x, nombreEmpresa: v } : x)); db.patchZonaNombreEmpresa(z.id, v).catch(console.error); }}
@@ -4834,8 +4833,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => toggleZona(z.id)} style={{ background: z.activa ? "#22c55e22" : "#e2e8f0", color: z.activa ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{z.activa ? "Activa" : "Inactiva"}</button>
-                      <button onClick={() => { setEditZona(z); setFormTipo("zona"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                      <button onClick={() => setConfirmEliminar({ accion: () => deleteZona(z.id), titulo: "¿Eliminar zona?", mensaje: `Se eliminará la zona "${z.nombre}". Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                      <button onClick={() => { setEditZona(z); setFormTipo("zona"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                      <button onClick={() => setConfirmEliminar({ accion: () => deleteZona(z.id), titulo: "¿Eliminar zona?", mensaje: `Se eliminará la zona "${z.nombre}". Esta acción no se puede deshacer.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                     </div>
                   </div>
                 </div>
@@ -4849,7 +4848,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {tab === "usuarios" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ color: "#475569", fontSize: 14 }}>{usuarios.length} usuarios</span>
+            <span style={{ color: GC.ink2, fontSize: 14 }}>{usuarios.length} usuarios</span>
             <Btn onClick={() => { setEditU(emptyU); setFormTipo("usuario"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nuevo usuario</Btn>
           </div>
 
@@ -4857,15 +4856,15 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
             <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && (setShowForm(false), setEditU(null), setFormTipo(null))}>
             <div style={{ background: "#ffffff", borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{editU.id ? "✏️ Editar usuario" : "➕ Nuevo usuario"}</h3>
-              <button onClick={() => { setShowForm(false); setEditU(null); setFormTipo(null); }} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: 20, color: "#64748b" }}>×</button>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: GC.ink }}>{editU.id ? "✏️ Editar usuario" : "➕ Nuevo usuario"}</h3>
+              <button onClick={() => { setShowForm(false); setEditU(null); setFormTipo(null); }} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: 20, color: GC.ink3 }}>×</button>
             </div>
             <div style={{ padding: 20 }}>
-              <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 16px" }}>Selecciona el tipo de usuario y configura sus privilegios</p>
+              <p style={{ color: GC.ink3, fontSize: 12, margin: "0 0 16px" }}>Selecciona el tipo de usuario y configura sus privilegios</p>
 
               {/* PASO 1: Tipo de usuario */}
-              <div style={{ background: "#e2e8f0", borderRadius: 12, padding: 14, marginBottom: 16 }}>
-                <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>1 · Tipo de usuario</div>
+              <div style={{ background: GC.bg3, borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: GC.ink2, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>1 · Tipo de usuario</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
                   {[
                     { val: "admin", emoji: "🛡️", label: "Administrador", desc: "Acceso total al sistema" },
@@ -4874,18 +4873,18 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                     { val: "cliente", emoji: "👤", label: "Cliente", desc: "Acceso al portal del cliente" },
                   ].map(r => (
                     <button key={r.val} onClick={() => setEditU({ ...editU, rol: r.val, privilegios: [] })}
-                      style={{ background: editU.rol === r.val ? ROL_COLOR[r.val] + "33" : "#ffffff", border: "2px solid " + (editU.rol === r.val ? ROL_COLOR[r.val] : "#334155"), borderRadius: 10, padding: "10px 12px", cursor: "pointer", textAlign: "left" }}>
+                      style={{ background: editU.rol === r.val ? ROL_BG_MAP[r.val] : GC.bg, border: "2px solid " + (editU.rol === r.val ? ROL_COLOR[r.val] : GC.border), borderRadius: 10, padding: "10px 12px", cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
                       <div style={{ fontSize: 18, marginBottom: 3 }}>{r.emoji}</div>
-                      <div style={{ fontWeight: 700, color: editU.rol === r.val ? ROL_COLOR[r.val] : "#0f172a", fontSize: 13 }}>{r.label}</div>
-                      <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{r.desc}</div>
+                      <div style={{ fontWeight: 700, color: editU.rol === r.val ? ROL_TEXT_MAP[r.val] : GC.ink, fontSize: 13 }}>{r.label}</div>
+                      <div style={{ fontSize: 11, color: GC.ink3, marginTop: 2 }}>{r.desc}</div>
                     </button>
                   ))}
                 </div>
               </div>
 
               {/* PASO 2: Datos básicos */}
-              <div style={{ background: "#e2e8f0", borderRadius: 12, padding: 14, marginBottom: 16 }}>
-                <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>2 · Datos básicos</div>
+              <div style={{ background: GC.bg3, borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: GC.ink2, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>2 · Datos básicos</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                   <Field label="Nombre completo"><Inp value={editU.nombre} onChange={e => setEditU({ ...editU, nombre: e.target.value })} /></Field>
                   <Field label="Teléfono"><Inp value={editU.telefono || ""} onChange={e => setEditU({ ...editU, telefono: e.target.value })} placeholder="Ej: 3001234567" /></Field>
@@ -4904,9 +4903,9 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
               {/* PASO 3: Privilegios adicionales (no aplica para admin ni cliente) */}
               {(editU.rol === "secretario" || editU.rol === "tecnico") && (
-                <div style={{ background: "#e2e8f0", borderRadius: 12, padding: 14, marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>3 · Privilegios adicionales</div>
-                  <p style={{ color: "#64748b", fontSize: 12, margin: "0 0 12px" }}>Marca los permisos extra que tendrá este usuario por encima de su rol base.</p>
+                <div style={{ background: GC.bg3, borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, color: GC.ink2, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>3 · Privilegios adicionales</div>
+                  <p style={{ color: GC.ink3, fontSize: 12, margin: "0 0 12px" }}>Marca los permisos extra que tendrá este usuario por encima de su rol base.</p>
                   {[
                     { id: "crear_ordenes", emoji: "📋", label: "Generar órdenes de trabajo", desc: "Puede crear y asignar órdenes manualmente", aplica: ["secretario", "tecnico"] },
                     { id: "editar_clientes", emoji: "✏️", label: "Editar datos de clientes", desc: "Puede modificar dirección, clave WiFi, estado", aplica: ["secretario", "tecnico"] },
@@ -4925,7 +4924,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                         </div>
                         <div>
                           <div style={{ fontWeight: 600, color: activo ? "#0ea5e9" : "#0f172a", fontSize: 13 }}>{priv.emoji} {priv.label}</div>
-                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{priv.desc}</div>
+                          <div style={{ fontSize: 11, color: GC.ink3, marginTop: 2 }}>{priv.desc}</div>
                         </div>
                       </div>
                     );
@@ -4935,8 +4934,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
               {/* PASO 4: Datos de cliente */}
               {editU.rol === "cliente" && (
-                <div style={{ background: "#e2e8f0", borderRadius: 12, padding: 14, marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, color: "#475569", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>3 · Datos del servicio</div>
+                <div style={{ background: GC.bg3, borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, color: GC.ink2, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>3 · Datos del servicio</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                     <Field label="Tipo de cliente">
                       <Sel value={editU.tipo || "final"} onChange={e => setEditU({ ...editU, tipo: e.target.value })}>
@@ -4956,7 +4955,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                         <option value="">— Seleccionar plan —</option>
                         {planes.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre} · {formatCOP(p.precio)}</option>)}
                       </Sel>
-                      {editU.plan && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 4 }}>✓ {editU.plan}</div>}
+                      {editU.plan && <div style={{ fontSize: 11, color: GC.brand, marginTop: 4 }}>✓ {editU.plan}</div>}
                     </Field>
                     
                     <Field label="Perfil de pago">
@@ -4968,7 +4967,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       </Sel>
                       {editU.perfilPagoId && (() => {
                         const pf = perfilesPago.find(x => x.id === editU.perfilPagoId);
-                        return pf ? <div style={{ fontSize: 11, color: "#0ea5e9", marginTop: 4 }}>📅 Vence entre el día {pf.diaInicio} y {pf.diaFin} de cada mes</div> : null;
+                        return pf ? <div style={{ fontSize: 11, color: GC.info, marginTop: 4 }}>📅 Vence entre el día {pf.diaInicio} y {pf.diaFin} de cada mes</div> : null;
                       })()}
                     </Field>
                     <Field label="Estado de cuenta">
@@ -5000,7 +4999,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
           <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
             <Inp placeholder="🔍  Buscar..." value={busqAdmin} onChange={e => setBusqAdmin(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-            {busqAdmin && <button onClick={() => setBusqAdmin("")} style={{ background: "#334155", color: "#475569", border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
+            {busqAdmin && <button onClick={() => setBusqAdmin("")} style={{ background: GC.ink2, color: GC.ink2, border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
             <Sel value={filtroAdminTipo} onChange={e => setFiltroAdminTipo(e.target.value)} style={{ width: "auto", minWidth: 130 }}>
               <option value="todos">Todos los roles</option>
               <option value="cliente_final">Clientes finales</option>
@@ -5012,33 +5011,33 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           {busqAdmin || filtroAdminTipo !== "todos" ? (
             <div>
               {usuariosFiltradosAdmin.length === 0 ? (
-                <div style={{ textAlign: "center", color: "#64748b", padding: 30, fontSize: 14 }}>No se encontraron usuarios</div>
+                <div style={{ textAlign: "center", color: GC.ink3, padding: 30, fontSize: 14 }}>No se encontraron usuarios</div>
               ) : usuariosFiltradosAdmin.map(u => (
-                <div key={u.id} style={{ background: "#ffffff", border: "1px solid #1e293b", borderRadius: 12, padding: "12px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: u.activo ? 1 : 0.5 }}>
+                <div key={u.id} style={{ background: "#ffffff", border: "1px solid " + GC.border, borderRadius: 12, padding: "12px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: u.activo ? 1 : 0.5 }}>
                   <div style={{ flex: 1, minWidth: 160 }}>
-                    <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{u.nombre}</div>
-                    <div style={{ fontSize: 12, color: "#64748b" }}>
+                    <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{u.nombre}</div>
+                    <div style={{ fontSize: 12, color: GC.ink3 }}>
                       @{u.usuario}
                       {u.rol !== "admin" && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
-                      {u.telefono && <span style={{ color: "#0ea5e9", marginLeft: 6 }}>📞 {u.telefono}</span>}
+                      {u.telefono && <span style={{ color: GC.info, marginLeft: 6 }}>📞 {u.telefono}</span>}
                       {u.rol === "cliente" && u.direccion && <span style={{ marginLeft: 6 }}>· {u.direccion}</span>}
                     </div>
                     <div style={{ marginTop: 3 }}><Badge text={ROLES[u.rol]} color={ROL_COLOR[u.rol]} /></div>
                     {(u.privilegios || []).length > 0 && (
                       <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
                         {u.privilegios.map(p => (
-                          <span key={p} style={{ background: "#0ea5e922", color: "#0ea5e9", border: "1px solid #0ea5e933", borderRadius: 6, padding: "2px 7px", fontSize: 10, fontWeight: 700 }}>
+                          <span key={p} style={{ background: "#0ea5e922", color: GC.info, border: "1px solid #0ea5e933", borderRadius: 6, padding: "2px 7px", fontSize: 10, fontWeight: 700 }}>
                             {p === "crear_ordenes" ? "📋 Órdenes" : p === "editar_clientes" ? "✏️ Editar clientes" : p === "crear_avisos" ? "📢 Avisos" : p === "ver_pagos" ? "💰 Pagos" : p === "cancelar_ordenes" ? "🚫 Cancelar órdenes" : p}
                           </span>
                         ))}
                       </div>
                     )}
                   </div>
-                  {u.rol === "cliente" && u.monto && <div style={{ fontSize: 13, color: "#0ea5e9", fontWeight: 700 }}>{formatCOP(u.monto)}</div>}
+                  {u.rol === "cliente" && u.monto && <div style={{ fontSize: 13, color: GC.info, fontWeight: 700 }}>{formatCOP(u.monto)}</div>}
                   <div style={{ display: "flex", gap: 6 }}>
                     {u.rol !== "superusuario" && <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>}
-                    <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                    {u.rol !== "superusuario" && (u.rol !== "admin" || sesion.rol === "superusuario") && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
+                    <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                    {u.rol !== "superusuario" && (u.rol !== "admin" || sesion.rol === "superusuario") && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                   </div>
                 </div>
               ))}
@@ -5052,36 +5051,36 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   <div key={rol} style={{ marginBottom: 20 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                       <Badge text={ROLES[rol]} color={ROL_COLOR[rol]} />
-                      <span style={{ color: "#64748b", fontSize: 12 }}>{lista.length}</span>
+                      <span style={{ color: GC.ink3, fontSize: 12 }}>{lista.length}</span>
                     </div>
                     {lista.map(u => (
-                      <div key={u.id} style={{ background: "#ffffff", border: "1px solid #1e293b", borderRadius: 12, padding: "12px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: u.activo ? 1 : 0.5 }}>
+                      <div key={u.id} style={{ background: "#ffffff", border: "1px solid " + GC.border, borderRadius: 12, padding: "12px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: u.activo ? 1 : 0.5 }}>
                         <div style={{ flex: 1, minWidth: 160 }}>
-                          <div style={{ fontWeight: 700, color: "#0f172a", fontSize: 14 }}>{u.nombre}</div>
-                          <div style={{ fontSize: 12, color: "#64748b" }}>
+                          <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{u.nombre}</div>
+                          <div style={{ fontSize: 12, color: GC.ink3 }}>
                             @{u.usuario}
                             {u.rol !== "admin" && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
-                            {u.telefono && <span style={{ color: "#0ea5e9", marginLeft: 6 }}>📞 {u.telefono}</span>}
+                            {u.telefono && <span style={{ color: GC.info, marginLeft: 6 }}>📞 {u.telefono}</span>}
                           </div>
-                          {u.rol === "cliente" && u.direccion && <div style={{ fontSize: 11, color: "#64748b" }}>📍 {u.direccion}</div>}
-                          {u.rol === "cliente" && u.claveWifi && <div style={{ fontSize: 11, color: "#0ea5e9" }}>🔑 WiFi: {u.claveWifi}</div>}
-                          {u.rol === "cliente" && u.tipo === "empresa" && u.nombreEmpresa && <div style={{ fontSize: 11, color: "#8b5cf6" }}>🏢 {u.nombreEmpresa}</div>}
-                          {u.rol === "cliente" && u.perfilPagoId && (() => { const pf = perfilesPago.find(x => x.id === u.perfilPagoId); return pf ? <div style={{ fontSize: 11, color: "#8b5cf6" }}>📅 {pf.nombre} (días {pf.diaInicio}-{pf.diaFin})</div> : null; })()}
+                          {u.rol === "cliente" && u.direccion && <div style={{ fontSize: 11, color: GC.ink3 }}>📍 {u.direccion}</div>}
+                          {u.rol === "cliente" && u.claveWifi && <div style={{ fontSize: 11, color: GC.info }}>🔑 WiFi: {u.claveWifi}</div>}
+                          {u.rol === "cliente" && u.tipo === "empresa" && u.nombreEmpresa && <div style={{ fontSize: 11, color: GC.purple }}>🏢 {u.nombreEmpresa}</div>}
+                          {u.rol === "cliente" && u.perfilPagoId && (() => { const pf = perfilesPago.find(x => x.id === u.perfilPagoId); return pf ? <div style={{ fontSize: 11, color: GC.purple }}>📅 {pf.nombre} (días {pf.diaInicio}-{pf.diaFin})</div> : null; })()}
                           {(u.privilegios || []).length > 0 && (
                             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5 }}>
                               {u.privilegios.map(p => (
-                                <span key={p} style={{ background: "#0ea5e922", color: "#0ea5e9", border: "1px solid #0ea5e933", borderRadius: 6, padding: "2px 7px", fontSize: 10, fontWeight: 700 }}>
+                                <span key={p} style={{ background: "#0ea5e922", color: GC.info, border: "1px solid #0ea5e933", borderRadius: 6, padding: "2px 7px", fontSize: 10, fontWeight: 700 }}>
                                   {p === "crear_ordenes" ? "📋 Órdenes" : p === "editar_clientes" ? "✏️ Editar clientes" : p === "crear_avisos" ? "📢 Avisos" : p === "ver_pagos" ? "💰 Pagos" : p === "cancelar_ordenes" ? "🚫 Cancelar órdenes" : p}
                                 </span>
                               ))}
                             </div>
                           )}
                         </div>
-                        {u.rol === "cliente" && u.monto && <div style={{ fontSize: 13, color: "#0ea5e9", fontWeight: 700 }}>{formatCOP(u.monto)}</div>}
+                        {u.rol === "cliente" && u.monto && <div style={{ fontSize: 13, color: GC.info, fontWeight: 700 }}>{formatCOP(u.monto)}</div>}
                         <div style={{ display: "flex", gap: 6 }}>
                           {u.rol !== "superusuario" && <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>}
-                          <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                          {u.rol !== "superusuario" && (u.rol !== "admin" || sesion.rol === "superusuario") && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
+                          <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                          {u.rol !== "superusuario" && (u.rol !== "admin" || sesion.rol === "superusuario") && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                         </div>
                       </div>
                     ))}
@@ -5097,12 +5096,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {tab === "avisos" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ color: "#475569", fontSize: 14 }}>{avisos.length} avisos</span>
+            <span style={{ color: GC.ink2, fontSize: 14 }}>{avisos.length} avisos</span>
             <Btn onClick={() => { setEditA({ ...emptyA, id: genId() }); setFormTipo("aviso"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nuevo aviso</Btn>
           </div>
           {showForm && formTipo === "aviso" && editA && (
-            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>Nuevo aviso</h3>
+            <div style={{ background: "#ffffff", border: "1px solid " + GC.border2, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ color: GC.ink, marginTop: 0, marginBottom: 16, fontSize: 15 }}>Nuevo aviso</h3>
               <Field label="Tipo">
                 <Sel value={editA.tipo} onChange={e => setEditA({ ...editA, tipo: e.target.value })}>
                   <option>Información</option><option>Mantenimiento</option><option>Falla</option>
@@ -5110,7 +5109,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
               </Field>
               <Field label="Título"><Inp value={editA.titulo} onChange={e => setEditA({ ...editA, titulo: e.target.value })} /></Field>
               <Field label="Mensaje">
-                <textarea value={editA.mensaje} onChange={e => setEditA({ ...editA, mensaje: e.target.value })} style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
+                <textarea value={editA.mensaje} onChange={e => setEditA({ ...editA, mensaje: e.target.value })} style={{ background: GC.bg2, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
               </Field>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
                 <Field label="Afecta">
@@ -5131,12 +5130,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
               <div key={a.id} style={{ background: "#ffffff", border: "1px solid " + TIPO_COLOR[a.tipo] + "33", borderLeft: "4px solid " + TIPO_COLOR[a.tipo], borderRadius: 12, padding: "12px 16px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <Badge text={a.tipo} color={TIPO_COLOR[a.tipo]} />
-                  <span style={{ fontWeight: 700, color: "#0f172a", flex: 1 }}>{a.titulo}</span>
-                  <span style={{ fontSize: 11, color: "#64748b" }}>Afecta: {a.afecta}</span>
+                  <span style={{ fontWeight: 700, color: GC.ink, flex: 1 }}>{a.titulo}</span>
+                  <span style={{ fontSize: 11, color: GC.ink3 }}>Afecta: {a.afecta}</span>
                   <button onClick={() => toggleA(a.id)} style={{ background: a.activo ? "#22c55e22" : "#e2e8f0", color: a.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 20, padding: "3px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{a.activo ? "Activo" : "Inactivo"}</button>
-                  <button onClick={() => setConfirmEliminar({ accion: () => deleteA(a.id), titulo: "¿Eliminar aviso?", mensaje: `Se eliminará el aviso "${a.titulo}". Esta acción no se puede deshacer.` })} style={{ background: "transparent", color: "#ef4444", border: "none", cursor: "pointer", fontSize: 16 }}>🗑️</button>
+                  <button onClick={() => setConfirmEliminar({ accion: () => deleteA(a.id), titulo: "¿Eliminar aviso?", mensaje: `Se eliminará el aviso "${a.titulo}". Esta acción no se puede deshacer.` })} style={{ background: "transparent", color: GC.danger, border: "none", cursor: "pointer", fontSize: 16 }}>🗑️</button>
                 </div>
-                <p style={{ margin: "6px 0 0", color: "#475569", fontSize: 13 }}>{a.mensaje}</p>
+                <p style={{ margin: "6px 0 0", color: GC.ink2, fontSize: 13 }}>{a.mensaje}</p>
               </div>
             ))}
           </div>
@@ -5147,13 +5146,13 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {tab === "propaganda" && (
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <span style={{ color: "#475569", fontSize: 14 }}>{propaganda.length} publicaciones · Solo el admin puede gestionar esto</span>
+            <span style={{ color: GC.ink2, fontSize: 14 }}>{propaganda.length} publicaciones · Solo el admin puede gestionar esto</span>
             <Btn onClick={() => { setEditPropa({ ...emptyPropa, id: genId() }); setFormTipo("propa"); setShowForm(true); }} variant="purple" style={{ fontSize: 13 }}>+ Nueva publicación</Btn>
           </div>
 
           {showForm && formTipo === "propa" && editPropa && (
-            <div style={{ background: "#ffffff", border: "1px solid #334155", borderRadius: 14, padding: 20, marginBottom: 16 }}>
-              <h3 style={{ color: "#0f172a", marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editPropa.id && propaganda.find(x => x.id === editPropa.id) ? "Editar publicación" : "Nueva publicación"}</h3>
+            <div style={{ background: "#ffffff", border: "1px solid " + GC.border2, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+              <h3 style={{ color: GC.ink, marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editPropa.id && propaganda.find(x => x.id === editPropa.id) ? "Editar publicación" : "Nueva publicación"}</h3>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                 <Field label="Categoría">
                   <Sel value={editPropa.categoria} onChange={e => setEditPropa({ ...editPropa, categoria: e.target.value, imagen: e.target.value === "camaras" ? "📷" : e.target.value === "equipos" ? "📶" : "🎁", color: e.target.value === "camaras" ? "#8b5cf6" : e.target.value === "equipos" ? "#22c55e" : "#0ea5e9" })}>
@@ -5168,7 +5167,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <Field label="Color de acento">
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <Inp type="color" value={editPropa.color} onChange={e => setEditPropa({ ...editPropa, color: e.target.value })} style={{ width: 50, padding: 4 }} />
-                    <span style={{ fontSize: 12, color: "#475569" }}>{editPropa.color}</span>
+                    <span style={{ fontSize: 12, color: GC.ink2 }}>{editPropa.color}</span>
                   </div>
                 </Field>
                 <Field label="Válido hasta (opcional)">
@@ -5179,17 +5178,17 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <Inp value={editPropa.titulo} onChange={e => setEditPropa({ ...editPropa, titulo: e.target.value })} placeholder="Ej: 🎉 Promoción Especial de Abril" />
               </Field>
               <Field label="Descripción / detalle">
-                <textarea value={editPropa.descripcion} onChange={e => setEditPropa({ ...editPropa, descripcion: e.target.value })} placeholder="Describe la promoción, equipo o servicio disponible..." style={{ background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 8, color: "#0f172a", padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 80, resize: "vertical" }} />
+                <textarea value={editPropa.descripcion} onChange={e => setEditPropa({ ...editPropa, descripcion: e.target.value })} placeholder="Describe la promoción, equipo o servicio disponible..." style={{ background: GC.bg2, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 80, resize: "vertical" }} />
               </Field>
               {/* Vista previa */}
               {editPropa.titulo && (
-                <div style={{ background: "#e2e8f0", borderRadius: 12, padding: 14, marginBottom: 14, border: "1px solid " + editPropa.color + "44", borderLeft: "4px solid " + editPropa.color }}>
-                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Vista previa</div>
+                <div style={{ background: GC.bg3, borderRadius: 12, padding: 14, marginBottom: 14, border: "1px solid " + editPropa.color + "44", borderLeft: "4px solid " + editPropa.color }}>
+                  <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>Vista previa</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                     <span style={{ fontSize: 26 }}>{editPropa.imagen}</span>
-                    <span style={{ fontWeight: 800, color: "#0f172a", fontSize: 14 }}>{editPropa.titulo}</span>
+                    <span style={{ fontWeight: 800, color: GC.ink, fontSize: 14 }}>{editPropa.titulo}</span>
                   </div>
-                  {editPropa.descripcion && <p style={{ color: "#475569", fontSize: 13, margin: 0 }}>{editPropa.descripcion}</p>}
+                  {editPropa.descripcion && <p style={{ color: GC.ink2, fontSize: 13, margin: 0 }}>{editPropa.descripcion}</p>}
                 </div>
               )}
               <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -5205,22 +5204,22 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 24 }}>{p.imagen}</span>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 800, color: "#0f172a", fontSize: 14 }}>{p.titulo}</div>
+                    <div style={{ fontWeight: 800, color: GC.ink, fontSize: 14 }}>{p.titulo}</div>
                     <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                       <Badge text={p.categoria === "promocion" ? "🏷️ Promoción" : p.categoria === "equipos" ? "🖥️ Equipos" : "📷 Cámaras"} color={p.color} />
-                      {p.fecha && <span style={{ fontSize: 11, color: "#64748b" }}>⏳ hasta {formatDate(p.fecha)}</span>}
+                      {p.fecha && <span style={{ fontSize: 11, color: GC.ink3 }}>⏳ hasta {formatDate(p.fecha)}</span>}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={() => togglePropa(p.id)} style={{ background: p.activo ? "#22c55e22" : "#e2e8f0", color: p.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{p.activo ? "Activo" : "Inactivo"}</button>
-                    <button onClick={() => { setEditPropa(p); setFormTipo("propa"); setShowForm(true); }} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                    <button onClick={() => setConfirmEliminar({ accion: () => deletePropa(p.id), titulo: "¿Eliminar promoción?", mensaje: `Se eliminará la promoción "${p.titulo}". Esta acción no se puede deshacer.` })} style={{ background: "#e2e8f0", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                    <button onClick={() => { setEditPropa(p); setFormTipo("propa"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                    <button onClick={() => setConfirmEliminar({ accion: () => deletePropa(p.id), titulo: "¿Eliminar promoción?", mensaje: `Se eliminará la promoción "${p.titulo}". Esta acción no se puede deshacer.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                   </div>
                 </div>
-                <p style={{ margin: "8px 0 0", color: "#475569", fontSize: 13, lineHeight: 1.5 }}>{p.descripcion}</p>
+                <p style={{ margin: "8px 0 0", color: GC.ink2, fontSize: 13, lineHeight: 1.5 }}>{p.descripcion}</p>
               </div>
             ))}
-            {propaganda.length === 0 && <div style={{ textAlign: "center", color: "#64748b", padding: 40 }}>Sin publicaciones. Crea la primera.</div>}
+            {propaganda.length === 0 && <div style={{ textAlign: "center", color: GC.ink3, padding: 40 }}>Sin publicaciones. Crea la primera.</div>}
           </div>
         </div>
       )}
@@ -5389,23 +5388,23 @@ export default function App() {
 
   // Pantalla de carga
   if (cargando) return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, fontFamily: "'Sora','Segoe UI',sans-serif" }}>
-      <div style={{ fontSize: 48 }}>📡</div>
-      <div style={{ color: "#0ea5e9", fontWeight: 700, fontSize: 16 }}>Conectando con la base de datos…</div>
-      <div style={{ color: "#64748b", fontSize: 13 }}>GC HOGAR.NET</div>
+    <div style={{ minHeight: "100vh", background: GC.ink, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, fontFamily: "'Plus Jakarta Sans','Segoe UI',sans-serif" }}>
+      <div style={{ width: 56, height: 56, background: GC.brand, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>📡</div>
+      <div style={{ color: GC.brand, fontWeight: 700, fontSize: 16 }}>Conectando con la base de datos…</div>
+      <div style={{ color: "rgba(255,255,255,.35)", fontSize: 12, letterSpacing: ".1em", textTransform: "uppercase" }}>GC HOGAR · NET. S.A.S</div>
     </div>
   );
 
   // Pantalla de error de conexión
   if (errorBD) return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Sora','Segoe UI',sans-serif" }}>
-      <div style={{ background: "#ffffff", border: "1px solid #ef444444", borderRadius: 16, padding: 32, maxWidth: 480, textAlign: "center" }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>⚠️</div>
-        <h2 style={{ color: "#ef4444", marginBottom: 12 }}>Error de conexión</h2>
-        <p style={{ color: "#475569", fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>{errorBD}</p>
-        <div style={{ background: "#e2e8f0", borderRadius: 10, padding: 14, textAlign: "left", fontSize: 12, color: "#64748b", lineHeight: 1.8 }}>
-          <div>1. Abre el archivo <strong style={{color:"#0f172a"}}>servicios-app-v6.jsx</strong></div>
-          <div>2. Edita las constantes <strong style={{color:"#0ea5e9"}}>SUPABASE_URL</strong> y <strong style={{color:"#0ea5e9"}}>SUPABASE_ANON</strong></div>
+    <div style={{ minHeight: "100vh", background: GC.bg2, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Plus Jakarta Sans','Segoe UI',sans-serif" }}>
+      <div style={{ background: GC.bg, border: "1px solid " + GC.dangerBdr, borderRadius: 16, padding: 32, maxWidth: 480, textAlign: "center" }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+        <h2 style={{ color: GC.danger, marginBottom: 12, fontSize: 20 }}>Error de conexión</h2>
+        <p style={{ color: GC.ink2, fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>{errorBD}</p>
+        <div style={{ background: GC.bg3, borderRadius: 10, padding: 14, textAlign: "left", fontSize: 12, color: GC.ink3, lineHeight: 1.8 }}>
+          <div>1. Abre el archivo <strong style={{color:GC.ink}}>App.jsx</strong></div>
+          <div>2. Edita las constantes <strong style={{color:GC.brand}}>SUPABASE_URL</strong> y <strong style={{color:GC.brand}}>SUPABASE_ANON</strong></div>
           <div>3. Ejecuta el schema SQL en Supabase → SQL Editor</div>
         </div>
       </div>
@@ -5413,91 +5412,105 @@ export default function App() {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", color: "#0f172a", fontFamily: "'Sora', 'Segoe UI', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: GC.bg2, color: GC.ink, fontFamily: "'Plus Jakarta Sans', 'Segoe UI', sans-serif" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
         * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #f1f5f9; } ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-        input:focus, select:focus, textarea:focus { border-color: #0ea5e9 !important; }
-        button { transition: opacity 0.15s; } button:hover { opacity: 0.85; }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: ${GC.bg2}; } ::-webkit-scrollbar-thumb { background: ${GC.border2}; border-radius: 3px; }
+        input:focus, select:focus, textarea:focus { border-color: ${GC.brand} !important; box-shadow: 0 0 0 3px ${GC.brandLight}; }
+        button { transition: opacity 0.15s; } button:active { opacity: 0.8; }
       `}</style>
 
       {/* HEADER */}
-      <header style={{ borderBottom: "1px solid #e2e8f0", padding: "10px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: "rgba(248,250,252,0.97)", zIndex: 10, /*backdropFilter: "blur(10px)"*/ }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* Botón hamburguesa solo para admin/secretario/técnico */}
+      <header style={{ borderBottom: "1px solid " + GC.border, padding: "0 20px", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, background: GC.ink, zIndex: 100 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {sesion && sesion.rol !== "cliente" && (
             <SideNavTrigger sesion={sesion} tab={tabActual} setTab={setTabActual} cerrarSesion={cerrarSesion} ticketsNuevos={ticketsNuevos} ordenesHoy={ordenesHoyTecnico} />
           )}
           {LOGO_URL ? (
-            <img src={LOGO_URL} alt="Logo" style={{ width: 30, height: 30, objectFit: "contain", borderRadius: 8 }} />
+            <img src={LOGO_URL} alt="Logo" style={{ width: 28, height: 28, objectFit: "contain", borderRadius: 7, background: GC.bg, padding: 2 }} />
           ) : (
-            <span style={{ fontSize: 22 }}>📡</span>
+            <div style={{ width: 28, height: 28, background: GC.brand, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>📡</div>
           )}
           <div>
-            <div style={{ fontWeight: 800, fontSize: 14, color: "#0f172a", letterSpacing: -0.5 }}>{nombreEmpresaHeader}</div>
-            <div style={{ fontSize: 10, color: "#64748b" }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", letterSpacing: ".01em" }}>{nombreEmpresaHeader}</div>
+            <div style={{ fontSize: 9, color: "rgba(255,255,255,.35)", letterSpacing: ".1em", textTransform: "uppercase" }}>
               {sesion ? `${ROLES[sesion.rol]}${zonaHeader ? " · " + zonaHeader.nombre : ""}` : "Gestión de servicios"}
             </div>
           </div>
         </div>
         {sesion && (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {sesion.rol === "tecnico" && ordenesHoyTecnico > 0 && <span style={{ background: "#f59e0b", color: "#000", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800 }}>{ordenesHoyTecnico} hoy</span>}
-            {sesion.rol === "secretario" && ticketsNuevos > 0 && <span style={{ background: "#ef4444", color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800 }}>{ticketsNuevos} nuevos</span>}
-            {sesion.rol === "cliente" && (
-              <button onClick={cerrarSesion} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12 }}>Salir</button>
+            {sesion.rol === "tecnico" && ordenesHoyTecnico > 0 && (
+              <span style={{ background: GC.warningBg, color: GC.warning, border: "1px solid " + GC.warningBdr, borderRadius: 20, padding: "2px 9px", fontSize: 11, fontWeight: 700 }}>{ordenesHoyTecnico} hoy</span>
             )}
+            {(sesion.rol === "secretario" || sesion.rol === "admin" || sesion.rol === "superusuario") && ticketsNuevos > 0 && (
+              <span style={{ background: GC.dangerBg, color: GC.danger, border: "1px solid " + GC.dangerBdr, borderRadius: 20, padding: "2px 9px", fontSize: 11, fontWeight: 700 }}>{ticketsNuevos} tickets</span>
+            )}
+            {sesion.rol === "cliente" && (
+              <button onClick={cerrarSesion} style={{ background: "rgba(255,255,255,.08)", color: "rgba(255,255,255,.7)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 8, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>Salir</button>
+            )}
+            <div style={{ width: 30, height: 30, background: GC.brand, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff" }}>
+              {sesion.nombre?.split(" ").map(n => n[0]).join("").slice(0,2).toUpperCase()}
+            </div>
           </div>
         )}
       </header>
 
       {/* LOGIN */}
       {!sesion && (
-        <div style={{ maxWidth: 400, margin: "60px auto", padding: 16 }}>
-          <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 24, overflow: "hidden", boxShadow: "0 10px 40px #00000014" }}>
-            {/* Logo */}
-            <div style={{ background: "#ffffff", borderBottom: "1px solid #e2e8f0", padding: "32px 32px 24px", textAlign: "center" }}>
-              {LOGO_URL ? (
-                <img src={LOGO_URL} alt="Logo" style={{ width: "100%", maxWidth: 240, height: 170, objectFit: "contain" }} />
-              ) : (
-                <div style={{ fontSize: 64 }}>📡</div>
-              )}
-            </div>
-            {/* Formulario */}
-            <div style={{ padding: "28px 32px 32px" }}>
-              {!showRecuperar ? (
-                <>
-                  <h2 style={{ color: "#0f172a", marginBottom: 4, fontSize: 22, fontWeight: 800, textAlign: "center" }}>GC HOGAR.NET</h2>
-                  <p style={{ color: "#64748b", marginBottom: 24, fontSize: 13, textAlign: "center" }}>Ingresa con tu usuario o correo y clave</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
-                    <Inp value={loginUser} onChange={e => setLoginUser(e.target.value)} placeholder="Usuario o correo electrónico" onKeyDown={e => e.key === "Enter" && intentarLogin()} />
-                    <Inp type="password" value={loginClave} onChange={e => setLoginClave(e.target.value)} placeholder="Clave" onKeyDown={e => e.key === "Enter" && intentarLogin()} />
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-                    <input type="checkbox" id="recordar" checked={loginRecordar} onChange={e => setLoginRecordar(e.target.checked)} style={{ width: 16, height: 16, accentColor: "#0ea5e9", cursor: "pointer" }} />
-                    <label htmlFor="recordar" style={{ fontSize: 13, color: "#64748b", cursor: "pointer" }}>Recordar mis datos</label>
-                    <button onClick={() => { setShowRecuperar(true); setRecuperar(""); setRecuperarMsg(null); }} style={{ marginLeft: "auto", background: "none", border: "none", color: "#0ea5e9", fontSize: 13, cursor: "pointer", padding: 0, fontWeight: 600 }}>
-                      ¿Olvidé mi clave?
-                    </button>
-                  </div>
-                  <Btn onClick={intentarLogin} style={{ width: "100%", padding: "13px 0", fontSize: 15, borderRadius: 12 }}>Ingresar</Btn>
-                  {loginError && <p style={{ color: "#ef4444", marginTop: 12, fontSize: 13, textAlign: "center" }}>{loginError}</p>}
-                </>
-              ) : (
-                <>
-                  <button onClick={() => { setShowRecuperar(false); setRecuperarMsg(null); }} style={{ background: "none", border: "none", color: "#0ea5e9", cursor: "pointer", fontSize: 13, marginBottom: 16, padding: 0 }}>← Volver</button>
-                  <h3 style={{ color: "#0f172a", marginBottom: 6, fontSize: 18, fontWeight: 800 }}>🔐 Recuperar contraseña</h3>
-                  <p style={{ color: "#64748b", fontSize: 13, marginBottom: 20 }}>Ingresa el correo electrónico de tu cuenta y te enviaremos un enlace de recuperación.</p>
-                  <Inp type="email" value={recuperarCorreo} onChange={e => setRecuperar(e.target.value)} placeholder="tucorreo@ejemplo.com" onKeyDown={e => e.key === "Enter" && enviarRecuperacion()} style={{ marginBottom: 14 }} />
-                  <Btn onClick={enviarRecuperacion} style={{ width: "100%", padding: "12px 0", fontSize: 14, borderRadius: 12 }}>Enviar enlace de recuperación</Btn>
-                  {recuperarMsg && (
-                    <div style={{ marginTop: 14, background: recuperarMsg.ok ? "#f0fdf4" : "#fef2f2", border: "1px solid " + (recuperarMsg.ok ? "#bbf7d0" : "#fecaca"), borderRadius: 10, padding: "12px 14px", fontSize: 13, color: recuperarMsg.ok ? "#16a34a" : "#dc2626", lineHeight: 1.5 }}>
-                      {recuperarMsg.ok ? "✅ " : "⚠️ "}{recuperarMsg.texto}
+        <div style={{ minHeight: "calc(100vh - 52px)", background: GC.ink, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ width: "100%", maxWidth: 380 }}>
+            {/* Logo card */}
+            <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 20, overflow: "hidden" }}>
+              <div style={{ padding: "32px 32px 24px", textAlign: "center", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+                {LOGO_URL ? (
+                  <img src={LOGO_URL} alt="Logo" style={{ width: "100%", maxWidth: 200, height: 140, objectFit: "contain" }} />
+                ) : (
+                  <div style={{ fontSize: 60 }}>📡</div>
+                )}
+              </div>
+              <div style={{ padding: "28px 32px 32px" }}>
+                {!showRecuperar ? (
+                  <>
+                    <h2 style={{ color: "#fff", marginBottom: 4, fontSize: 20, fontWeight: 700, textAlign: "center" }}>Bienvenido</h2>
+                    <p style={{ color: "rgba(255,255,255,.4)", marginBottom: 24, fontSize: 13, textAlign: "center" }}>Ingresa con tu usuario y clave</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+                      <input value={loginUser} onChange={e => setLoginUser(e.target.value)} placeholder="Usuario o correo" onKeyDown={e => e.key === "Enter" && intentarLogin()}
+                        style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 8, color: "#fff", padding: "10px 14px", fontSize: 14, outline: "none", fontFamily: "inherit" }} />
+                      <input type="password" value={loginClave} onChange={e => setLoginClave(e.target.value)} placeholder="Clave" onKeyDown={e => e.key === "Enter" && intentarLogin()}
+                        style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 8, color: "#fff", padding: "10px 14px", fontSize: 14, outline: "none", fontFamily: "inherit" }} />
                     </div>
-                  )}
-                </>
-              )}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
+                      <input type="checkbox" id="recordar" checked={loginRecordar} onChange={e => setLoginRecordar(e.target.checked)} style={{ width: 15, height: 15, accentColor: GC.brand, cursor: "pointer" }} />
+                      <label htmlFor="recordar" style={{ fontSize: 12, color: "rgba(255,255,255,.4)", cursor: "pointer" }}>Recordar datos</label>
+                      <button onClick={() => { setShowRecuperar(true); setRecuperar(""); setRecuperarMsg(null); }} style={{ marginLeft: "auto", background: "none", border: "none", color: GC.brand, fontSize: 12, cursor: "pointer", padding: 0, fontWeight: 600, fontFamily: "inherit" }}>
+                        ¿Olvidé mi clave?
+                      </button>
+                    </div>
+                    <button onClick={intentarLogin} style={{ width: "100%", background: GC.brand, color: "#fff", border: "none", borderRadius: 10, padding: "12px 0", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                      Ingresar
+                    </button>
+                    {loginError && <p style={{ color: GC.danger, marginTop: 12, fontSize: 13, textAlign: "center" }}>{loginError}</p>}
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => { setShowRecuperar(false); setRecuperarMsg(null); }} style={{ background: "none", border: "none", color: GC.brand, cursor: "pointer", fontSize: 13, marginBottom: 16, padding: 0, fontFamily: "inherit" }}>← Volver</button>
+                    <h3 style={{ color: "#fff", marginBottom: 6, fontSize: 17, fontWeight: 700 }}>Recuperar contraseña</h3>
+                    <p style={{ color: "rgba(255,255,255,.4)", fontSize: 13, marginBottom: 20 }}>Ingresa tu correo y te enviaremos un enlace.</p>
+                    <input type="email" value={recuperarCorreo} onChange={e => setRecuperar(e.target.value)} placeholder="tucorreo@ejemplo.com" onKeyDown={e => e.key === "Enter" && enviarRecuperacion()}
+                      style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 8, color: "#fff", padding: "10px 14px", fontSize: 14, outline: "none", fontFamily: "inherit", width: "100%", marginBottom: 14 }} />
+                    <button onClick={enviarRecuperacion} style={{ width: "100%", background: GC.brand, color: "#fff", border: "none", borderRadius: 10, padding: "11px 0", fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                      Enviar enlace
+                    </button>
+                    {recuperarMsg && (
+                      <div style={{ marginTop: 14, background: recuperarMsg.ok ? GC.brandLight : GC.dangerBg, border: "1px solid " + (recuperarMsg.ok ? GC.brandMid : GC.dangerBdr), borderRadius: 10, padding: "12px 14px", fontSize: 13, color: recuperarMsg.ok ? GC.brandText : GC.danger, lineHeight: 1.5 }}>
+                        {recuperarMsg.ok ? "✅ " : "⚠️ "}{recuperarMsg.texto}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
