@@ -2445,7 +2445,23 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
           </div>
           {factura.notas && <div style={{ marginTop: 10, fontSize: 11, color: GC.ink3, textAlign: "center" }}>{factura.notas}</div>}
         </div>
-        <style>{`@media print { @page { size: 76mm auto; margin: 2mm; } body * { visibility: hidden; } #recibo-print, #recibo-print * { visibility: visible; } #recibo-print { position: fixed; top: 0; left: 0; width: 72mm; font-size: 11px; padding: 2mm; } }`}</style>
+        <style>{`
+          @media print {
+            @page { size: 76mm auto; margin: 6mm 5mm; }
+            body * { visibility: hidden; }
+            #recibo-print, #recibo-print * { visibility: visible; }
+            #recibo-print {
+              position: fixed;
+              top: 0; left: 0;
+              width: 66mm;
+              font-size: 11px;
+              padding: 4mm 5mm;
+              font-family: "Courier New", Courier, monospace;
+              color: #000;
+              line-height: 1.4;
+            }
+          }
+        `}</style>
       </div>
     </div>
   );
@@ -3019,29 +3035,29 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                       ).join("");
                       const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Tirilla ${tirilla.titulo}</title>
                       <style>
-                        @page { size: 76mm auto; margin: 4mm 3mm; }
+                        @page { size: 76mm auto; margin: 8mm 6mm; }
                         * { box-sizing: border-box; margin: 0; padding: 0; }
-                        body { font-family: "Courier New", Courier, monospace; font-size: 9.5pt; color: #000; width: 70mm; background: #fff; }
+                        body { font-family: "Courier New", Courier, monospace; font-size: 9pt; color: #000; width: 64mm; background: #fff; padding: 4mm; line-height: 1.4; }
                         .center { text-align: center; }
                         .bold { font-weight: bold; }
-                        .empresa { font-size: 11pt; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
-                        .sep { border: none; border-top: 1px dashed #555; margin: 5px 0; }
-                        .sep-solid { border: none; border-top: 1px solid #000; margin: 4px 0; }
-                        .info { font-size: 8.5pt; margin: 2px 0; }
-                        table { width: 100%; border-collapse: collapse; margin: 3px 0; }
-                        th { font-size: 8pt; text-transform: uppercase; border-bottom: 1px solid #000; padding: 2px 2px; text-align: left; }
+                        .empresa { font-size: 10.5pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; }
+                        .sep { border: none; border-top: 1px dashed #555; margin: 6px 0; }
+                        .sep-solid { border: none; border-top: 1px solid #000; margin: 5px 0; }
+                        .info { font-size: 8pt; margin: 3px 0; }
+                        table { width: 100%; border-collapse: collapse; margin: 4px 0; }
+                        th { font-size: 7.5pt; text-transform: uppercase; border-bottom: 1px solid #000; padding: 3px 3px; text-align: left; }
                         th.r { text-align: right; }
-                        .td-nombre { font-size: 8.5pt; font-weight: bold; padding: 3px 2px 0; width: 38%; }
-                        .td-concepto { font-size: 7.5pt; color: #333; padding: 3px 2px 0; width: 26%; }
-                        .td-estado span { font-size: 7pt; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
-                        .td-estado { padding: 3px 2px 0; width: 18%; }
-                        .td-monto { text-align: right; font-weight: bold; font-size: 8.5pt; padding: 3px 0 3px 2px; width: 18%; }
-                        tr { border-bottom: 1px dotted #ccc; }
-                        .subtotal-row td { font-size: 8.5pt; padding: 4px 2px; border-top: 1px dashed #555; border-bottom: none; }
-                        .total-row td { font-size: 11pt; font-weight: 900; padding: 5px 2px; border-top: 2px solid #000; }
-                        .footer { font-size: 7.5pt; text-align: center; margin-top: 6px; color: #333; }
-                        .btn-print { display: block; margin: 12px auto; padding: 8px 24px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: Arial, sans-serif; }
-                        @media print { .no-print { display: none !important; } body { width: 70mm; } }
+                        .td-nombre { font-size: 8pt; font-weight: bold; padding: 4px 3px 2px; width: 36%; word-break: break-word; }
+                        .td-concepto { font-size: 7pt; color: #222; padding: 4px 3px 2px; width: 28%; word-break: break-word; }
+                        .td-estado span { font-size: 6.5pt; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
+                        .td-estado { padding: 4px 3px 2px; width: 18%; }
+                        .td-monto { text-align: right; font-weight: bold; font-size: 8pt; padding: 4px 0 2px 3px; width: 18%; }
+                        tr { border-bottom: 1px dotted #aaa; }
+                        .subtotal-row td { font-size: 8pt; padding: 5px 3px; border-top: 1px dashed #555; border-bottom: none; }
+                        .total-row td { font-size: 10.5pt; font-weight: 900; padding: 6px 3px; border-top: 2px solid #000; }
+                        .footer { font-size: 7.5pt; text-align: center; margin-top: 8px; color: #222; }
+                        .btn-print { display: block; margin: 14px auto; padding: 9px 28px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: Arial, sans-serif; }
+                        @media print { .no-print { display: none !important; } body { width: 64mm; padding: 0; } }
                       </style></head><body>
                       <div class="center">
                         <div class="empresa">${nombreEmpresa}</div>
