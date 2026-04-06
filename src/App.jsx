@@ -311,11 +311,11 @@ const GC = {
   ink2:        "#374151",
   ink3:        "#6b7280",
   ink4:        "#9ca3af",
-  bg:          "#ffffff",
-  bg2:         "#f9fafb",
-  bg3:         "#f3f4f6",
-  border:      "#e5e7eb",
-  border2:     "#d1d5db",
+  bg:          "#FFFDF7",
+  bg2:         "#FDF5E6",
+  bg3:         "#F5EDD6",
+  border:      "#E8DCC8",
+  border2:     "#D4C4A8",
   danger:      "#ef4444",
   dangerBg:    "#fef2f2",
   dangerBdr:   "#fecaca",
@@ -757,7 +757,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
                 if (item.key === "hoy" && ordenesHoy > 0) badge = ordenesHoy;
                 return (
                   <button key={item.key} onClick={() => { setTab(item.key); setOpen(false); }}
-                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: "none", borderLeft: isActive ? "2px solid " + GC.brand : "2px solid transparent", borderRadius: "0 8px 8px 0", cursor: "pointer", background: isActive ? "rgba(22,163,74,.15)" : "transparent", color: isActive ? "#fff" : "rgba(255,255,255,.5)", fontWeight: isActive ? 600 : 400, fontSize: 13, textAlign: "left", fontFamily: "inherit", marginBottom: 1, transition: "background .12s" }}
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: "none", borderLeft: isActive ? "2px solid " + GC.brand : "2px solid transparent", borderRadius: "0 8px 8px 0", cursor: "pointer", background: isActive ? "rgba(22,163,74,.22)" : "rgba(255,255,255,.06)", color: isActive ? "#fff" : "rgba(255,255,255,.78)", fontWeight: isActive ? 700 : 500, fontSize: 13, textAlign: "left", fontFamily: "inherit", marginBottom: 1, transition: "background .12s" }}
                     onMouseOver={e => { if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,.05)"; }}
                     onMouseOut={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}>
                     <span style={{ fontSize: 15, width: 20, textAlign: "center", opacity: isActive ? 1 : .7 }}>{item.icon}</span>
@@ -5416,7 +5416,7 @@ export default function App() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
         * { box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: ${GC.bg2}; } ::-webkit-scrollbar-thumb { background: ${GC.border2}; border-radius: 3px; }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #FDF5E6; } ::-webkit-scrollbar-thumb { background: ${GC.border2}; border-radius: 3px; }
         input:focus, select:focus, textarea:focus { border-color: ${GC.brand} !important; box-shadow: 0 0 0 3px ${GC.brandLight}; }
         button { transition: opacity 0.15s; } button:active { opacity: 0.8; }
       `}</style>
