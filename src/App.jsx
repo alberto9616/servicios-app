@@ -4397,93 +4397,172 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const emptyPropa = { id: "", categoria: "promocion", titulo: "", descripcion: "", activo: true, fecha: "", imagen: "🎁", color: "#0ea5e9" };
 
   const saveU = async (u) => {
+    // ── Validaciones antes de enviar a Supabase ──────────────
+    if (!u.nombre?.trim())   { alert("⚠️ El nombre completo es obligatorio.");       return; }
+    if (!u.usuario?.trim())  { alert("⚠️ El usuario (login) es obligatorio.");       return; }
+    if (!u.clave?.trim())    { alert("⚠️ La clave de acceso es obligatoria.");       return; }
+    if (u.rol !== "admin" && !u.zonaId) { alert("⚠️ Debes asignar una zona al usuario."); return; }
     try {
       const guardado = await db.upsertUsuario(u);
       setUsuarios(p => p.find(x => x.id === guardado.id) ? p.map(x => x.id === guardado.id ? guardado : x) : [...p, guardado]);
       setShowForm(false); setEditU(null); setFormTipo(null);
-    } catch (err) { console.error("Error guardando usuario:", err); }
+    } catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error guardando usuario:", msg);
+      if (msg.includes("duplicate") || msg.includes("unique") || msg.includes("23505")) {
+        alert("⚠️ Ya existe un usuario con ese login. Usa uno diferente.");
+      } else if (msg.includes("usuarios_rol_check")) {
+        alert("⚠️ El rol asignado no está permitido en la base de datos. Verifica el constraint en Supabase.");
+      } else if (msg.includes("409") || msg.includes("conflict")) {
+        alert("⚠️ Conflicto al guardar: el usuario o la cédula ya existen. Revisa los datos e intenta de nuevo.");
+      } else {
+        alert("❌ Error guardando usuario: " + msg);
+      }
+    }
   };
   const deleteU = async (id) => {
     try { await db.deleteUsuario(id); setUsuarios(p => p.filter(u => u.id !== id)); }
-    catch (err) { console.error("Error eliminando usuario:", err); }
+    catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error eliminando usuario:", msg);
+      alert("❌ No se pudo eliminar el usuario: " + msg);
+    }
   };
   const toggleU = async (id) => {
     const u = usuarios.find(x => x.id === id);
     if (!u) return;
     try { await db.toggleUsuario(id, !u.activo); setUsuarios(p => p.map(x => x.id === id ? { ...x, activo: !x.activo } : x)); }
-    catch (err) { console.error("Error toggling usuario:", err); }
+    catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error toggling usuario:", msg);
+      alert("❌ No se pudo cambiar el estado: " + msg);
+    }
   };
 
   const saveA = async (a) => {
+    if (!a.titulo?.trim())   { alert("⚠️ El título del aviso es obligatorio."); return; }
+    if (!a.mensaje?.trim())  { alert("⚠️ El mensaje del aviso es obligatorio."); return; }
     try {
       const guardado = await db.upsertAviso(a);
       setAvisos(p => p.find(x => x.id === guardado.id) ? p.map(x => x.id === guardado.id ? guardado : x) : [...p, guardado]);
       setShowForm(false); setEditA(null); setFormTipo(null);
-    } catch (err) { console.error("Error guardando aviso:", err); }
+    } catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error guardando aviso:", msg);
+      alert("❌ Error guardando aviso: " + msg);
+    }
   };
   const deleteA = async (id) => {
     try { await db.deleteAviso(id); setAvisos(p => p.filter(a => a.id !== id)); }
-    catch (err) { console.error("Error eliminando aviso:", err); }
+    catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error eliminando aviso:", msg);
+      alert("❌ No se pudo eliminar el aviso: " + msg);
+    }
   };
   const toggleA = async (id) => {
     const a = avisos.find(x => x.id === id);
     if (!a) return;
     try { await db.toggleAviso(id, !a.activo); setAvisos(p => p.map(x => x.id === id ? { ...x, activo: !x.activo } : x)); }
-    catch (err) { console.error("Error toggling aviso:", err); }
+    catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error toggling aviso:", msg);
+      alert("❌ Error cambiando estado del aviso: " + msg);
+    }
   };
 
   const savePlan = async (p) => {
+    if (!p.nombre?.trim()) { alert("⚠️ El nombre del plan es obligatorio."); return; }
+    if (!p.precio && p.precio !== 0) { alert("⚠️ El precio del plan es obligatorio."); return; }
     try {
       const guardado = await db.upsertPlan(p);
       setPlanes(prev => prev.find(x => x.id === guardado.id) ? prev.map(x => x.id === guardado.id ? guardado : x) : [...prev, guardado]);
       setShowForm(false); setEditPlan(null); setFormTipo(null);
-    } catch (err) { console.error("Error guardando plan:", err); }
+    } catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error guardando plan:", msg);
+      alert("❌ Error guardando plan: " + msg);
+    }
   };
   const deletePlan = async (id) => {
     try { await db.deletePlan(id); setPlanes(p => p.filter(x => x.id !== id)); }
-    catch (err) { console.error("Error eliminando plan:", err); }
+    catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error eliminando plan:", msg);
+      alert("❌ No se pudo eliminar el plan: " + msg);
+    }
   };
   const togglePlan = async (id) => {
     const p = planes.find(x => x.id === id);
     if (!p) return;
     try { await db.togglePlan(id, !p.activo); setPlanes(prev => prev.map(x => x.id === id ? { ...x, activo: !x.activo } : x)); }
-    catch (err) { console.error("Error toggling plan:", err); }
+    catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error toggling plan:", msg);
+      alert("❌ Error cambiando estado del plan: " + msg);
+    }
   };
 
   const saveZona = async (z) => {
+    if (!z.nombre?.trim()) { alert("⚠️ El nombre de la zona es obligatorio."); return; }
     try {
       const guardada = await db.upsertZona(z);
       setZonas(prev => prev.find(x => x.id === guardada.id) ? prev.map(x => x.id === guardada.id ? guardada : x) : [...prev, guardada]);
       setShowForm(false); setEditZona(null); setFormTipo(null);
-    } catch (err) { console.error("Error guardando zona:", err); }
+    } catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error guardando zona:", msg);
+      alert("❌ Error guardando zona: " + msg);
+    }
   };
   const deleteZona = async (id) => {
     try { await db.deleteZona(id); setZonas(p => p.filter(x => x.id !== id)); }
-    catch (err) { console.error("Error eliminando zona:", err); }
+    catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error eliminando zona:", msg);
+      alert("❌ No se pudo eliminar la zona: " + msg);
+    }
   };
   const toggleZona = async (id) => {
     const z = zonas.find(x => x.id === id);
     if (!z) return;
     try { await db.toggleZona(id, !z.activa); setZonas(p => p.map(x => x.id === id ? { ...x, activa: !x.activa } : x)); }
-    catch (err) { console.error("Error toggling zona:", err); }
+    catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error toggling zona:", msg);
+      alert("❌ Error cambiando estado de la zona: " + msg);
+    }
   };
 
   const savePropa = async (p) => {
+    if (!p.titulo?.trim()) { alert("⚠️ El título de la promoción es obligatorio."); return; }
     try {
       const guardada = await db.upsertPropaganda(p);
       setPropaganda(prev => prev.find(x => x.id === guardada.id) ? prev.map(x => x.id === guardada.id ? guardada : x) : [...prev, guardada]);
       setShowForm(false); setEditPropa(null); setFormTipo(null);
-    } catch (err) { console.error("Error guardando propaganda:", err); }
+    } catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error guardando propaganda:", msg);
+      alert("❌ Error guardando promoción: " + msg);
+    }
   };
   const deletePropa = async (id) => {
     try { await db.deletePropaganda(id); setPropaganda(p => p.filter(x => x.id !== id)); }
-    catch (err) { console.error("Error eliminando propaganda:", err); }
+    catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error eliminando propaganda:", msg);
+      alert("❌ No se pudo eliminar la promoción: " + msg);
+    }
   };
   const togglePropa = async (id) => {
     const p = propaganda.find(x => x.id === id);
     if (!p) return;
     try { await db.togglePropaganda(id, !p.activo); setPropaganda(prev => prev.map(x => x.id === id ? { ...x, activo: !x.activo } : x)); }
-    catch (err) { console.error("Error toggling propaganda:", err); }
+    catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      console.error("Error toggling propaganda:", msg);
+      alert("❌ Error cambiando estado de la promoción: " + msg);
+    }
   };
 
   // Solo el superusuario puede gestionar admins
@@ -4560,7 +4639,11 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
             try {
               const u = await db.getUsuarios();
               setUsuarios(u);
-            } catch (e) { console.error("Error recargando usuarios:", e); }
+            } catch (e) {
+              const msg = e?.message || JSON.stringify(e);
+              console.error("Error recargando usuarios:", msg);
+              alert("❌ Error al recargar usuarios: " + msg);
+            }
           }} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
             {[
