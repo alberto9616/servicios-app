@@ -102,7 +102,19 @@ const db = {
   async togglePlan(id, activo) { const { error } = await sb.from("planes").update({ activo }).eq("id", id); if (error) throw error; },
 
   // USUARIOS
-  async getUsuarios() { const { data, error } = await sb.from("usuarios").select("*").order("nombre"); if (error) throw error; return data.map(mapUsuario); },
+  async getUsuarios() {
+    let todos = [];
+    let from = 0;
+    const PAGE = 1000;
+    while (true) {
+      const { data, error } = await sb.from("usuarios").select("*").order("nombre").range(from, from + PAGE - 1);
+      if (error) throw error;
+      todos = todos.concat(data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    return todos.map(mapUsuario);
+  },
   async upsertUsuario(u) {
     const row = {
       id: u.id && u.id.trim() !== "" ? u.id : undefined,
