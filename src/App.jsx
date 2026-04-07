@@ -34,7 +34,8 @@ const mapUsuario = r => r ? ({
   telefono: r.telefono, servicio: r.servicio, plan: r.plan, planId: r.plan_id,
   monto: r.monto ? Number(r.monto) : null, fechaPago: r.fecha_pago, estado: r.estado,
   direccion: r.direccion, claveWifi: r.clave_wifi, nombreEmpresa: r.nombre_empresa,
-  privilegios: r.privilegios || [], perfilPagoId: r.perfil_pago_id || null
+  privilegios: r.privilegios || [], perfilPagoId: r.perfil_pago_id || null,
+  fechaPrimeraFactura: r.fecha_primera_factura || null
 }) : null;
 const mapAviso = r => r ? ({ id: r.id, tipo: r.tipo, titulo: r.titulo, mensaje: r.mensaje, fecha: r.fecha, afecta: r.afecta, activo: r.activo }) : null;
 const mapTicket = (r, mensajes = []) => r ? ({
@@ -102,19 +103,7 @@ const db = {
   async togglePlan(id, activo) { const { error } = await sb.from("planes").update({ activo }).eq("id", id); if (error) throw error; },
 
   // USUARIOS
-  async getUsuarios() {
-    let todos = [];
-    let from = 0;
-    const PAGE = 1000;
-    while (true) {
-      const { data, error } = await sb.from("usuarios").select("*").order("nombre").range(from, from + PAGE - 1);
-      if (error) throw error;
-      todos = todos.concat(data);
-      if (data.length < PAGE) break;
-      from += PAGE;
-    }
-    return todos.map(mapUsuario);
-  },
+  async getUsuarios() { const { data, error } = await sb.from("usuarios").select("*").order("nombre"); if (error) throw error; return data.map(mapUsuario); },
   async upsertUsuario(u) {
     const row = {
       id: u.id && u.id.trim() !== "" ? u.id : undefined,
@@ -126,7 +115,8 @@ const db = {
       monto: u.monto || null, fecha_pago: u.fechaPago || null, estado: u.estado || null,
       direccion: u.direccion || null, clave_wifi: u.claveWifi || null,
       nombre_empresa: u.nombreEmpresa || null, privilegios: u.privilegios || [],
-      perfil_pago_id: u.perfilPagoId || null
+      perfil_pago_id: u.perfilPagoId || null,
+      fecha_primera_factura: u.fechaPrimeraFactura || null
     };
     // Remove undefined id so Supabase generates it automatically
     if (row.id === undefined) delete row.id;
@@ -1717,6 +1707,10 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   </Sel>
                 </Field>
                 <Field label="Clave WiFi"><Inp value={editCliente.claveWifi || ""} onChange={e => setEditCliente({ ...editCliente, claveWifi: e.target.value })} placeholder="Clave del router del cliente" /></Field>
+                <Field label="Primera factura desde">
+                  <Inp type="month" value={editCliente.fechaPrimeraFactura ? editCliente.fechaPrimeraFactura.slice(0,7) : ""} onChange={e => setEditCliente({ ...editCliente, fechaPrimeraFactura: e.target.value ? e.target.value + "-01" : null })} />
+                  <div style={{ fontSize: 11, color: GC.ink3, marginTop: 3 }}>📅 Mes desde el cual se generará factura automática</div>
+                </Field>
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                 <Btn onClick={() => saveCliente(editCliente)}>Guardar</Btn>
@@ -2445,27 +2439,12 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
           </div>
           {factura.notas && <div style={{ marginTop: 10, fontSize: 11, color: GC.ink3, textAlign: "center" }}>{factura.notas}</div>}
         </div>
-        <style>{`
-          @media print {
-            @page { size: 76mm auto; margin: 6mm 5mm; }
-            body * { visibility: hidden; }
-            #recibo-print, #recibo-print * { visibility: visible; }
-            #recibo-print {
-              position: fixed;
-              top: 0; left: 0;
-              width: 66mm;
-              font-size: 11px;
-              padding: 4mm 5mm;
-              font-family: "Courier New", Courier, monospace;
-              color: #000;
-              line-height: 1.4;
-            }
-          }
-        `}</style>
+        <style>{`@media print { @page { size: 76mm auto; margin: 2mm; } body * { visibility: hidden; } #recibo-print, #recibo-print * { visibility: visible; } #recibo-print { position: fixed; top: 0; left: 0; width: 72mm; font-size: 11px; padding: 2mm; } }`}</style>
       </div>
     </div>
   );
 }
+
 
 // ══════════════════════════════════════════════════════════════
 // MÓDULO FACTURACIÓN — Admin y Secretario
@@ -2473,139 +2452,42 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
 function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = [] }) {
   const [facturas, setFacturas] = useState([]);
   const [cargando, setCargando] = useState(true);
-  const [subTab, setSubTab] = useState("cobros");
-  const [busq, setBusq] = useState("");
-  const [filtroEstado, setFiltroEstado] = useState("todos");
-  const [filtroMes, setFiltroMes] = useState(new Date().getMonth() + 1);
-  const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
-  const [modalFactura, setModalFactura] = useState(null); // factura seleccionada para ver detalle
-  const [modalAbono, setModalAbono] = useState(null); // factura para registrar abono
-  const [modalRecibo, setModalRecibo] = useState(null); // {factura, abonos}
+  const [subTab, setSubTab] = useState("emitidas");
+
+  // ── estados compartidos ──
+  const [modalAbono, setModalAbono] = useState(null);
+  const [modalRecibo, setModalRecibo] = useState(null);
   const [abonosModal, setAbonosModal] = useState([]);
-  const [showGenerarMasivo, setShowGenerarMasivo] = useState(false);
-  const [generandoMasivo, setGenerandoMasivo] = useState(false);
   const [nuevoAbono, setNuevoAbono] = useState({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: new Date().toISOString().split("T")[0] });
   const [errAbono, setErrAbono] = useState("");
-  const [showFormManual, setShowFormManual] = useState(false);
-  const [facturaManual, setFacturaManual] = useState({ clienteId: "", concepto: "", monto: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [] });
-  const [modalEditFactura, setModalEditFactura] = useState(null);
-  const [filtroAuditAnio, setFiltroAuditAnio] = useState(new Date().getFullYear());
-  const [filtroAuditMes, setFiltroAuditMes] = useState(0); // 0 = todos los meses
-  const [filtroAuditDia, setFiltroAuditDia] = useState(""); // fecha exacta YYYY-MM-DD
-  const [filtroAuditNombre, setFiltroAuditNombre] = useState("");
-  const [exportando, setExportando] = useState(false);
-  const [modalExport, setModalExport] = useState(null);
-  const [confirmDelete, setConfirmDelete] = useState(null); // { id, nombre } // null | "mes" | "anio"
-  const [tirilla, setTirilla] = useState(null); // { tipo, titulo, datos[], total? }
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmAnular, setConfirmAnular] = useState(null);
 
-  const esAdmin = usuario.rol === "admin" || usuario.rol === "superusuario";
+  const esSuperusuario = usuario.rol === "superusuario";
+  const esAdmin = usuario.rol === "admin" || esSuperusuario;
+  const esSecretario = usuario.rol === "secretario";
   const zonaId = usuario.zonaId;
-
-  // Clientes visibles según rol
-  const clientesVisibles = usuarios.filter(u => u.rol === "cliente" && u.activo && (esAdmin || u.zonaId === zonaId));
   const zonaUsuario = zonas.find(z => z.id === zonaId);
   const nombreEmpresa = zonaUsuario?.nombreEmpresa || "GC HOGAR.NET SAS";
+  const clientesVisibles = usuarios.filter(u => u.rol === "cliente" && u.activo && (esAdmin || u.zonaId === zonaId));
+  const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444", "Anulada": "#94a3b8" };
 
   useEffect(() => {
-    const cargar = async () => {
-      setCargando(true);
-      try {
-        const data = await db.getFacturas();
-        setFacturas(esAdmin ? data : data.filter(f => {
-          const cliente = usuarios.find(u => u.id === f.clienteId);
-          return cliente?.zonaId === zonaId;
-        }));
-      } catch (e) { console.error(e); }
-      finally { setCargando(false); }
-    };
-    cargar();
+    db.getFacturas()
+      .then(data => setFacturas(esAdmin ? data : data.filter(f => {
+        const c = usuarios.find(u => u.id === f.clienteId);
+        return c?.zonaId === zonaId;
+      })))
+      .catch(console.error)
+      .finally(() => setCargando(false));
   }, []);
 
-  // Filtros
-  const facturasFiltradas = facturas.filter(f => {
-    const q = busq.toLowerCase().trim();
-    const matchQ = !q || f.clienteNombre?.toLowerCase().includes(q) || f.clienteCedula?.toLowerCase().includes(q) || String(f.numeroRecibo).includes(q);
-    const matchEstado = filtroEstado === "todos" || f.estado === filtroEstado;
-    const matchMes = f.mes === filtroMes && f.anio === filtroAnio;
-    return matchQ && matchEstado && matchMes;
-  });
-
-  // Estadísticas del mes
-  const hoyStr = new Date().toISOString().split("T")[0];
-  const totalMes = facturasFiltradas.reduce((s, f) => s + f.monto, 0);
-  // Total en caja: suma todo lo cobrado (monto - saldoPendiente) de TODAS las facturas históricas
-  const totalCaja = facturas.reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
-  const totalDia = facturas.filter(f => f.fechaPago === hoyStr || f.fechaEmision === hoyStr).reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
-  const totalPendiente = facturasFiltradas.filter(f => f.estado !== "Pagado").reduce((s, f) => s + f.saldoPendiente, 0);
-  const morosos = facturasFiltradas.filter(f => f.estado === "Vencido").length;
-
-  // Generar facturación masiva del mes
-  const generarFacturasMasivas = async (perfilFiltro = null) => {
-    // perfilFiltro: null = todos, "sin_perfil" = solo sin perfil, string id = solo ese perfil
-    setGenerandoMasivo(true);
-    let creadas = 0;
-    try {
-      const nextNum = await db.getSiguienteNumeroRecibo();
-      // Filtrar clientes según el perfil seleccionado
-      const clientesTarget = clientesVisibles.filter(c => {
-        if (!c.monto) return false;
-        const yaExiste = facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio);
-        if (yaExiste) return false;
-        if (perfilFiltro === null) return true; // todos
-        if (perfilFiltro === "sin_perfil") return !c.perfilPagoId;
-        return c.perfilPagoId === perfilFiltro;
-      });
-
-      for (let i = 0; i < clientesTarget.length; i++) {
-        const c = clientesTarget[i];
-        const mesNombre = MESES[filtroMes - 1];
-        // Calcular fecha de vencimiento según perfil de pago del cliente
-        let fechaVencimiento = null;
-        if (c.perfilPagoId) {
-          const perfil = perfilesPago.find(p => p.id === c.perfilPagoId);
-          if (perfil) {
-            const diaVence = perfil.diaFin;
-            fechaVencimiento = `${filtroAnio}-${String(filtroMes).padStart(2,"0")}-${String(diaVence).padStart(2,"0")}`;
-          }
-        }
-        // Construir ítems detallados por servicio
-        const servicios = (c.servicio || "Internet").split("+").map(s => s.trim()).filter(Boolean);
-        const montoPorServicio = servicios.length > 1 ? Math.round(c.monto / servicios.length) : c.monto;
-        const itemsFactura = servicios.map(s => ({ concepto: `${s} ${mesNombre} ${filtroAnio}`, monto: montoPorServicio }));
-        // Si hay redondeo, ajustar el último ítem
-        const sumaItems = itemsFactura.reduce((s, i) => s + i.monto, 0);
-        if (sumaItems !== c.monto && itemsFactura.length > 0) {
-          itemsFactura[itemsFactura.length - 1].monto += (c.monto - sumaItems);
-        }
-        const nueva = await db.crearFactura({
-          clienteId: c.id, clienteNombre: c.nombre,
-          clienteCedula: c.cedula, clienteDireccion: c.direccion,
-          zonaId: c.zonaId, mes: filtroMes, anio: filtroAnio,
-          concepto: `${c.servicio || "Internet"} ${mesNombre} ${filtroAnio}`,
-          items: itemsFactura,
-          monto: c.monto, fechaEmision: new Date().toISOString().split("T")[0],
-          creadoPor: usuario.id, numeroRecibo: nextNum + creadas,
-          notas: fechaVencimiento ? `Vence: ${fechaVencimiento}` : "",
-        });
-        setFacturas(prev => [nueva, ...prev]);
-        creadas++;
-      }
-
-      const nombrePerfil = perfilFiltro === null ? "todos los clientes"
-        : perfilFiltro === "sin_perfil" ? "clientes sin perfil"
-        : `perfil "${perfilesPago.find(p => p.id === perfilFiltro)?.nombre || ""}"`;
-      alert(`✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio} (${nombrePerfil}).`);
-      if (creadas > 0) setShowGenerarMasivo(false);
-    } catch (e) { alert("Error generando facturas: " + e.message); }
-    finally { setGenerandoMasivo(false); }
-  };
-
-  // Registrar abono
+  // ── registrar abono ──
   const registrarAbono = async () => {
     setErrAbono("");
     const monto = Number(nuevoAbono.monto);
     if (!monto || monto <= 0) { setErrAbono("Ingresa un monto válido."); return; }
-    if (monto > modalAbono.saldoPendiente) { setErrAbono(`El abono no puede superar el saldo pendiente (${formatCOP(modalAbono.saldoPendiente)})`); return; }
+    if (monto > modalAbono.saldoPendiente) { setErrAbono(`Máximo: ${formatCOP(modalAbono.saldoPendiente)}`); return; }
     try {
       const abono = await db.registrarAbono({ ...nuevoAbono, monto, facturaId: modalAbono.id, registradoPor: usuario.id });
       const nuevoSaldo = modalAbono.saldoPendiente - monto;
@@ -2615,662 +2497,109 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
       setAbonosModal(prev => [abono, ...prev]);
       setModalAbono(prev => ({ ...prev, saldoPendiente: nuevoSaldo, estado: nuevoEstado }));
       setNuevoAbono({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: new Date().toISOString().split("T")[0] });
-      // Si quedó en 0, también actualizar estado del usuario
-      if (nuevoSaldo <= 0) {
-        await db.toggleUsuario && db.actualizarFactura && null;
-      }
     } catch (e) { setErrAbono("Error: " + e.message); }
   };
 
-  // Abrir detalle con abonos
   const abrirDetalle = async (f) => {
     setModalAbono(f);
     setAbonosModal([]);
     try { const abs = await db.getAbonos(f.id); setAbonosModal(abs); } catch {}
   };
 
-  // Crear factura manual
-  const crearFacturaManual = async () => {
-    const cliente = usuarios.find(u => u.id === facturaManual.clienteId);
-    if (!cliente) { alert("Selecciona un cliente."); return; }
-    if (!facturaManual.items || facturaManual.items.length === 0) { alert("Agrega al menos un servicio."); return; }
-    const montoTotal = facturaManual.items.reduce((s, i) => s + (Number(i.monto) || 0), 0);
-    if (montoTotal <= 0) { alert("El monto total debe ser mayor a cero."); return; }
-    try {
-      const nextNum = await db.getSiguienteNumeroRecibo();
-      const mesNombre = MESES[facturaManual.mes - 1];
-      const concepto = facturaManual.items.map(i => i.concepto).join(" + ") || `Servicios ${mesNombre} ${facturaManual.anio}`;
-      const nueva = await db.crearFactura({
-        clienteId: cliente.id, clienteNombre: cliente.nombre,
-        clienteCedula: cliente.cedula, clienteDireccion: cliente.direccion,
-        zonaId: cliente.zonaId, mes: facturaManual.mes, anio: facturaManual.anio,
-        concepto, items: facturaManual.items,
-        monto: montoTotal, fechaEmision: new Date().toISOString().split("T")[0],
-        creadoPor: usuario.id, numeroRecibo: nextNum, notas: facturaManual.notas,
-      });
-      setFacturas(prev => [nueva, ...prev]);
-      setShowFormManual(false);
-      setFacturaManual({ clienteId: "", concepto: "", monto: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [] });
-    } catch (e) { alert("Error: " + e.message); }
-  };
+  // ── Botones de acción sobre una factura ──
+  const AccionesFact = ({ f }) => (
+    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+      {f.estado !== "Anulada" && f.estado !== "Pagado" && (
+        <button onClick={() => abrirDetalle(f)}
+          style={{ background: "#eff6ff", color: GC.info, border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+          💵 Cobrar
+        </button>
+      )}
+      {f.estado === "Pagado" && (
+        <button onClick={() => abrirDetalle(f)}
+          style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: 12 }}>
+          👁️ Ver
+        </button>
+      )}
+      <button onClick={async () => {
+        const abs = await db.getAbonos(f.id).catch(() => []);
+        setModalRecibo({ factura: f, abonos: abs });
+      }} style={{ background: GC.brandLight, color: GC.brand, border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+        🖨️
+      </button>
+      {/* Anular: admin y secretario pueden anular, superusuario también */}
+      {f.estado !== "Anulada" && (esAdmin || esSecretario) && (
+        <button onClick={() => setConfirmAnular({ id: f.id, nombre: f.clienteNombre })}
+          style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
+          title="Anular factura">🚫</button>
+      )}
+      {/* Eliminar: solo superusuario */}
+      {esSuperusuario && (
+        <button onClick={() => setConfirmDelete({ id: f.id, nombre: f.clienteNombre })}
+          style={{ background: "#fef2f2", color: GC.danger, border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
+          title="Eliminar permanentemente">🗑️</button>
+      )}
+    </div>
+  );
 
-  const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444" };
-
-  // ── Exportar a Excel (CSV descargable) ──────────────
-  const exportarExcel = async (porMes) => {
-    setExportando(true);
-    try {
-      const lista = porMes
-        ? facturas.filter(f => f.mes === filtroMes && f.anio === filtroAnio)
-        : facturas.filter(f => f.anio === filtroAnio);
-      const cabecera = ["Recibo","Fecha","Cliente","Cédula","Dirección","Zona","Concepto","Mes","Año","Total","Saldo pendiente","Estado","Método pago","Notas"];
-      const zonaMap = Object.fromEntries(zonas.map(z => [z.id, z.nombre]));
-      const filas = lista.map(f => [
-        f.numeroRecibo || f.id?.slice(-6) || "",
-        f.fechaEmision || "",
-        f.clienteNombre || "",
-        f.clienteCedula || "",
-        f.clienteDireccion || "",
-        zonaMap[f.zonaId] || "",
-        f.concepto || "",
-        MESES[(f.mes||1)-1] || "",
-        f.anio || "",
-        f.monto || 0,
-        f.saldoPendiente || 0,
-        f.estado || "",
-        f.metodoPago || "",
-        f.notas || "",
-      ]);
-      const csvContent = [cabecera, ...filas]
-        .map(row => row.map(c => `"${String(c).replace(/"/g,'""')}"`).join(","))
-        .join("\n");
-      const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = porMes
-        ? `facturas_${MESES[filtroMes-1]}_${filtroAnio}.csv`
-        : `facturas_${filtroAnio}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch(e) { alert("Error al exportar: " + e.message); }
-    setExportando(false);
-  };
-
-  // ── Auditoría: historial de todas las facturas ──────
-  const facturasAudit = facturas.filter(f => {
-    if (f.anio !== filtroAuditAnio) return false;
-    if (filtroAuditMes > 0 && f.mes !== filtroAuditMes) return false;
-    if (filtroAuditDia && f.fechaEmision !== filtroAuditDia && f.fechaPago !== filtroAuditDia) return false;
-    if (filtroAuditNombre) {
-      const q = filtroAuditNombre.toLowerCase();
-      if (!f.clienteNombre?.toLowerCase().includes(q) && !f.clienteCedula?.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  }).sort((a,b) => (b.fechaEmision||"").localeCompare(a.fechaEmision||""));
+  const TABS = [
+    { key: "emitidas", icon: "🧾", label: "Emitidas" },
+    { key: "cierre",   icon: "💼", label: "Cierre de caja" },
+    { key: "historial",icon: "🔍", label: "Historial" },
+  ];
 
   return (
     <div>
-      {/* Sub-tabs */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
-        {[["cobros","🧾 Cobros"],["auditoria","🔍 Auditoría"]].map(([k,l]) => (
-          <button key={k} onClick={() => setSubTab(k)} style={{ padding: "7px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13, background: subTab === k ? "#0ea5e9" : "#f1f5f9", color: subTab === k ? "#fff" : "#475569" }}>{l}</button>
+      {/* ── Mini menú ── */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: GC.bg3, borderRadius: 12, padding: 4 }}>
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setSubTab(t.key)}
+            style={{ flex: 1, padding: "9px 6px", borderRadius: 9, border: "none", cursor: "pointer",
+              background: subTab === t.key ? GC.ink : "transparent",
+              color: subTab === t.key ? "#fff" : GC.ink3,
+              fontWeight: subTab === t.key ? 700 : 500, fontSize: 13, fontFamily: "inherit",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+            <span>{t.icon}</span><span>{t.label}</span>
+          </button>
         ))}
-        <div style={{ flex: 1 }} />
-        {esAdmin && <>
-          <button onClick={() => setModalExport("mes")} disabled={exportando} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #22c55e", background: GC.brandLight, color: GC.brand, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel mes</button>
-          <button onClick={() => setModalExport("anio")} disabled={exportando} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #0ea5e9", background: "#eff6ff", color: GC.info, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel año</button>
-        </>}
       </div>
 
-      {/* ── Modal confirmar eliminación ── */}
+      {/* ── Modales globales ── */}
       {confirmDelete && (
-        <ModalConfirm
-          titulo="¿Eliminar factura?"
+        <ModalConfirm titulo="¿Eliminar factura?" icono="🗑️"
           mensaje={`Se eliminará permanentemente la factura de ${confirmDelete.nombre}. Esta acción no se puede deshacer.`}
           onCancel={() => setConfirmDelete(null)}
           onConfirm={async () => {
-            try { await db.deleteFactura(confirmDelete.id); setFacturas(prev => prev.filter(x => x.id !== confirmDelete.id)); }
+            try { await db.deleteFactura(confirmDelete.id); setFacturas(p => p.filter(x => x.id !== confirmDelete.id)); }
             catch(e) { alert("Error: " + e.message); }
             setConfirmDelete(null);
-          }}
-        />
+          }} />
+      )}
+      {confirmAnular && (
+        <ModalConfirm titulo="¿Anular factura?" icono="🚫"
+          mensaje={`Se marcará como Anulada la factura de ${confirmAnular.nombre}. El saldo quedará en 0.`}
+          onCancel={() => setConfirmAnular(null)}
+          onConfirm={async () => {
+            try {
+              await db.actualizarFactura(confirmAnular.id, { estado: "Anulada", saldo_pendiente: 0 });
+              setFacturas(p => p.map(f => f.id === confirmAnular.id ? { ...f, estado: "Anulada", saldoPendiente: 0 } : f));
+            } catch(e) { alert("Error: " + e.message); }
+            setConfirmAnular(null);
+          }} />
       )}
 
-      {/* ── Modal exportar Excel ── */}
-      {modalExport && (
-        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setModalExport(null)}>
-          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 380, boxShadow: "0 20px 60px #00000033" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #e2e8f0" }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: GC.ink }}>
-                {modalExport === "mes" ? "📊 Exportar por mes" : "📊 Exportar por año"}
-              </h3>
-              <button onClick={() => setModalExport(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
-            </div>
-            <div style={{ padding: 20 }}>
-              {modalExport === "mes" ? (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-                  <div>
-                    <label style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Mes</label>
-                    <Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))}>
-                      {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-                    </Sel>
-                  </div>
-                  <div>
-                    <label style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Año</label>
-                    <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))}>
-                      {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
-                    </Sel>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Año</label>
-                  <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))}>
-                    {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
-                  </Sel>
-                </div>
-              )}
-              <div style={{ background: GC.bg2, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: GC.ink2 }}>
-                {modalExport === "mes"
-                  ? <>Se exportarán las facturas de <strong>{MESES[filtroMes-1]} {filtroAnio}</strong> ({facturas.filter(f => f.mes === filtroMes && f.anio === filtroAnio).length} registros)</>
-                  : <>Se exportarán todas las facturas del año <strong>{filtroAnio}</strong> ({facturas.filter(f => f.anio === filtroAnio).length} registros)</>
-                }
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={async () => { await exportarExcel(modalExport === "mes"); setModalExport(null); }}
-                  style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "none", background: modalExport === "mes" ? "#22c55e" : "#0ea5e9", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
-                  {exportando ? "Exportando..." : "⬇️ Descargar CSV"}
-                </button>
-                <button onClick={() => setModalExport(null)} style={{ padding: "10px 16px", borderRadius: 9, border: "1px solid " + GC.border, background: GC.bg2, color: GC.ink3, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {subTab === "auditoria" && (
-        <div>
-          {/* Filtros */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>🔍 Auditoría</span>
-            <Sel value={filtroAuditAnio} onChange={e => setFiltroAuditAnio(Number(e.target.value))} style={{ width: "auto", minWidth: 90 }}>
-              {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
-            </Sel>
-            <Sel value={filtroAuditMes} onChange={e => setFiltroAuditMes(Number(e.target.value))} style={{ width: "auto", minWidth: 120 }}>
-              <option value={0}>Todos los meses</option>
-              {MESES.map((m,i) => <option key={i} value={i+1}>{m}</option>)}
-            </Sel>
-            <Inp
-              type="date"
-              value={filtroAuditDia}
-              onChange={e => setFiltroAuditDia(e.target.value)}
-              style={{ width: "auto" }}
-              title="Filtrar por día exacto"
-            />
-            <Inp
-              placeholder="🔍 Nombre o cédula..."
-              value={filtroAuditNombre}
-              onChange={e => setFiltroAuditNombre(e.target.value)}
-              style={{ flex: 1, minWidth: 160 }}
-            />
-            {(filtroAuditMes > 0 || filtroAuditDia || filtroAuditNombre) && (
-              <button onClick={() => { setFiltroAuditMes(0); setFiltroAuditDia(""); setFiltroAuditNombre(""); }}
-                style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 13, color: GC.ink2 }}>
-                ✕ Limpiar
-              </button>
-            )}
-            <span style={{ fontSize: 12, color: GC.ink3 }}>{facturasAudit.length} registros</span>
-          </div>
-          {/* Totales de la auditoría filtrada */}
-          {facturasAudit.length > 0 && (
-            <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
-              {[
-                ["Total facturado", formatCOP(facturasAudit.reduce((s,f)=>s+f.monto,0)), "#0ea5e9"],
-                ["Total cobrado", formatCOP(facturasAudit.reduce((s,f)=>s+(f.monto-f.saldoPendiente),0)), "#22c55e"],
-                ["Saldo pendiente", formatCOP(facturasAudit.reduce((s,f)=>s+f.saldoPendiente,0)), "#ef4444"],
-              ].map(([label,val,color]) => (
-                <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderRadius: 10, padding: "8px 14px" }}>
-                  <div style={{ fontSize: 10, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</div>
-                  <div style={{ fontWeight: 800, color, fontSize: 14 }}>{val}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr style={{ background: GC.bg2, borderBottom: "2px solid #e2e8f0" }}>
-                  {["#Recibo","Fecha","Cliente","Cédula","Mes","Total","Saldo","Estado","Creado por",""].map(h => (
-                    <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: GC.ink3, fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {facturasAudit.map(f => (
-                  <tr key={f.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                    <td style={{ padding: "8px 12px", color: GC.info, fontWeight: 700 }}>#{f.numeroRecibo || f.id?.slice(-6)}</td>
-                    <td style={{ padding: "8px 12px", color: GC.ink2 }}>{f.fechaEmision}</td>
-                    <td style={{ padding: "8px 12px", fontWeight: 600 }}>{f.clienteNombre}</td>
-                    <td style={{ padding: "8px 12px", color: GC.ink2 }}>{f.clienteCedula}</td>
-                    <td style={{ padding: "8px 12px", color: GC.ink2 }}>{MESES[(f.mes||1)-1]} {f.anio}</td>
-                    <td style={{ padding: "8px 12px", fontWeight: 700 }}>{formatCOP(f.monto)}</td>
-                    <td style={{ padding: "8px 12px", color: f.saldoPendiente > 0 ? "#ef4444" : "#22c55e", fontWeight: 700 }}>{formatCOP(f.saldoPendiente)}</td>
-                    <td style={{ padding: "8px 12px" }}><span style={{ background: COLOR_ESTADO[f.estado]+"22", color: COLOR_ESTADO[f.estado]||"#64748b", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 11 }}>{f.estado}</span></td>
-                    <td style={{ padding: "8px 12px", color: GC.ink4 }}>{usuarios.find(u=>u.id===f.creadoPor)?.nombre || "—"}</td>
-                    <td style={{ padding: "8px 6px" }}>
-                      <button onClick={() => setConfirmDelete({ id: f.id, nombre: f.clienteNombre })}
-                        style={{ background: "#fef2f2", color: GC.danger, border: "none", borderRadius: 6, padding: "5px 8px", cursor: "pointer", fontSize: 13 }}
-                        title="Eliminar factura">🗑️</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {facturasAudit.length === 0 && <div style={{ textAlign: "center", color: GC.ink4, padding: 30 }}>Sin registros para {filtroAuditAnio}</div>}
-          </div>
-        </div>
-      )}
-
-      {subTab === "cobros" && <>
-      {/* Selector mes/año */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-        <Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))} style={{ width: "auto", minWidth: 130 }}>
-          {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-        </Sel>
-        <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))} style={{ width: "auto", minWidth: 90 }}>
-          {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
-        </Sel>
-        <div style={{ flex: 1 }} />
-        <button onClick={() => setShowFormManual(true)} style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #8b5cf6", background: "#f5f3ff", color: "#7c3aed", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>+ Factura manual</button>
-        <Btn onClick={() => setShowGenerarMasivo(true)} style={{ fontSize: 13 }}>⚡ Generar todas</Btn>
-      </div>
-
-      {/* Resumen — tarjetas clicables */}
-      {(() => {
-        const tarjetas = [
-          {
-            label: "💰 Total mes", val: formatCOP(totalMes), color: GC.info,
-            tooltip: `Suma de todas las facturas de ${MESES[filtroMes-1]} ${filtroAnio}`,
-            getTirilla: () => ({
-              titulo: `💰 Total mes — ${MESES[filtroMes-1]} ${filtroAnio}`,
-              subtitulo: `Todas las facturas emitidas del mes, sin importar su estado`,
-              total: totalMes,
-              labelTotal: "Total facturado",
-              colorTotal: "#0ea5e9",
-              filas: facturasFiltradas.map(f => ({
-                nombre: f.clienteNombre,
-                detalle: f.concepto,
-                estado: f.estado,
-                monto: f.monto,
-              })),
-            }),
-          },
-          {
-            label: "📅 Cobrado hoy", val: formatCOP(totalDia), color: GC.purple,
-            tooltip: "Dinero efectivamente cobrado en facturas cuya fecha de pago o emisión es hoy",
-            getTirilla: () => {
-              const hoyFacts = facturas.filter(f => f.fechaPago === hoyStr || f.fechaEmision === hoyStr);
-              return {
-                titulo: `📅 Cobrado hoy — ${hoyStr}`,
-                subtitulo: "Facturas con fecha de pago o emisión de hoy",
-                total: totalDia,
-                labelTotal: "Total cobrado hoy",
-                colorTotal: "#8b5cf6",
-                filas: hoyFacts.map(f => ({
-                  nombre: f.clienteNombre,
-                  detalle: f.concepto,
-                  estado: f.estado,
-                  monto: f.monto - f.saldoPendiente,
-                })),
-              };
-            },
-          },
-          {
-            label: "🏦 Total en caja", val: formatCOP(totalCaja), color: GC.brand,
-            tooltip: "Suma histórica de TODO el dinero real que ha ingresado (pagos completos + abonos de todos los tiempos)",
-            getTirilla: () => {
-              const pagadas = facturas.filter(f => f.monto - f.saldoPendiente > 0);
-              return {
-                titulo: "🏦 Total en caja — Histórico",
-                subtitulo: "Todo el dinero real cobrado desde siempre (pagos completos + abonos)",
-                total: totalCaja,
-                labelTotal: "Total en caja",
-                colorTotal: "#22c55e",
-                filas: pagadas.map(f => ({
-                  nombre: f.clienteNombre,
-                  detalle: `${f.concepto} · ${MESES[(f.mes||1)-1]} ${f.anio}`,
-                  estado: f.estado,
-                  monto: f.monto - f.saldoPendiente,
-                })),
-              };
-            },
-          },
-          {
-            label: "⏳ Pendiente", val: formatCOP(totalPendiente), color: GC.warning,
-            tooltip: `Saldo que aún no se ha cobrado en facturas de ${MESES[filtroMes-1]} ${filtroAnio}`,
-            getTirilla: () => ({
-              titulo: `⏳ Pendiente — ${MESES[filtroMes-1]} ${filtroAnio}`,
-              subtitulo: "Saldo que falta cobrar (incluye abonos parciales y vencidos)",
-              total: totalPendiente,
-              labelTotal: "Total pendiente",
-              colorTotal: "#f59e0b",
-              filas: facturasFiltradas.filter(f => f.estado !== "Pagado").map(f => ({
-                nombre: f.clienteNombre,
-                detalle: f.estado === "Abono parcial" ? `Abono parcial · pagó ${formatCOP(f.monto - f.saldoPendiente)}` : f.concepto,
-                estado: f.estado,
-                monto: f.saldoPendiente,
-              })),
-            }),
-          },
-          {
-            label: "🔴 Morosos", val: morosos + " clientes", color: GC.danger,
-            tooltip: `Clientes con facturas en estado Vencido en ${MESES[filtroMes-1]} ${filtroAnio}`,
-            getTirilla: () => ({
-              titulo: `🔴 Morosos — ${MESES[filtroMes-1]} ${filtroAnio}`,
-              subtitulo: "Clientes con facturas en estado Vencido",
-              total: facturasFiltradas.filter(f => f.estado === "Vencido").reduce((s,f) => s + f.saldoPendiente, 0),
-              labelTotal: "Deuda total vencida",
-              colorTotal: "#ef4444",
-              filas: facturasFiltradas.filter(f => f.estado === "Vencido").map(f => ({
-                nombre: f.clienteNombre,
-                detalle: f.clienteDireccion || f.concepto,
-                estado: "Vencido",
-                monto: f.saldoPendiente,
-              })),
-            }),
-          },
-        ];
-        return (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px,1fr))", gap: 10, marginBottom: 18 }}>
-            {tarjetas.map(({ label, val, color, tooltip, getTirilla }) => (
-              <div key={label}
-                onClick={() => setTirilla(getTirilla())}
-                title={tooltip}
-                style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px", cursor: "pointer", transition: "box-shadow 0.15s", boxShadow: "0 1px 4px #0001" }}
-                onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 16px " + color + "33"}
-                onMouseLeave={e => e.currentTarget.style.boxShadow = "0 1px 4px #0001"}
-              >
-                <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4 }}>{label}</div>
-                <div style={{ fontWeight: 800, color, fontSize: 15 }}>{val}</div>
-                <div style={{ fontSize: 10, color: GC.ink4, marginTop: 4 }}>Toca para ver detalle →</div>
-              </div>
-            ))}
-          </div>
-        );
-      })()}
-
-      {/* ── TIRILLA DE DETALLE — modal centrado ── */}
-      {tirilla && (
-        <div
-          onClick={e => e.target === e.currentTarget && setTirilla(null)}
-          style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "#00000066", zIndex: 9500, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 16px" }}
-        >
-          <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 540, maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px #00000044" }}>
-              {/* Encabezado */}
-              <div style={{ padding: "18px 20px 12px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
-                  <div style={{ fontWeight: 800, fontSize: 16, color: GC.ink }}>{tirilla.titulo}</div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={async () => {
-                      const fecha = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
-                      // Cargar movimientos de caja para sumar ingresos extra
-                      let ingresosExtra = 0;
-                      let movsCaja = [];
-                      try {
-                        movsCaja = await db.getMovimientosCaja();
-                        ingresosExtra = movsCaja.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
-                      } catch(e) {}
-                      const totalGlobal = tirilla.total + ingresosExtra;
-                      const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
-                      const filasTirilla = tirilla.filas.map(f => {
-                        const colorBg = {"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2"}[f.estado]||"#f1f5f9";
-                        const colorTxt = {"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c"}[f.estado]||"#555";
-                        return `<tr><td class="td-nombre">${f.nombre}</td><td class="td-concepto">${f.detalle}</td><td class="td-estado"><span style="background:${colorBg};color:${colorTxt}">${f.estado}</span></td><td class="td-monto">${cop(f.monto)}</td></tr>`;
-                      }).join("");
-                      const filasCaja = movsCaja.filter(m => m.tipo === "Ingreso").map(m =>
-                        `<tr><td class="td-nombre">${m.concepto}</td><td class="td-concepto">${m.observacion||"-"}</td><td class="td-estado"><span style="background:#dcfce7;color:#16a34a">Caja</span></td><td class="td-monto">+${cop(m.monto)}</td></tr>`
-                      ).join("");
-                      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Tirilla ${tirilla.titulo}</title>
-                      <style>
-                        @page { size: 76mm auto; margin: 8mm 6mm; }
-                        * { box-sizing: border-box; margin: 0; padding: 0; }
-                        body { font-family: "Courier New", Courier, monospace; font-size: 9pt; color: #000; width: 64mm; background: #fff; padding: 4mm; line-height: 1.4; }
-                        .center { text-align: center; }
-                        .bold { font-weight: bold; }
-                        .empresa { font-size: 10.5pt; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; }
-                        .sep { border: none; border-top: 1px dashed #555; margin: 6px 0; }
-                        .sep-solid { border: none; border-top: 1px solid #000; margin: 5px 0; }
-                        .info { font-size: 8pt; margin: 3px 0; }
-                        table { width: 100%; border-collapse: collapse; margin: 4px 0; }
-                        th { font-size: 7.5pt; text-transform: uppercase; border-bottom: 1px solid #000; padding: 3px 3px; text-align: left; }
-                        th.r { text-align: right; }
-                        .td-nombre { font-size: 8pt; font-weight: bold; padding: 4px 3px 2px; width: 36%; word-break: break-word; }
-                        .td-concepto { font-size: 7pt; color: #222; padding: 4px 3px 2px; width: 28%; word-break: break-word; }
-                        .td-estado span { font-size: 6.5pt; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
-                        .td-estado { padding: 4px 3px 2px; width: 18%; }
-                        .td-monto { text-align: right; font-weight: bold; font-size: 8pt; padding: 4px 0 2px 3px; width: 18%; }
-                        tr { border-bottom: 1px dotted #aaa; }
-                        .subtotal-row td { font-size: 8pt; padding: 5px 3px; border-top: 1px dashed #555; border-bottom: none; }
-                        .total-row td { font-size: 10.5pt; font-weight: 900; padding: 6px 3px; border-top: 2px solid #000; }
-                        .footer { font-size: 7.5pt; text-align: center; margin-top: 8px; color: #222; }
-                        .btn-print { display: block; margin: 14px auto; padding: 9px 28px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: Arial, sans-serif; }
-                        @media print { .no-print { display: none !important; } body { width: 64mm; padding: 0; } }
-                      </style></head><body>
-                      <div class="center">
-                        <div class="empresa">${nombreEmpresa}</div>
-                        <div class="info">Tel: 318-8255601</div>
-                        <div class="info">Fecha: ${fecha}</div>
-                      </div>
-                      <hr class="sep"/>
-                      <div class="center bold" style="font-size:9pt;margin:3px 0">${tirilla.titulo}</div>
-                      <div class="center" style="font-size:7.5pt;color:#444;margin-bottom:3px">${tirilla.subtitulo}</div>
-                      <hr class="sep"/>
-                      <table>
-                        <thead><tr><th>Cliente</th><th>Concepto</th><th>Estado</th><th class="r">Valor</th></tr></thead>
-                        <tbody>${filasTirilla}</tbody>
-                        <tr class="subtotal-row">
-                          <td colspan="3" class="bold">Subtotal facturas (${tirilla.filas.length} clientes)</td>
-                          <td style="text-align:right;font-weight:900">${cop(tirilla.total)}</td>
-                        </tr>
-                      </table>
-                      ${ingresosExtra > 0 ? `
-                      <hr class="sep"/>
-                      <div class="bold" style="font-size:8.5pt;margin:3px 2px">Ingresos adicionales (Caja):</div>
-                      <table><tbody>${filasCaja}</tbody>
-                        <tr class="subtotal-row">
-                          <td colspan="3" class="bold">Subtotal caja</td>
-                          <td style="text-align:right;font-weight:900">${cop(ingresosExtra)}</td>
-                        </tr>
-                      </table>` : ""}
-                      <hr class="sep-solid"/>
-                      <table><tbody>
-                        <tr class="total-row">
-                          <td colspan="3">TOTAL GLOBAL</td>
-                          <td style="text-align:right">${cop(totalGlobal)}</td>
-                        </tr>
-                      </tbody></table>
-                      <hr class="sep"/>
-                      <div class="footer">Firma: ______________________</div>
-                      <div class="footer" style="margin-top:8px">Gracias por su pago</div>
-                      <div class="footer">** Reporte generado automáticamente **</div>
-                      <br/>
-                      <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir tirilla</button>
-                      </body></html>`;
-                      const w = window.open("", "_blank", "width=340,height=700");
-                      w.document.write(html);
-                      w.document.close();
-                    }} style={{ background: GC.brandLight, color: GC.brand, border: "none", borderRadius: 8, padding: "0 12px", height: 32, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>🖨️ Imprimir</button>
-                    <button onClick={() => setTirilla(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3, lineHeight: 1 }}>×</button>
-                  </div>
-                </div>
-                <div style={{ fontSize: 12, color: GC.ink3 }}>{tirilla.subtitulo}</div>
-              </div>
-              {/* Lista scrollable */}
-              <div style={{ overflowY: "auto", flex: 1, padding: "12px 20px" }}>
-                {tirilla.filas.length === 0 ? (
-                  <div style={{ textAlign: "center", color: GC.ink4, padding: 30, fontSize: 13 }}>Sin registros para mostrar</div>
-                ) : (
-                  <>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: GC.ink4, textTransform: "uppercase", fontWeight: 700, marginBottom: 6, padding: "0 2px" }}>
-                      <span>Cliente / Concepto</span><span>Monto</span>
-                    </div>
-                    {tirilla.filas.map((fila, i) => {
-                      const colorEstadoBadge = { "Pagado": "#22c55e", "Pendiente": "#f59e0b", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444" }[fila.estado] || "#94a3b8";
-                      return (
-                        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid #f8fafc", gap: 10 }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontWeight: 700, fontSize: 13, color: GC.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.nombre}</div>
-                            <div style={{ fontSize: 11, color: GC.ink3, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.detalle}</div>
-                            <span style={{ fontSize: 10, background: colorEstadoBadge + "22", color: colorEstadoBadge, borderRadius: 6, padding: "1px 6px", fontWeight: 700, marginTop: 2, display: "inline-block" }}>{fila.estado}</span>
-                          </div>
-                          <div style={{ fontWeight: 800, color: tirilla.colorTotal, fontSize: 14, whiteSpace: "nowrap" }}>{formatCOP(fila.monto)}</div>
-                        </div>
-                      );
-                    })}
-                  </>
-                )}
-              </div>
-              {/* Pie con total */}
-              <div style={{ padding: "14px 20px", borderTop: "2px solid #f1f5f9", background: GC.bg2, borderRadius: "0 0 20px 20px", flexShrink: 0 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: GC.ink3, fontWeight: 600 }}>{tirilla.labelTotal}</div>
-                    <div style={{ fontSize: 10, color: GC.ink4 }}>{tirilla.filas.length} registro{tirilla.filas.length !== 1 ? "s" : ""}</div>
-                  </div>
-                  <div style={{ fontWeight: 900, fontSize: 22, color: tirilla.colorTotal }}>{formatCOP(tirilla.total)}</div>
-                </div>
-              </div>
-            </div>
-        </div>
-      )}
-
-      {/* Búsqueda y filtros */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-        <Inp placeholder="🔍 Buscar cliente, cédula, N° recibo..." value={busq} onChange={e => setBusq(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-        <Sel value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} style={{ width: "auto", minWidth: 140 }}>
-          <option value="todos">Todos los estados</option>
-          <option value="Pendiente">Pendiente</option>
-          <option value="Abono parcial">Abono parcial</option>
-          <option value="Pagado">Pagado</option>
-          <option value="Vencido">Vencido</option>
-        </Sel>
-      </div>
-
-      {/* Lista facturas */}
-      {cargando ? (
-        <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>Cargando facturas...</div>
-      ) : facturasFiltradas.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 50 }}>
-          <div style={{ fontSize: 40, marginBottom: 10 }}>🧾</div>
-          <div style={{ color: GC.ink3, fontSize: 14 }}>No hay facturas para {MESES[filtroMes-1]} {filtroAnio}</div>
-          <div style={{ color: GC.ink4, fontSize: 13, marginTop: 6 }}>Usa "Generar todas" para crear las facturas del mes en un clic.</div>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {facturasFiltradas.map(f => (
-            <div key={f.id} style={{ background: "#fff", border: "1px solid " + GC.border, borderLeft: "4px solid " + (COLOR_ESTADO[f.estado] || "#e2e8f0"), borderRadius: 12, padding: "12px 16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <div style={{ flex: 1, minWidth: 160 }}>
-                  <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>
-                    {f.clienteNombre}
-                    {f.numeroRecibo && <span style={{ fontSize: 11, color: GC.ink4, marginLeft: 8 }}>#{f.numeroRecibo}</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: GC.ink3 }}>{f.concepto}</div>
-                  {f.clienteDireccion && <div style={{ fontSize: 11, color: GC.ink4 }}>📍 {f.clienteDireccion}</div>}
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 800, color: GC.ink, fontSize: 15 }}>{formatCOP(f.monto)}</div>
-                  {f.saldoPendiente > 0 && f.saldoPendiente < f.monto && (
-                    <div style={{ fontSize: 12, color: GC.warning }}>Saldo: {formatCOP(f.saldoPendiente)}</div>
-                  )}
-                </div>
-                <Badge text={f.estado} color={COLOR_ESTADO[f.estado] || "#64748b"} />
-                <div style={{ display: "flex", gap: 6 }}>
-                  <button onClick={() => abrirDetalle(f)} style={{ background: "#eff6ff", color: GC.info, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                    {f.estado === "Pagado" ? "👁️ Ver" : "💵 Registrar pago"}
-                  </button>
-                  <button onClick={async () => {
-                    const abs = await db.getAbonos(f.id).catch(() => []);
-                    setModalRecibo({ factura: f, abonos: abs });
-                  }} style={{ background: GC.brandLight, color: GC.brand, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                    🖨️
-                  </button>
-                  {esAdmin && <>
-                    <button onClick={() => setModalEditFactura({ ...f })} style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✏️</button>
-                    <button onClick={() => setConfirmDelete({ id: f.id, nombre: f.clienteNombre })} style={{ background: "#fef2f2", color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>🗑️</button>
-                  </>}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      </>}
-
-      {/* ── Modal editar factura (admin) ── */}
-      {modalEditFactura && esAdmin && (
-        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setModalEditFactura(null)}>
-          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 440, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff" }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>✏️ Editar factura #{modalEditFactura.numeroRecibo}</h3>
-              <button onClick={() => setModalEditFactura(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: 20, color: GC.ink3 }}>×</button>
-            </div>
-            <div style={{ padding: 20 }}>
-              <Field label="Estado">
-                <Sel value={modalEditFactura.estado} onChange={e => setModalEditFactura({ ...modalEditFactura, estado: e.target.value })}>
-                  {["Pendiente","Abono parcial","Pagado","Vencido"].map(s => <option key={s} value={s}>{s}</option>)}
-                </Sel>
-              </Field>
-              <Field label="Concepto">
-                <Inp value={modalEditFactura.concepto || ""} onChange={e => setModalEditFactura({ ...modalEditFactura, concepto: e.target.value })} />
-              </Field>
-              <Field label="Monto total (COP)">
-                <Inp type="number" value={modalEditFactura.monto || ""} onChange={e => setModalEditFactura({ ...modalEditFactura, monto: Number(e.target.value) })} />
-              </Field>
-              <Field label="Fecha emisión">
-                <Inp type="date" value={modalEditFactura.fechaEmision || ""} onChange={e => setModalEditFactura({ ...modalEditFactura, fechaEmision: e.target.value })} />
-              </Field>
-              <Field label="Notas">
-                <Inp value={modalEditFactura.notas || ""} onChange={e => setModalEditFactura({ ...modalEditFactura, notas: e.target.value })} />
-              </Field>
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <Btn onClick={async () => {
-                  try {
-                    await db.actualizarFactura(modalEditFactura.id, {
-                      estado: modalEditFactura.estado,
-                      concepto: modalEditFactura.concepto,
-                      monto: modalEditFactura.monto,
-                      fecha_emision: modalEditFactura.fechaEmision,
-                      notas: modalEditFactura.notas,
-                    });
-                    setFacturas(prev => prev.map(f => f.id === modalEditFactura.id ? { ...f, ...modalEditFactura } : f));
-                    setModalEditFactura(null);
-                  } catch(e) { alert("Error: " + e.message); }
-                }} style={{ flex: 1 }}>Guardar cambios</Btn>
-                <Btn variant="ghost" onClick={() => setModalEditFactura(null)}>Cancelar</Btn>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Modal detalle / registrar abono ── */}
+      {/* ── Modal registrar abono/cobro ── */}
       {modalAbono && (
-        <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => { if (e.target === e.currentTarget) { setModalAbono(null); setErrAbono(""); } }}>
+        <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+          onClick={e => { if (e.target === e.currentTarget) { setModalAbono(null); setErrAbono(""); } }}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
-            <button onClick={() => { setModalAbono(null); setErrAbono(""); }} style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+            <button onClick={() => { setModalAbono(null); setErrAbono(""); }}
+              style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
             <h3 style={{ margin: "0 0 4px", color: GC.ink, fontSize: 16 }}>💵 Pago / Abono</h3>
             <p style={{ margin: "0 0 16px", color: GC.ink3, fontSize: 13 }}>{modalAbono.clienteNombre} · {modalAbono.concepto}</p>
-
-            {/* Resumen */}
             <div style={{ background: GC.bg2, border: "1px solid " + GC.border, borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 13, color: GC.ink3 }}>Total factura:</span>
-                <strong>{formatCOP(modalAbono.monto)}</strong>
+                <span style={{ fontSize: 13, color: GC.ink3 }}>Total factura:</span><strong>{formatCOP(modalAbono.monto)}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                 <span style={{ fontSize: 13, color: GC.ink3 }}>Total abonado:</span>
@@ -3281,32 +2610,26 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                 <strong style={{ color: modalAbono.saldoPendiente > 0 ? "#ef4444" : "#22c55e", fontSize: 16 }}>{formatCOP(modalAbono.saldoPendiente)}</strong>
               </div>
             </div>
-
-            {/* Historial de abonos */}
             {abonosModal.length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 11, color: GC.ink3, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>Abonos anteriores</div>
                 {abonosModal.map((a, i) => (
                   <div key={i} style={{ display: "flex", justifyContent: "space-between", background: GC.brandLight, border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 12px", marginBottom: 6, fontSize: 13 }}>
-                    <div>
-                      <span style={{ fontWeight: 600, color: GC.brand }}>{formatCOP(a.monto)}</span>
-                      <span style={{ color: GC.ink3, marginLeft: 8 }}>{a.metodoPago}</span>
-                    </div>
+                    <div><span style={{ fontWeight: 600, color: GC.brand }}>{formatCOP(a.monto)}</span><span style={{ color: GC.ink3, marginLeft: 8 }}>{a.metodoPago}</span></div>
                     <span style={{ color: GC.ink4, fontSize: 12 }}>{a.fecha}</span>
                   </div>
                 ))}
               </div>
             )}
-
-            {/* Formulario nuevo abono */}
             {modalAbono.saldoPendiente > 0 && (
               <div>
                 <div style={{ fontSize: 11, color: GC.ink3, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>Registrar pago / abono</div>
-                <Field label="Monto a registrar (COP)">
+                <Field label="Monto (COP)">
                   <Inp type="number" value={nuevoAbono.monto} onChange={e => setNuevoAbono({ ...nuevoAbono, monto: e.target.value })} placeholder={`Máx: ${formatCOP(modalAbono.saldoPendiente)}`} />
                   <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                     {[modalAbono.saldoPendiente, Math.round(modalAbono.saldoPendiente / 2)].filter(v => v > 0).map(v => (
-                      <button key={v} onClick={() => setNuevoAbono({ ...nuevoAbono, monto: String(v) })} style={{ background: "#eff6ff", color: GC.info, border: "1px solid #bfdbfe", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                      <button key={v} onClick={() => setNuevoAbono({ ...nuevoAbono, monto: String(v) })}
+                        style={{ background: "#eff6ff", color: GC.info, border: "1px solid #bfdbfe", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                         {v === modalAbono.saldoPendiente ? "Pago completo" : "50%"} ({formatCOP(v)})
                       </button>
                     ))}
@@ -3314,19 +2637,11 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
                 </Field>
                 <Field label="Método de pago">
                   <Sel value={nuevoAbono.metodoPago} onChange={e => setNuevoAbono({ ...nuevoAbono, metodoPago: e.target.value })}>
-                    <option>Efectivo</option>
-                    <option>Transferencia</option>
-                    <option>Nequi</option>
-                    <option>Daviplata</option>
-                    <option>Pago en oficina</option>
+                    <option>Efectivo</option><option>Transferencia</option><option>Nequi</option><option>Daviplata</option><option>Pago en oficina</option>
                   </Sel>
                 </Field>
-                <Field label="Fecha de pago">
-                  <Inp type="date" value={nuevoAbono.fecha} onChange={e => setNuevoAbono({ ...nuevoAbono, fecha: e.target.value })} />
-                </Field>
-                <Field label="Observación (opcional)">
-                  <Inp value={nuevoAbono.observacion} onChange={e => setNuevoAbono({ ...nuevoAbono, observacion: e.target.value })} placeholder="Ej: Pago a domicilio" />
-                </Field>
+                <Field label="Fecha de pago"><Inp type="date" value={nuevoAbono.fecha} onChange={e => setNuevoAbono({ ...nuevoAbono, fecha: e.target.value })} /></Field>
+                <Field label="Observación (opcional)"><Inp value={nuevoAbono.observacion} onChange={e => setNuevoAbono({ ...nuevoAbono, observacion: e.target.value })} /></Field>
                 {errAbono && <div style={{ color: GC.danger, fontSize: 13, marginBottom: 10 }}>⚠️ {errAbono}</div>}
                 <Btn onClick={registrarAbono} style={{ width: "100%", padding: "12px 0", fontSize: 15 }}>✅ Registrar pago</Btn>
               </div>
@@ -3341,134 +2656,440 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
         </div>
       )}
 
-      {/* ── Modal generar masivo ── */}
-      {showGenerarMasivo && (() => {
-        // Calcular clientes por perfil para el modal
-        const hoy = new Date();
-        const diaHoy = hoy.getDate();
-        const clientesSinFactura = clientesVisibles.filter(c =>
-          c.monto && !facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio)
-        );
-        const clientesPorPerfil = perfilesPago.map(pf => ({
-          perfil: pf,
-          clientes: clientesSinFactura.filter(c => c.perfilPagoId === pf.id),
-          venceHoy: diaHoy >= pf.diaInicio && diaHoy <= pf.diaFin,
-        })).filter(g => g.clientes.length > 0);
-        const clientesSinPerfil = clientesSinFactura.filter(c => !c.perfilPagoId);
+      {/* ── Modal recibo ── */}
+      {modalRecibo && (
+        <ReciboImprimible factura={modalRecibo.factura} abonos={modalRecibo.abonos}
+          nombreEmpresa={nombreEmpresa} telefono="318-8255601" onClose={() => setModalRecibo(null)} />
+      )}
 
+      {/* ════════════════════════════════════════════════════ */}
+      {/* TAB 1 — EMITIDAS                                    */}
+      {/* ════════════════════════════════════════════════════ */}
+      {subTab === "emitidas" && (
+        <SeccionEmitidas
+          usuario={usuario} facturas={facturas} setFacturas={setFacturas}
+          cargando={cargando} usuarios={usuarios} zonas={zonas}
+          planes={planes} perfilesPago={perfilesPago}
+          clientesVisibles={clientesVisibles} nombreEmpresa={nombreEmpresa}
+          esAdmin={esAdmin} esSuperusuario={esSuperusuario}
+          COLOR_ESTADO={COLOR_ESTADO} AccionesFact={AccionesFact}
+        />
+      )}
+
+      {/* ════════════════════════════════════════════════════ */}
+      {/* TAB 2 — CIERRE DE CAJA                              */}
+      {/* ════════════════════════════════════════════════════ */}
+      {subTab === "cierre" && (
+        <SeccionCierreCaja
+          usuario={usuario} facturas={facturas} usuarios={usuarios}
+          zonas={zonas} esAdmin={esAdmin} esSuperusuario={esSuperusuario}
+          nombreEmpresa={nombreEmpresa} COLOR_ESTADO={COLOR_ESTADO}
+        />
+      )}
+
+      {/* ════════════════════════════════════════════════════ */}
+      {/* TAB 3 — HISTORIAL Y AUDITORÍA                       */}
+      {/* ════════════════════════════════════════════════════ */}
+      {subTab === "historial" && (
+        <SeccionHistorial
+          usuario={usuario} facturas={facturas} setFacturas={setFacturas}
+          usuarios={usuarios} zonas={zonas}
+          esAdmin={esAdmin} esSuperusuario={esSuperusuario}
+          COLOR_ESTADO={COLOR_ESTADO} AccionesFact={AccionesFact}
+          nombreEmpresa={nombreEmpresa}
+          setConfirmDelete={setConfirmDelete} setConfirmAnular={setConfirmAnular}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Sección 1: Emitidas ───────────────────────────────────────
+function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, zonas, planes, perfilesPago, clientesVisibles, nombreEmpresa, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact }) {
+  const [filtroMes, setFiltroMes] = useState(new Date().getMonth() + 1);
+  const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
+  const [busq, setBusq] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [showGenerarMasivo, setShowGenerarMasivo] = useState(false);
+  const [generandoMasivo, setGenerandoMasivo] = useState(false);
+  const [showFormManual, setShowFormManual] = useState(false);
+  const [facturaManual, setFacturaManual] = useState({ clienteId: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [] });
+  const [tirilla, setTirilla] = useState(null);
+  const [modalExport, setModalExport] = useState(null);
+  const [exportando, setExportando] = useState(false);
+
+  const hoyStr = new Date().toISOString().split("T")[0];
+  const facturasFiltradas = facturas.filter(f => {
+    const q = busq.toLowerCase().trim();
+    const matchQ = !q || f.clienteNombre?.toLowerCase().includes(q) || f.clienteCedula?.toLowerCase().includes(q) || String(f.numeroRecibo).includes(q);
+    const matchEstado = filtroEstado === "todos" || f.estado === filtroEstado;
+    return matchQ && matchEstado && f.mes === filtroMes && f.anio === filtroAnio;
+  });
+
+  const totalMes = facturasFiltradas.reduce((s, f) => s + f.monto, 0);
+  const totalCaja = facturas.reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
+  const totalDia = facturas.filter(f => f.fechaPago === hoyStr).reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
+  const totalPendiente = facturasFiltradas.filter(f => f.estado !== "Pagado" && f.estado !== "Anulada").reduce((s, f) => s + f.saldoPendiente, 0);
+  const morosos = facturasFiltradas.filter(f => f.estado === "Vencido").length;
+
+  const generarFacturasMasivas = async (perfilFiltro = null) => {
+    setGenerandoMasivo(true);
+    let creadas = 0;
+    try {
+      const nextNum = await db.getSiguienteNumeroRecibo();
+      const clientesTarget = clientesVisibles.filter(c => {
+        if (!c.monto) return false;
+        // Respetar fechaPrimeraFactura si existe
+        if (c.fechaPrimeraFactura) {
+          const [anioInicio, mesInicio] = c.fechaPrimeraFactura.split("-").map(Number);
+          if (filtroAnio < anioInicio || (filtroAnio === anioInicio && filtroMes < mesInicio)) return false;
+        }
+        const yaExiste = facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio);
+        if (yaExiste) return false;
+        if (perfilFiltro === null) return true;
+        if (perfilFiltro === "sin_perfil") return !c.perfilPagoId;
+        return c.perfilPagoId === perfilFiltro;
+      });
+      for (const c of clientesTarget) {
+        const mesNombre = MESES[filtroMes - 1];
+        let fechaVencimiento = null;
+        if (c.perfilPagoId) {
+          const perfil = perfilesPago.find(p => p.id === c.perfilPagoId);
+          if (perfil) fechaVencimiento = `${filtroAnio}-${String(filtroMes).padStart(2,"0")}-${String(perfil.diaFin).padStart(2,"0")}`;
+        }
+        const servicios = (c.servicio || "Internet").split("+").map(s => s.trim()).filter(Boolean);
+        const montoPorSrv = servicios.length > 1 ? Math.round(c.monto / servicios.length) : c.monto;
+        const items = servicios.map(s => ({ concepto: `${s} ${mesNombre} ${filtroAnio}`, monto: montoPorSrv }));
+        const sumaItems = items.reduce((s, i) => s + i.monto, 0);
+        if (sumaItems !== c.monto && items.length > 0) items[items.length - 1].monto += (c.monto - sumaItems);
+        const nueva = await db.crearFactura({
+          clienteId: c.id, clienteNombre: c.nombre, clienteCedula: c.cedula, clienteDireccion: c.direccion,
+          zonaId: c.zonaId, mes: filtroMes, anio: filtroAnio,
+          concepto: `${c.servicio || "Internet"} ${mesNombre} ${filtroAnio}`,
+          items, monto: c.monto, fechaEmision: hoyStr,
+          creadoPor: usuario.id, numeroRecibo: nextNum + creadas,
+          notas: fechaVencimiento ? `Vence: ${fechaVencimiento}` : "",
+        });
+        setFacturas(prev => [nueva, ...prev]);
+        creadas++;
+      }
+      alert(`✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.`);
+      if (creadas > 0) setShowGenerarMasivo(false);
+    } catch (e) { alert("Error: " + e.message); }
+    finally { setGenerandoMasivo(false); }
+  };
+
+  const crearFacturaManual = async () => {
+    const cliente = usuarios.find(u => u.id === facturaManual.clienteId);
+    if (!cliente) { alert("Selecciona un cliente."); return; }
+    if (!facturaManual.items || facturaManual.items.length === 0) { alert("Agrega al menos un servicio."); return; }
+    const montoTotal = facturaManual.items.reduce((s, i) => s + (Number(i.monto) || 0), 0);
+    if (montoTotal <= 0) { alert("El monto debe ser mayor a 0."); return; }
+    try {
+      const nextNum = await db.getSiguienteNumeroRecibo();
+      const nueva = await db.crearFactura({
+        clienteId: cliente.id, clienteNombre: cliente.nombre, clienteCedula: cliente.cedula,
+        clienteDireccion: cliente.direccion, zonaId: cliente.zonaId,
+        mes: facturaManual.mes, anio: facturaManual.anio,
+        concepto: facturaManual.items.map(i => i.concepto).join(" + "),
+        items: facturaManual.items, monto: montoTotal,
+        fechaEmision: hoyStr, creadoPor: usuario.id,
+        numeroRecibo: nextNum, notas: facturaManual.notas,
+      });
+      setFacturas(prev => [nueva, ...prev]);
+      setShowFormManual(false);
+      setFacturaManual({ clienteId: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [] });
+    } catch (e) { alert("Error: " + e.message); }
+  };
+
+  const exportarCSV = async (porMes) => {
+    setExportando(true);
+    try {
+      const lista = porMes ? facturas.filter(f => f.mes === filtroMes && f.anio === filtroAnio) : facturas.filter(f => f.anio === filtroAnio);
+      const zonaMap = Object.fromEntries(zonas.map(z => [z.id, z.nombre]));
+      const cab = ["Recibo","Fecha","Cliente","Cédula","Mes","Total","Saldo","Estado","Zona"];
+      const filas = lista.map(f => [f.numeroRecibo||"",f.fechaEmision||"",f.clienteNombre||"",f.clienteCedula||"",`${MESES[(f.mes||1)-1]} ${f.anio}`,f.monto,f.saldoPendiente,f.estado,zonaMap[f.zonaId]||""]);
+      const csv = [cab,...filas].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob(["\uFEFF"+csv], { type: "text/csv;charset=utf-8;" }));
+      a.download = porMes ? `facturas_${MESES[filtroMes-1]}_${filtroAnio}.csv` : `facturas_${filtroAnio}.csv`;
+      a.click();
+    } catch(e) { alert("Error: " + e.message); }
+    setExportando(false);
+  };
+
+  // Tarjetas resumen clicables con tirilla
+  const tarjetas = [
+    { label: "💰 Total mes", val: formatCOP(totalMes), color: GC.info,
+      getTirilla: () => ({ titulo: `💰 Total mes — ${MESES[filtroMes-1]} ${filtroAnio}`, subtitulo: "Todas las facturas emitidas del mes", total: totalMes, labelTotal: "Total facturado", colorTotal: GC.info,
+        filas: facturasFiltradas.map(f => ({ nombre: f.clienteNombre, detalle: f.concepto, estado: f.estado, monto: f.monto })) }) },
+    { label: "📅 Cobrado hoy", val: formatCOP(totalDia), color: GC.purple,
+      getTirilla: () => { const hF = facturas.filter(f => f.fechaPago === hoyStr); return { titulo: `📅 Cobrado hoy — ${hoyStr}`, subtitulo: "Facturas con fecha de pago hoy", total: totalDia, labelTotal: "Total cobrado hoy", colorTotal: GC.purple,
+        filas: hF.map(f => ({ nombre: f.clienteNombre, detalle: f.concepto, estado: f.estado, monto: f.monto - f.saldoPendiente })) }; } },
+    { label: "🏦 Total en caja", val: formatCOP(totalCaja), color: GC.brand,
+      getTirilla: () => { const p = facturas.filter(f => f.monto - f.saldoPendiente > 0); return { titulo: "🏦 Total en caja — Histórico", subtitulo: "Todo el dinero cobrado", total: totalCaja, labelTotal: "Total en caja", colorTotal: GC.brand,
+        filas: p.map(f => ({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio}`, estado: f.estado, monto: f.monto - f.saldoPendiente })) }; } },
+    { label: "⏳ Pendiente", val: formatCOP(totalPendiente), color: GC.warning,
+      getTirilla: () => ({ titulo: `⏳ Pendiente — ${MESES[filtroMes-1]} ${filtroAnio}`, subtitulo: "Saldo por cobrar", total: totalPendiente, labelTotal: "Total pendiente", colorTotal: GC.warning,
+        filas: facturasFiltradas.filter(f => f.estado !== "Pagado" && f.estado !== "Anulada").map(f => ({ nombre: f.clienteNombre, detalle: f.concepto, estado: f.estado, monto: f.saldoPendiente })) }) },
+    { label: "🔴 Morosos", val: morosos + " clientes", color: GC.danger,
+      getTirilla: () => ({ titulo: `🔴 Morosos — ${MESES[filtroMes-1]} ${filtroAnio}`, subtitulo: "Clientes con facturas Vencidas", total: facturasFiltradas.filter(f=>f.estado==="Vencido").reduce((s,f)=>s+f.saldoPendiente,0), labelTotal: "Deuda vencida", colorTotal: GC.danger,
+        filas: facturasFiltradas.filter(f=>f.estado==="Vencido").map(f=>({ nombre: f.clienteNombre, detalle: f.clienteDireccion||"", estado: "Vencido", monto: f.saldoPendiente })) }) },
+  ];
+
+  return (
+    <div>
+      {/* Controles top */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))} style={{ width: "auto", minWidth: 120 }}>
+          {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+        </Sel>
+        <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))} style={{ width: "auto", minWidth: 80 }}>
+          {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
+        </Sel>
+        <div style={{ flex: 1 }} />
+        {esAdmin && <>
+          <button onClick={() => setModalExport("mes")} style={{ padding: "7px 11px", borderRadius: 8, border: "1px solid #22c55e", background: GC.brandLight, color: GC.brand, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel mes</button>
+          <button onClick={() => setModalExport("anio")} style={{ padding: "7px 11px", borderRadius: 8, border: "1px solid #0ea5e9", background: "#eff6ff", color: GC.info, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel año</button>
+        </>}
+        <button onClick={() => setShowFormManual(true)} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #8b5cf6", background: "#f5f3ff", color: "#7c3aed", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>+ Manual</button>
+        <Btn onClick={() => setShowGenerarMasivo(true)} style={{ fontSize: 13 }}>⚡ Generar</Btn>
+      </div>
+
+      {/* Tarjetas */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, marginBottom: 16 }}>
+        {tarjetas.map(({ label, val, color, getTirilla }) => (
+          <div key={label} onClick={() => setTirilla(getTirilla())}
+            style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 10, padding: "12px 14px", cursor: "pointer" }}
+            onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 16px " + color + "33"}
+            onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
+            <div style={{ fontSize: 10, color: GC.ink3, marginBottom: 3 }}>{label}</div>
+            <div style={{ fontWeight: 800, color, fontSize: 14 }}>{val}</div>
+            <div style={{ fontSize: 9, color: GC.ink4, marginTop: 3 }}>Ver detalle →</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Filtros lista */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <Inp placeholder="🔍 Cliente, cédula, N° recibo..." value={busq} onChange={e => setBusq(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+        <Sel value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} style={{ width: "auto", minWidth: 130 }}>
+          <option value="todos">Todos los estados</option>
+          <option value="Pendiente">Pendiente</option>
+          <option value="Abono parcial">Abono parcial</option>
+          <option value="Pagado">Pagado</option>
+          <option value="Vencido">Vencido</option>
+          <option value="Anulada">Anulada</option>
+        </Sel>
+      </div>
+
+      {/* Lista facturas */}
+      {cargando ? (
+        <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>Cargando...</div>
+      ) : facturasFiltradas.length === 0 ? (
+        <div style={{ textAlign: "center", padding: 40 }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>🧾</div>
+          <div style={{ color: GC.ink3 }}>Sin facturas para {MESES[filtroMes-1]} {filtroAnio}</div>
+          <div style={{ color: GC.ink4, fontSize: 13, marginTop: 4 }}>Usa "⚡ Generar" para crear las facturas del mes</div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {facturasFiltradas.map(f => (
+            <div key={f.id} style={{ background: f.estado === "Anulada" ? "#f8fafc" : "#fff", border: "1px solid " + GC.border, borderLeft: "4px solid " + (COLOR_ESTADO[f.estado] || "#e2e8f0"), borderRadius: 12, padding: "12px 16px", opacity: f.estado === "Anulada" ? 0.6 : 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>
+                    {f.clienteNombre}
+                    {f.numeroRecibo && <span style={{ fontSize: 11, color: GC.ink4, marginLeft: 8 }}>#{f.numeroRecibo}</span>}
+                  </div>
+                  <div style={{ fontSize: 12, color: GC.ink3 }}>{f.concepto}</div>
+                  {f.clienteDireccion && <div style={{ fontSize: 11, color: GC.ink4 }}>📍 {f.clienteDireccion}</div>}
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 800, color: GC.ink, fontSize: 15 }}>{formatCOP(f.monto)}</div>
+                  {f.saldoPendiente > 0 && f.saldoPendiente < f.monto && <div style={{ fontSize: 12, color: GC.warning }}>Saldo: {formatCOP(f.saldoPendiente)}</div>}
+                </div>
+                <span style={{ background: (COLOR_ESTADO[f.estado]||"#94a3b8") + "22", color: COLOR_ESTADO[f.estado]||"#64748b", border: "1px solid " + (COLOR_ESTADO[f.estado]||"#94a3b8") + "55", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{f.estado}</span>
+                <AccionesFact f={f} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal tirilla */}
+      {tirilla && (
+        <div onClick={e => e.target === e.currentTarget && setTirilla(null)}
+          style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9500, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 16px" }}>
+          <div style={{ background: "#fff", borderRadius: 20, width: "100%", maxWidth: 540, maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px #00000044" }}>
+            <div style={{ padding: "18px 20px 12px", borderBottom: "1px solid #f1f5f9", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: GC.ink }}>{tirilla.titulo}</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={async () => {
+                    const fecha = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+                    let ingresosExtra = 0; let movsCaja = [];
+                    try {
+                      const todos = await db.getMovimientosCaja();
+                      const esTirillaDia = tirilla.titulo.toLowerCase().includes("hoy");
+                      movsCaja = esTirillaDia ? todos.filter(m => m.tipo === "Ingreso" && m.fecha === hoyStr) : todos.filter(m => m.tipo === "Ingreso");
+                      ingresosExtra = movsCaja.reduce((s, m) => s + m.monto, 0);
+                    } catch(e) {}
+                    const totalGlobal = tirilla.total + ingresosExtra;
+                    const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
+                    const filasTirilla = tirilla.filas.map(f => {
+                      const colorBg = {"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2","Anulada":"#f1f5f9"}[f.estado]||"#f1f5f9";
+                      const colorTxt = {"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c","Anulada":"#64748b"}[f.estado]||"#555";
+                      return `<tr><td class="td-nombre">${f.nombre}</td><td class="td-concepto">${f.detalle}</td><td class="td-estado"><span style="background:${colorBg};color:${colorTxt}">${f.estado}</span></td><td class="td-monto">${cop(f.monto)}</td></tr>`;
+                    }).join("");
+                    const filasCaja = movsCaja.map(m => `<tr><td class="td-nombre">${m.concepto}</td><td class="td-concepto">${m.observacion||"-"}</td><td class="td-estado"><span style="background:#dcfce7;color:#16a34a">Caja</span></td><td class="td-monto">+${cop(m.monto)}</td></tr>`).join("");
+                    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Tirilla</title>
+                    <style>
+                      @page { size: 76mm auto; margin: 8mm 6mm; }
+                      * { box-sizing: border-box; margin: 0; padding: 0; }
+                      body { font-family: "Courier New", Courier, monospace; font-size: 9pt; color: #000; width: 64mm; background: #fff; padding: 4mm; line-height: 1.4; }
+                      .center { text-align: center; } .bold { font-weight: bold; }
+                      .empresa { font-size: 10.5pt; font-weight: 900; text-transform: uppercase; }
+                      .sep { border: none; border-top: 1px dashed #555; margin: 6px 0; }
+                      .sep-solid { border: none; border-top: 1px solid #000; margin: 5px 0; }
+                      .info { font-size: 8pt; margin: 3px 0; }
+                      table { width: 100%; border-collapse: collapse; margin: 4px 0; }
+                      th { font-size: 7.5pt; text-transform: uppercase; border-bottom: 1px solid #000; padding: 3px; text-align: left; }
+                      th.r { text-align: right; }
+                      .td-nombre { font-size: 8pt; font-weight: bold; padding: 4px 3px 2px; width: 35%; word-break: break-word; }
+                      .td-concepto { font-size: 7pt; color: #222; padding: 4px 3px 2px; width: 29%; word-break: break-word; }
+                      .td-estado span { font-size: 6.5pt; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
+                      .td-estado { padding: 4px 3px 2px; width: 18%; }
+                      .td-monto { text-align: right; font-weight: bold; font-size: 8pt; padding: 4px 0 2px 3px; width: 18%; }
+                      tr { border-bottom: 1px dotted #aaa; }
+                      .subtotal-row td { font-size: 8pt; padding: 5px 3px; border-top: 1px dashed #555; border-bottom: none; }
+                      .total-row td { font-size: 10.5pt; font-weight: 900; padding: 6px 3px; border-top: 2px solid #000; }
+                      .footer { font-size: 7.5pt; text-align: center; margin-top: 8px; color: #222; }
+                      .btn-print { display: block; margin: 14px auto; padding: 9px 28px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; }
+                      @media print { .no-print { display: none !important; } body { width: 64mm; padding: 0; } }
+                    </style></head><body>
+                    <div class="center"><div class="empresa">${nombreEmpresa}</div><div class="info">Tel: 318-8255601</div><div class="info">Fecha: ${fecha}</div></div>
+                    <hr class="sep"/>
+                    <div class="center bold" style="font-size:9pt;margin:3px 0">${tirilla.titulo}</div>
+                    <div class="center" style="font-size:7.5pt;color:#444;margin-bottom:3px">${tirilla.subtitulo}</div>
+                    <hr class="sep"/>
+                    <table><thead><tr><th>Cliente</th><th>Concepto</th><th>Estado</th><th class="r">Valor</th></tr></thead>
+                    <tbody>${filasTirilla}</tbody>
+                    <tr class="subtotal-row"><td colspan="3" class="bold">Subtotal (${tirilla.filas.length} registros)</td><td style="text-align:right;font-weight:900">${cop(tirilla.total)}</td></tr></table>
+                    ${ingresosExtra > 0 ? `<hr class="sep"/><div class="bold" style="font-size:8.5pt;margin:3px 2px">Ingresos adicionales (Caja):</div><table><tbody>${filasCaja}</tbody><tr class="subtotal-row"><td colspan="3" class="bold">Subtotal caja</td><td style="text-align:right;font-weight:900">${cop(ingresosExtra)}</td></tr></table>` : ""}
+                    <hr class="sep-solid"/>
+                    <table><tbody><tr class="total-row"><td colspan="3">TOTAL GLOBAL</td><td style="text-align:right">${cop(totalGlobal)}</td></tr></tbody></table>
+                    <hr class="sep"/><div class="footer">Firma: ______________________</div>
+                    <div class="footer" style="margin-top:8px">Gracias por su pago</div>
+                    <br/><button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir tirilla</button>
+                    </body></html>`;
+                    const w = window.open("", "_blank", "width=340,height=700");
+                    w.document.write(html); w.document.close();
+                  }} style={{ background: GC.brandLight, color: GC.brand, border: "none", borderRadius: 8, padding: "0 12px", height: 32, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>🖨️ Imprimir</button>
+                  <button onClick={() => setTirilla(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: GC.ink3 }}>{tirilla.subtitulo}</div>
+            </div>
+            <div style={{ overflowY: "auto", flex: 1, padding: "12px 20px" }}>
+              {tirilla.filas.length === 0 ? (
+                <div style={{ textAlign: "center", color: GC.ink4, padding: 30, fontSize: 13 }}>Sin registros</div>
+              ) : tirilla.filas.map((fila, i) => {
+                const c = (COLOR_ESTADO[fila.estado] || "#94a3b8");
+                return (
+                  <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid #f8fafc", gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: GC.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fila.nombre}</div>
+                      <div style={{ fontSize: 11, color: GC.ink3, marginTop: 1 }}>{fila.detalle}</div>
+                      <span style={{ fontSize: 10, background: c + "22", color: c, borderRadius: 6, padding: "1px 6px", fontWeight: 700, display: "inline-block", marginTop: 2 }}>{fila.estado}</span>
+                    </div>
+                    <div style={{ fontWeight: 800, color: tirilla.colorTotal, fontSize: 14, whiteSpace: "nowrap" }}>{formatCOP(fila.monto)}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ padding: "14px 20px", borderTop: "2px solid #f1f5f9", background: GC.bg2, borderRadius: "0 0 20px 20px", flexShrink: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 11, color: GC.ink3, fontWeight: 600 }}>{tirilla.labelTotal}</div>
+                  <div style={{ fontSize: 10, color: GC.ink4 }}>{tirilla.filas.length} registro{tirilla.filas.length !== 1 ? "s" : ""}</div>
+                </div>
+                <div style={{ fontWeight: 900, fontSize: 22, color: tirilla.colorTotal }}>{formatCOP(tirilla.total)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal generar masivo */}
+      {showGenerarMasivo && (() => {
+        const hoy = new Date(); const diaHoy = hoy.getDate();
+        const sinFactura = clientesVisibles.filter(c => {
+          if (!c.monto) return false;
+          if (c.fechaPrimeraFactura) {
+            const [anioI, mesI] = c.fechaPrimeraFactura.split("-").map(Number);
+            if (filtroAnio < anioI || (filtroAnio === anioI && filtroMes < mesI)) return false;
+          }
+          return !facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio);
+        });
+        const porPerfil = perfilesPago.map(pf => ({ perfil: pf, clientes: sinFactura.filter(c => c.perfilPagoId === pf.id), venceHoy: diaHoy >= pf.diaInicio && diaHoy <= pf.diaFin })).filter(g => g.clientes.length > 0);
+        const sinPerfil = sinFactura.filter(c => !c.perfilPagoId);
         return (
           <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowGenerarMasivo(false)}>
-            <div style={{ background: "#fff", borderRadius: 16, padding: 0, maxWidth: 500, width: "100%", maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
-              {/* Header */}
+            <div style={{ background: "#fff", borderRadius: 16, maxWidth: 500, width: "100%", maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: GC.ink }}>⚡ Generar facturas</h3>
-                  <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>{MESES[filtroMes-1]} {filtroAnio} · {clientesSinFactura.length} clientes pendientes</div>
+                  <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>{MESES[filtroMes-1]} {filtroAnio} · {sinFactura.length} clientes pendientes</div>
                 </div>
                 <button onClick={() => setShowGenerarMasivo(false)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
               </div>
-
               <div style={{ padding: "16px 24px 24px" }}>
-                {/* Opción: TODOS */}
                 <div style={{ background: "#eff6ff", border: "2px solid #bfdbfe", borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                     <div>
                       <div style={{ fontWeight: 700, color: "#1e40af", fontSize: 14 }}>🌐 Todos los clientes</div>
-                      <div style={{ fontSize: 12, color: "#3b82f6", marginTop: 2 }}>
-                        {clientesSinFactura.length} clientes sin factura en {MESES[filtroMes-1]}
-                      </div>
+                      <div style={{ fontSize: 12, color: "#3b82f6", marginTop: 2 }}>{sinFactura.length} sin factura en {MESES[filtroMes-1]}</div>
                     </div>
-                    <Btn
-                      disabled={generandoMasivo || clientesSinFactura.length === 0}
-                      onClick={() => generarFacturasMasivas(null)}
-                      style={{ fontSize: 13, padding: "8px 16px" }}
-                    >
+                    <Btn disabled={generandoMasivo || sinFactura.length === 0} onClick={() => generarFacturasMasivas(null)} style={{ fontSize: 13 }}>
                       {generandoMasivo ? "Generando..." : "⚡ Generar todos"}
                     </Btn>
                   </div>
                 </div>
-
-                {/* Separador */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "14px 0 10px" }}>
                   <div style={{ flex: 1, height: 1, background: GC.bg3 }} />
-                  <span style={{ fontSize: 11, color: GC.ink4, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8 }}>O por perfil de pago</span>
+                  <span style={{ fontSize: 11, color: GC.ink4, fontWeight: 700, textTransform: "uppercase" }}>O por perfil de pago</span>
                   <div style={{ flex: 1, height: 1, background: GC.bg3 }} />
                 </div>
-
-                {/* Por perfil */}
-                {clientesPorPerfil.length === 0 && clientesSinPerfil.length === 0 && (
-                  <div style={{ textAlign: "center", color: GC.ink4, padding: 20 }}>
-                    ✅ Todos los clientes ya tienen factura para {MESES[filtroMes-1]} {filtroAnio}
-                  </div>
-                )}
-
-                {clientesPorPerfil.map(({ perfil: pf, clientes: lista, venceHoy }) => (
+                {porPerfil.map(({ perfil: pf, clientes: lista, venceHoy }) => (
                   <div key={pf.id} style={{ background: venceHoy ? "#f0fdf4" : "#f8fafc", border: "1px solid " + (venceHoy ? "#86efac" : "#e2e8f0"), borderLeft: "4px solid " + (venceHoy ? "#22c55e" : "#0ea5e9"), borderRadius: 12, padding: "12px 16px", marginBottom: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                           <span style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>📅 {pf.nombre}</span>
-                          {venceHoy && (
-                            <span style={{ background: GC.brand, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>
-                              🟢 VENCE ESTE MES (días {pf.diaInicio}-{pf.diaFin})
-                            </span>
-                          )}
-                          {!venceHoy && (
-                            <span style={{ background: GC.bg3, color: GC.ink3, borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 700 }}>
-                              Días {pf.diaInicio}-{pf.diaFin}
-                            </span>
-                          )}
+                          {venceHoy && <span style={{ background: GC.brand, color: "#fff", borderRadius: 20, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>🟢 VENCE ESTE MES</span>}
                         </div>
-                        <div style={{ fontSize: 12, color: GC.ink3, marginTop: 3 }}>
-                          👥 {lista.length} cliente{lista.length !== 1 ? "s" : ""} sin factura
-                          {venceHoy && <span style={{ color: GC.brand, fontWeight: 700, marginLeft: 6 }}>· Recomendado generar ahora</span>}
-                        </div>
-                        {/* Mini lista de clientes */}
+                        <div style={{ fontSize: 12, color: GC.ink3, marginTop: 3 }}>👥 {lista.length} cliente{lista.length !== 1 ? "s" : ""} sin factura</div>
                         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5 }}>
-                          {lista.slice(0, 4).map(c => (
-                            <span key={c.id} style={{ background: "#fff", border: "1px solid " + GC.border, borderRadius: 6, padding: "2px 8px", fontSize: 11, color: GC.ink2 }}>
-                              {c.nombre.split(" ")[0]} {c.nombre.split(" ")[1]?.[0] || ""}.
-                            </span>
-                          ))}
+                          {lista.slice(0, 4).map(c => <span key={c.id} style={{ background: "#fff", border: "1px solid " + GC.border, borderRadius: 6, padding: "2px 8px", fontSize: 11, color: GC.ink2 }}>{c.nombre.split(" ")[0]}</span>)}
                           {lista.length > 4 && <span style={{ fontSize: 11, color: GC.ink4 }}>+{lista.length - 4} más</span>}
                         </div>
                       </div>
-                      <Btn
-                        disabled={generandoMasivo}
-                        variant={venceHoy ? "success" : "primary"}
-                        onClick={() => generarFacturasMasivas(pf.id)}
-                        style={{ fontSize: 13, padding: "8px 14px", whiteSpace: "nowrap" }}
-                      >
+                      <Btn disabled={generandoMasivo} variant={venceHoy ? "success" : "primary"} onClick={() => generarFacturasMasivas(pf.id)} style={{ fontSize: 13 }}>
                         {generandoMasivo ? "..." : `⚡ Generar (${lista.length})`}
                       </Btn>
                     </div>
                   </div>
                 ))}
-
-                {/* Clientes sin perfil */}
-                {clientesSinPerfil.length > 0 && (
-                  <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderLeft: "4px solid #f59e0b", borderRadius: 12, padding: "12px 16px", marginBottom: 8 }}>
+                {sinPerfil.length > 0 && (
+                  <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderLeft: "4px solid #f59e0b", borderRadius: 12, padding: "12px 16px" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 700, color: "#92400e", fontSize: 14 }}>⚠️ Sin perfil asignado</div>
-                        <div style={{ fontSize: 12, color: "#b45309", marginTop: 2 }}>
-                          {clientesSinPerfil.length} cliente{clientesSinPerfil.length !== 1 ? "s" : ""} — factura sin fecha de vencimiento
-                        </div>
-                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 5 }}>
-                          {clientesSinPerfil.slice(0, 4).map(c => (
-                            <span key={c.id} style={{ background: "#fff", border: "1px solid #fde68a", borderRadius: 6, padding: "2px 8px", fontSize: 11, color: "#92400e" }}>
-                              {c.nombre.split(" ")[0]} {c.nombre.split(" ")[1]?.[0] || ""}.
-                            </span>
-                          ))}
-                          {clientesSinPerfil.length > 4 && <span style={{ fontSize: 11, color: "#b45309" }}>+{clientesSinPerfil.length - 4} más</span>}
-                        </div>
+                        <div style={{ fontSize: 12, color: "#b45309", marginTop: 2 }}>{sinPerfil.length} cliente{sinPerfil.length !== 1 ? "s" : ""}</div>
                       </div>
-                      <Btn
-                        disabled={generandoMasivo}
-                        onClick={() => generarFacturasMasivas("sin_perfil")}
-                        style={{ fontSize: 13, padding: "8px 14px", background: GC.warning, whiteSpace: "nowrap" }}
-                      >
-                        {generandoMasivo ? "..." : `⚡ Generar (${clientesSinPerfil.length})`}
+                      <Btn disabled={generandoMasivo} onClick={() => generarFacturasMasivas("sin_perfil")} style={{ fontSize: 13, background: GC.warning }}>
+                        {generandoMasivo ? "..." : `⚡ Generar (${sinPerfil.length})`}
                       </Btn>
                     </div>
                   </div>
@@ -3479,27 +3100,26 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
         );
       })()}
 
-      {/* ── Modal factura manual ── */}
+      {/* Modal factura manual */}
       {showFormManual && (
         <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowFormManual(false)}>
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
             <button onClick={() => setShowFormManual(false)} style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
             <h3 style={{ margin: "0 0 16px", color: GC.ink }}>🧾 Nueva factura manual</h3>
-            <Field label="Buscar cliente (nombre o cédula)">
-              <Inp placeholder="🔍 Escribe nombre o cédula..." value={facturaManual.busqCliente || ""} onChange={e => setFacturaManual({ ...facturaManual, busqCliente: e.target.value, clienteId: "" })} />
+            <Field label="Buscar cliente">
+              <Inp placeholder="🔍 Nombre o cédula..." value={facturaManual.busqCliente || ""} onChange={e => setFacturaManual({ ...facturaManual, busqCliente: e.target.value, clienteId: "" })} />
               {facturaManual.busqCliente && facturaManual.busqCliente.length >= 2 && (() => {
                 const q = facturaManual.busqCliente.toLowerCase();
                 const res = clientesVisibles.filter(c => c.nombre.toLowerCase().includes(q) || (c.cedula||"").toLowerCase().includes(q)).slice(0,8);
                 return res.length > 0 ? (
-                  <div style={{ border: "1px solid " + GC.border, borderRadius: 8, marginTop: 4, overflow: "hidden", boxShadow: "0 4px 12px #00000011" }}>
+                  <div style={{ border: "1px solid " + GC.border, borderRadius: 8, marginTop: 4, overflow: "hidden" }}>
                     {res.map(c => (
                       <button key={c.id} onClick={() => {
-                        const mesNombre = MESES[facturaManual.mes - 1];
-                        const servicios = (c.servicio || "Internet").split("+").map(s => s.trim()).filter(Boolean);
-                        const montoPorServicio = servicios.length > 1 ? Math.round((c.monto || 0) / servicios.length) : (c?.monto || 0);
-                        const itemsAuto = servicios.map(s => ({ concepto: `${s} ${mesNombre} ${facturaManual.anio}`, monto: montoPorServicio }));
-                        if (itemsAuto.length > 0) { const suma = itemsAuto.reduce((s,i)=>s+i.monto,0); if (suma !== (c?.monto||0)) itemsAuto[itemsAuto.length-1].monto += ((c?.monto||0) - suma); }
-                        setFacturaManual({ ...facturaManual, clienteId: c.id, busqCliente: c.nombre, items: itemsAuto.length > 0 ? itemsAuto : facturaManual.items });
+                        const mn = MESES[facturaManual.mes - 1];
+                        const srvs = (c.servicio || "Internet").split("+").map(s => s.trim()).filter(Boolean);
+                        const mpp = srvs.length > 1 ? Math.round((c.monto||0) / srvs.length) : (c.monto||0);
+                        const items = srvs.map(s => ({ concepto: `${s} ${mn} ${facturaManual.anio}`, monto: mpp }));
+                        setFacturaManual({ ...facturaManual, clienteId: c.id, busqCliente: c.nombre, items });
                       }} style={{ width: "100%", display: "block", padding: "10px 14px", border: "none", borderBottom: "1px solid #f1f5f9", background: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13 }}>
                         <strong>{c.nombre}</strong> <span style={{ color: GC.ink3 }}>· {c.cedula}</span>
                       </button>
@@ -3510,139 +3130,430 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
               {facturaManual.clienteId && <div style={{ fontSize: 12, color: GC.brand, marginTop: 4 }}>✅ Cliente seleccionado</div>}
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
-              <Field label="Mes">
-                <Sel value={facturaManual.mes} onChange={e => setFacturaManual({ ...facturaManual, mes: Number(e.target.value) })}>
-                  {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-                </Sel>
-              </Field>
-              <Field label="Año">
-                <Sel value={facturaManual.anio} onChange={e => setFacturaManual({ ...facturaManual, anio: Number(e.target.value) })}>
-                  {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
-                </Sel>
-              </Field>
+              <Field label="Mes"><Sel value={facturaManual.mes} onChange={e => setFacturaManual({ ...facturaManual, mes: Number(e.target.value) })}>{MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}</Sel></Field>
+              <Field label="Año"><Sel value={facturaManual.anio} onChange={e => setFacturaManual({ ...facturaManual, anio: Number(e.target.value) })}>{[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}</Sel></Field>
             </div>
-
-            {/* ── Ítems de servicio ── */}
             <div style={{ marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <label style={{ fontSize: 11, color: GC.ink4, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>Servicios / Líneas de cobro</label>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {facturaManual.clienteId && (() => {
-                    const c = clientesVisibles.find(x => x.id === facturaManual.clienteId);
-                    if (!c || !c.monto) return null;
-                    const mesesAgregados = facturaManual.items.length;
-                    const maxMeses = 6;
-                    return mesesAgregados < maxMeses ? (
-                      <button onClick={() => {
-                        const servicios = (c.servicio || "Internet").split("+").map(s => s.trim()).filter(Boolean);
-                        const montoPorSrv = servicios.length > 1 ? Math.round(c.monto / servicios.length) : c.monto;
-                        // Calcular siguiente mes no añadido
-                        const conceptosUsados = new Set(facturaManual.items.map(i => i.concepto));
-                        let mes = facturaManual.mes; let anio = facturaManual.anio;
-                        const newItems = [...facturaManual.items];
-                        // Avanzar un mes por cada ciclo hasta encontrar uno no duplicado
-                        for (let intento = 0; intento < 12; intento++) {
-                          mes++; if (mes > 12) { mes = 1; anio++; }
-                          const mn = MESES[mes - 1];
-                          const todosNuevos = servicios.every(srv => !conceptosUsados.has(`${srv} ${mn} ${anio}`));
-                          if (todosNuevos) {
-                            servicios.forEach(srv => {
-                              const concepto = `${srv} ${mn} ${anio}`;
-                              newItems.push({ concepto, monto: montoPorSrv });
-                              conceptosUsados.add(concepto);
-                            });
-                            // Ajuste de redondeo en el último ítem
-                            const sumaActual = newItems.reduce((s, i) => s + (Number(i.monto) || 0), 0);
-                            const esperado = Math.round(newItems.length / servicios.length) * c.monto;
-                            break;
-                          }
-                        }
-                        const total = newItems.reduce((s, i) => s + (Number(i.monto) || 0), 0);
-                        setFacturaManual({ ...facturaManual, items: newItems, monto: total });
-                      }} style={{ background: GC.brandLight, color: GC.brand, border: "1px solid #bbf7d0", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                        📅 + Mes extra ({mesesAgregados}/{maxMeses})
-                      </button>
-                    ) : (
-                      <span style={{ fontSize: 12, color: GC.ink4 }}>Máx. {maxMeses} meses</span>
-                    );
-                  })()}
-                  <button onClick={() => setFacturaManual({ ...facturaManual, items: [...facturaManual.items, { concepto: "", monto: 0 }] })}
-                    style={{ background: "#eff6ff", color: GC.info, border: "1px solid #bfdbfe", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                    + Agregar línea
-                  </button>
-                </div>
+                <label style={{ fontSize: 11, color: GC.ink4, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>Servicios</label>
+                <button onClick={() => setFacturaManual({ ...facturaManual, items: [...facturaManual.items, { concepto: "", monto: 0 }] })}
+                  style={{ background: "#eff6ff", color: GC.info, border: "1px solid #bfdbfe", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>+ Línea</button>
               </div>
-              {facturaManual.items.length === 0 && (
-                <div style={{ background: GC.bg2, border: "1px dashed #cbd5e1", borderRadius: 8, padding: "10px 14px", fontSize: 13, color: GC.ink4, textAlign: "center" }}>
-                  Sin líneas — agrega al menos un servicio
-                </div>
-              )}
               {facturaManual.items.map((item, idx) => (
                 <div key={idx} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-start" }}>
-                  <div style={{ flex: 2 }}>
-                    <Inp
-                      value={item.concepto}
-                      onChange={e => {
-                        const nuevos = [...facturaManual.items];
-                        nuevos[idx] = { ...nuevos[idx], concepto: e.target.value };
-                        setFacturaManual({ ...facturaManual, items: nuevos });
-                      }}
-                      placeholder="Ej: Internet Abril 2026"
-                    />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <Inp
-                      type="number"
-                      value={item.monto || ""}
-                      onChange={e => {
-                        const nuevos = [...facturaManual.items];
-                        nuevos[idx] = { ...nuevos[idx], monto: Number(e.target.value) };
-                        const total = nuevos.reduce((s, i) => s + (Number(i.monto) || 0), 0);
-                        setFacturaManual({ ...facturaManual, items: nuevos, monto: total });
-                      }}
-                      placeholder="Valor"
-                    />
-                  </div>
-                  <button onClick={() => {
-                    const nuevos = facturaManual.items.filter((_, i) => i !== idx);
-                    const total = nuevos.reduce((s, i) => s + (Number(i.monto) || 0), 0);
-                    setFacturaManual({ ...facturaManual, items: nuevos, monto: total });
-                  }} style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "9px 10px", cursor: "pointer", fontSize: 14, marginTop: 0 }}>✕</button>
+                  <Inp value={item.concepto} onChange={e => { const n = [...facturaManual.items]; n[idx] = { ...n[idx], concepto: e.target.value }; setFacturaManual({ ...facturaManual, items: n }); }} placeholder="Ej: Internet Abril 2026" style={{ flex: 2 }} />
+                  <Inp type="number" value={item.monto||""} onChange={e => { const n = [...facturaManual.items]; n[idx] = { ...n[idx], monto: Number(e.target.value) }; setFacturaManual({ ...facturaManual, items: n }); }} placeholder="Valor" style={{ flex: 1 }} />
+                  <button onClick={() => { const n = facturaManual.items.filter((_,i) => i !== idx); setFacturaManual({ ...facturaManual, items: n }); }} style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "9px 10px", cursor: "pointer" }}>✕</button>
                 </div>
               ))}
               {facturaManual.items.length > 0 && (
-                <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid #e2e8f0", paddingTop: 8, marginTop: 4 }}>
-                  <span style={{ fontWeight: 800, color: GC.ink, fontSize: 15 }}>
-                    Total: {formatCOP(facturaManual.items.reduce((s,i) => s + (Number(i.monto)||0), 0))}
-                  </span>
+                <div style={{ textAlign: "right", fontWeight: 800, color: GC.ink, fontSize: 15 }}>
+                  Total: {formatCOP(facturaManual.items.reduce((s,i) => s + (Number(i.monto)||0), 0))}
                 </div>
               )}
             </div>
-
-            <Field label="Notas (opcional)">
-              <Inp value={facturaManual.notas} onChange={e => setFacturaManual({ ...facturaManual, notas: e.target.value })} placeholder="Ej: Mes de prueba" />
-            </Field>
-            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <Btn onClick={crearFacturaManual} disabled={facturaManual.items.length === 0 || !facturaManual.clienteId} style={{ flex: 1, opacity: (facturaManual.items.length === 0 || !facturaManual.clienteId) ? 0.5 : 1 }}>Crear factura</Btn>
+            <Field label="Notas"><Inp value={facturaManual.notas||""} onChange={e => setFacturaManual({ ...facturaManual, notas: e.target.value })} /></Field>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn onClick={crearFacturaManual} disabled={!facturaManual.clienteId || facturaManual.items.length === 0} style={{ flex: 1 }}>Crear factura</Btn>
               <Btn variant="ghost" onClick={() => setShowFormManual(false)}>Cancelar</Btn>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Modal recibo imprimible ── */}
-      {modalRecibo && (
-        <ReciboImprimible
-          factura={modalRecibo.factura}
-          abonos={modalRecibo.abonos}
-          nombreEmpresa={nombreEmpresa}
-          telefono="318-8255601"
-          onClose={() => setModalRecibo(null)}
-        />
+      {/* Modal exportar */}
+      {modalExport && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setModalExport(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px #00000033" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #e2e8f0" }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>{modalExport === "mes" ? "📊 Excel por mes" : "📊 Excel por año"}</h3>
+              <button onClick={() => setModalExport(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+            </div>
+            <div style={{ padding: 20 }}>
+              {modalExport === "mes" && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                  <div><label style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Mes</label><Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))}>{MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}</Sel></div>
+                  <div><label style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Año</label><Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))}>{[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}</Sel></div>
+                </div>
+              )}
+              {modalExport === "anio" && (
+                <div style={{ marginBottom: 16 }}><label style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700, display: "block", marginBottom: 6 }}>Año</label><Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))}>{[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}</Sel></div>
+              )}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={async () => { await exportarCSV(modalExport === "mes"); setModalExport(null); }} style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "none", background: modalExport === "mes" ? "#22c55e" : "#0ea5e9", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
+                  {exportando ? "Exportando..." : "⬇️ Descargar CSV"}
+                </button>
+                <button onClick={() => setModalExport(null)} style={{ padding: "10px 16px", borderRadius: 9, border: "1px solid " + GC.border, background: GC.bg2, color: GC.ink3, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Cancelar</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
 }
+
+// ── Sección 2: Cierre de Caja ─────────────────────────────────
+function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSuperusuario, nombreEmpresa, COLOR_ESTADO }) {
+  const hoy = new Date().toISOString().split("T")[0];
+  const primerDiaMes = new Date().toISOString().slice(0,8) + "01";
+  const [fechaInicio, setFechaInicio] = useState(primerDiaMes);
+  const [fechaFin, setFechaFin] = useState(hoy);
+  const [secretarioFiltro, setSecretarioFiltro] = useState(esAdmin ? "todos" : usuario.id);
+  const [imprimiendo, setImprimiendo] = useState(false);
+
+  const secretarios = usuarios.filter(u => (u.rol === "secretario" || u.rol === "admin") && u.activo);
+
+  // Filtrar facturas del rango seleccionado
+  const facturasCierre = facturas.filter(f => {
+    const fecha = f.fechaPago || f.fechaEmision || "";
+    if (!fecha || fecha < fechaInicio || fecha > fechaFin) return false;
+    if (secretarioFiltro !== "todos") {
+      const cliente = usuarios.find(u => u.id === f.clienteId);
+      const secId = f.creadoPor || cliente?.secretarioId;
+      if (secId !== secretarioFiltro) return false;
+    }
+    return f.estado !== "Anulada";
+  });
+
+  const totalFacturado = facturasCierre.reduce((s, f) => s + f.monto, 0);
+  const totalCobrado = facturasCierre.reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
+  const totalPendiente = facturasCierre.reduce((s, f) => s + f.saldoPendiente, 0);
+  const cantPagadas = facturasCierre.filter(f => f.estado === "Pagado").length;
+  const cantParcial = facturasCierre.filter(f => f.estado === "Abono parcial").length;
+  const cantPendiente = facturasCierre.filter(f => f.estado === "Pendiente" || f.estado === "Vencido").length;
+
+  const imprimir = () => {
+    const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
+    const nombreSec = secretarioFiltro === "todos" ? "Todos los secretarios" : (usuarios.find(u => u.id === secretarioFiltro)?.nombre || "—");
+    const filas = facturasCierre.map(f => {
+      const colorBg = {"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2"}[f.estado]||"#f1f5f9";
+      const colorTxt = {"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c"}[f.estado]||"#555";
+      return `<tr><td>${f.numeroRecibo||"—"}</td><td>${f.clienteNombre}</td><td>${f.fechaPago||f.fechaEmision||""}</td><td><span style="background:${colorBg};color:${colorTxt};padding:1px 5px;border-radius:3px;font-weight:bold">${f.estado}</span></td><td style="text-align:right">${cop(f.monto)}</td><td style="text-align:right;color:${f.saldoPendiente>0?"#dc2626":"#16a34a"}">${cop(f.monto-f.saldoPendiente)}</td></tr>`;
+    }).join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cierre de Caja</title>
+    <style>
+      @page { size: A4; margin: 15mm; }
+      body { font-family: Arial, sans-serif; font-size: 10pt; color: #000; }
+      h1 { font-size: 16pt; margin: 0 0 4px; } h2 { font-size: 12pt; margin: 0 0 12px; color: #555; }
+      .header { text-align: center; margin-bottom: 16px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+      .resumen { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+      .card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; flex: 1; min-width: 120px; }
+      .card-label { font-size: 8pt; color: #64748b; text-transform: uppercase; }
+      .card-val { font-size: 14pt; font-weight: 900; margin-top: 2px; }
+      table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+      th { background: #f1f5f9; padding: 6px 8px; text-align: left; border-bottom: 2px solid #e2e8f0; }
+      td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
+      .total-row { font-weight: 900; font-size: 11pt; border-top: 2px solid #000; }
+      .footer { margin-top: 20px; border-top: 1px dashed #aaa; padding-top: 12px; font-size: 9pt; color: #555; }
+      .btn-print { display: block; margin: 16px auto; padding: 10px 28px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 700; cursor: pointer; }
+      @media print { .btn-print { display: none; } }
+    </style></head><body>
+    <div class="header">
+      <h1>${nombreEmpresa}</h1>
+      <h2>CIERRE DE CAJA</h2>
+      <div>Período: <strong>${fechaInicio}</strong> al <strong>${fechaFin}</strong></div>
+      <div>Secretario: <strong>${nombreSec}</strong></div>
+      <div>Generado: ${new Date().toLocaleString("es-CO")}</div>
+    </div>
+    <div class="resumen">
+      <div class="card"><div class="card-label">Facturas en período</div><div class="card-val">${facturasCierre.length}</div></div>
+      <div class="card"><div class="card-label">✅ Pagadas</div><div class="card-val" style="color:#16a34a">${cantPagadas}</div></div>
+      <div class="card"><div class="card-label">🔵 Abonos parciales</div><div class="card-val" style="color:#0ea5e9">${cantParcial}</div></div>
+      <div class="card"><div class="card-label">⏳ Pendientes</div><div class="card-val" style="color:#f59e0b">${cantPendiente}</div></div>
+    </div>
+    <div class="resumen">
+      <div class="card"><div class="card-label">💰 Total facturado</div><div class="card-val" style="color:#0ea5e9">${cop(totalFacturado)}</div></div>
+      <div class="card"><div class="card-label">✅ Total cobrado</div><div class="card-val" style="color:#16a34a">${cop(totalCobrado)}</div></div>
+      <div class="card"><div class="card-label">⏳ Pendiente por cobrar</div><div class="card-val" style="color:#ef4444">${cop(totalPendiente)}</div></div>
+    </div>
+    <table>
+      <thead><tr><th>#Recibo</th><th>Cliente</th><th>Fecha</th><th>Estado</th><th style="text-align:right">Total</th><th style="text-align:right">Cobrado</th></tr></thead>
+      <tbody>${filas}</tbody>
+      <tr class="total-row"><td colspan="4">TOTALES</td><td style="text-align:right">${cop(totalFacturado)}</td><td style="text-align:right;color:#16a34a">${cop(totalCobrado)}</td></tr>
+    </table>
+    <div class="footer">
+      <div>Firma del responsable: _______________________________</div>
+      <div style="margin-top:6px">Este documento es un resumen interno de caja. No tiene validez fiscal.</div>
+    </div>
+    <button class="btn-print" onclick="window.print()">🖨️ Imprimir cierre</button>
+    </body></html>`;
+    const w = window.open("", "_blank", "width=900,height=700");
+    w.document.write(html); w.document.close();
+  };
+
+  return (
+    <div>
+      <div style={{ background: GC.bg3, border: "1px solid " + GC.border, borderRadius: 12, padding: "16px 20px", marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, color: GC.ink, marginBottom: 14, fontSize: 15 }}>⚙️ Configurar cierre</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: "0 16px" }}>
+          <Field label="Fecha inicio"><Inp type="date" value={fechaInicio} onChange={e => setFechaInicio(e.target.value)} /></Field>
+          <Field label="Fecha fin"><Inp type="date" value={fechaFin} onChange={e => setFechaFin(e.target.value)} /></Field>
+          {esAdmin && (
+            <Field label="Secretario">
+              <Sel value={secretarioFiltro} onChange={e => setSecretarioFiltro(e.target.value)}>
+                <option value="todos">Todos los secretarios</option>
+                {secretarios.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+              </Sel>
+            </Field>
+          )}
+        </div>
+      </div>
+
+      {/* Resumen visual */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px,1fr))", gap: 10, marginBottom: 20 }}>
+        {[
+          ["🧾 Facturas en período", facturasCierre.length, GC.ink],
+          ["✅ Pagadas", cantPagadas, GC.brand],
+          ["🔵 Abono parcial", cantParcial, GC.info],
+          ["⏳ Pendientes", cantPendiente, GC.warning],
+        ].map(([label, val, color]) => (
+          <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
+            <div style={{ fontWeight: 800, fontSize: 22, color }}>{val}</div>
+            <div style={{ fontSize: 11, color: GC.ink3, marginTop: 4 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))", gap: 10, marginBottom: 24 }}>
+        {[
+          ["💰 Total facturado", formatCOP(totalFacturado), GC.info],
+          ["✅ Total cobrado", formatCOP(totalCobrado), GC.brand],
+          ["⏳ Por cobrar", formatCOP(totalPendiente), GC.danger],
+        ].map(([label, val, color]) => (
+          <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderRadius: 12, padding: "14px 16px" }}>
+            <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4 }}>{label}</div>
+            <div style={{ fontWeight: 800, color, fontSize: 16 }}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Lista del cierre */}
+      {facturasCierre.length === 0 ? (
+        <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>💼</div>
+          <div>Sin facturas en el período seleccionado</div>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{facturasCierre.length} facturas en el período</span>
+            <Btn onClick={imprimir} style={{ fontSize: 13 }}>🖨️ Imprimir cierre</Btn>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: GC.bg2, borderBottom: "2px solid #e2e8f0" }}>
+                  {["#Recibo", "Cliente", "Fecha", "Estado", "Total", "Cobrado"].map(h => (
+                    <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: GC.ink3, fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {facturasCierre.map(f => (
+                  <tr key={f.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    <td style={{ padding: "8px 12px", color: GC.info, fontWeight: 700 }}>#{f.numeroRecibo||f.id?.slice(-6)}</td>
+                    <td style={{ padding: "8px 12px", fontWeight: 600 }}>{f.clienteNombre}</td>
+                    <td style={{ padding: "8px 12px", color: GC.ink2 }}>{f.fechaPago || f.fechaEmision}</td>
+                    <td style={{ padding: "8px 12px" }}><span style={{ background: (COLOR_ESTADO[f.estado]||"#94a3b8") + "22", color: COLOR_ESTADO[f.estado]||"#64748b", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 11 }}>{f.estado}</span></td>
+                    <td style={{ padding: "8px 12px", fontWeight: 700 }}>{formatCOP(f.monto)}</td>
+                    <td style={{ padding: "8px 12px", fontWeight: 700, color: f.saldoPendiente > 0 ? GC.warning : GC.brand }}>{formatCOP(f.monto - f.saldoPendiente)}</td>
+                  </tr>
+                ))}
+                <tr style={{ borderTop: "2px solid #0f172a", background: GC.bg2 }}>
+                  <td colSpan={4} style={{ padding: "10px 12px", fontWeight: 800, fontSize: 13 }}>TOTALES</td>
+                  <td style={{ padding: "10px 12px", fontWeight: 800, fontSize: 13 }}>{formatCOP(totalFacturado)}</td>
+                  <td style={{ padding: "10px 12px", fontWeight: 800, fontSize: 13, color: GC.brand }}>{formatCOP(totalCobrado)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Sección 3: Historial y Auditoría ─────────────────────────
+function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, nombreEmpresa, setConfirmDelete, setConfirmAnular }) {
+  const [busq, setBusq] = useState("");
+  const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
+  const [filtroMes, setFiltroMes] = useState(0);
+  const [filtroDia, setFiltroDia] = useState("");
+  const [clienteDetalle, setClienteDetalle] = useState(null); // { id, nombre }
+  const [abonosDetalle, setAbonosDetalle] = useState({});
+
+  const facturasAudit = facturas.filter(f => {
+    if (f.anio !== filtroAnio) return false;
+    if (filtroMes > 0 && f.mes !== filtroMes) return false;
+    if (filtroDia && f.fechaEmision !== filtroDia && f.fechaPago !== filtroDia) return false;
+    if (busq) {
+      const q = busq.toLowerCase();
+      const matchNombre = f.clienteNombre?.toLowerCase().includes(q);
+      const matchCedula = f.clienteCedula?.toLowerCase().includes(q);
+      const matchRecibo = String(f.numeroRecibo).includes(q);
+      if (!matchNombre && !matchCedula && !matchRecibo) return false;
+    }
+    return true;
+  }).sort((a, b) => (b.fechaEmision||"").localeCompare(a.fechaEmision||""));
+
+  // Agrupar por cliente cuando hay búsqueda de cliente específico
+  const clienteBuscado = busq && facturasAudit.length > 0 ? (() => {
+    const ids = [...new Set(facturasAudit.map(f => f.clienteId))];
+    if (ids.length === 1) return { id: ids[0], nombre: facturasAudit[0].clienteNombre };
+    return null;
+  })() : null;
+
+  const totalFact = facturasAudit.reduce((s, f) => s + f.monto, 0);
+  const totalCobrado = facturasAudit.reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
+  const totalPend = facturasAudit.reduce((s, f) => s + f.saldoPendiente, 0);
+
+  const imprimirTirilla = (cliente, listaFact) => {
+    const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
+    const totalCli = listaFact.reduce((s,f) => s + f.monto, 0);
+    const cobradoCli = listaFact.reduce((s,f) => s + (f.monto - f.saldoPendiente), 0);
+    const pagadas = listaFact.filter(f => f.estado === "Pagado").length;
+    const filas = listaFact.map(f => {
+      const colorBg = {"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2","Anulada":"#f1f5f9"}[f.estado]||"#f1f5f9";
+      const colorTxt = {"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c","Anulada":"#64748b"}[f.estado]||"#555";
+      return `<tr><td>${f.numeroRecibo||"—"}</td><td>${MESES[(f.mes||1)-1]} ${f.anio}</td><td><span style="background:${colorBg};color:${colorTxt};padding:1px 5px;border-radius:3px;font-weight:bold">${f.estado}</span></td><td style="text-align:right">${cop(f.monto)}</td><td style="text-align:right;color:${f.saldoPendiente>0?"#dc2626":"#16a34a"}">${cop(f.monto-f.saldoPendiente)}</td></tr>`;
+    }).join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Historial</title>
+    <style>
+      @page { size: 76mm auto; margin: 8mm 6mm; }
+      body { font-family: "Courier New", Courier, monospace; font-size: 9pt; color: #000; width: 64mm; padding: 4mm; line-height: 1.4; }
+      .center { text-align: center; } .bold { font-weight: bold; }
+      .sep { border: none; border-top: 1px dashed #555; margin: 6px 0; }
+      .sep-solid { border: none; border-top: 1px solid #000; margin: 5px 0; }
+      table { width: 100%; border-collapse: collapse; font-size: 7.5pt; }
+      th { border-bottom: 1px solid #000; padding: 3px 2px; text-align: left; font-size: 7pt; }
+      td { padding: 3px 2px; border-bottom: 1px dotted #ccc; }
+      .total-row td { font-weight: 900; border-top: 2px solid #000; font-size: 9pt; padding: 5px 2px; }
+      .btn-print { display: block; margin: 12px auto; padding: 8px 20px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 700; }
+      @media print { .btn-print { display: none; } body { width: 64mm; padding: 0; } }
+    </style></head><body>
+    <div class="center"><div class="bold" style="font-size:10.5pt;text-transform:uppercase">${nombreEmpresa}</div><div style="font-size:8pt">Tel: 318-8255601</div></div>
+    <hr class="sep"/>
+    <div class="center bold" style="font-size:9pt">HISTORIAL DE PAGOS</div>
+    <div class="center" style="font-size:7.5pt;margin:2px 0">${new Date().toLocaleDateString("es-CO")}</div>
+    <hr class="sep"/>
+    <div class="bold" style="font-size:9pt">${cliente.nombre}</div>
+    <div style="font-size:7.5pt">CC: ${listaFact[0]?.clienteCedula||"—"}</div>
+    <div style="font-size:7.5pt">${listaFact[0]?.clienteDireccion||""}</div>
+    <hr class="sep"/>
+    <table><thead><tr><th>#</th><th>Mes</th><th>Estado</th><th style="text-align:right">Total</th><th style="text-align:right">Cobrado</th></tr></thead>
+    <tbody>${filas}</tbody>
+    <tr class="total-row"><td colspan="3">TOTALES (${listaFact.length} fact.)</td><td style="text-align:right">${cop(totalCli)}</td><td style="text-align:right;color:#16a34a">${cop(cobradoCli)}</td></tr>
+    </table>
+    <hr class="sep"/>
+    <div style="font-size:7.5pt;text-align:center">Facturas pagadas: ${pagadas} / ${listaFact.length}</div>
+    <hr class="sep"/>
+    <div style="font-size:7.5pt;text-align:center">Gracias por su pago</div>
+    <br/><button class="btn-print" onclick="window.print()">🖨️ Imprimir</button>
+    </body></html>`;
+    const w = window.open("", "_blank", "width=340,height=700");
+    w.document.write(html); w.document.close();
+  };
+
+  return (
+    <div>
+      {/* Filtros */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <Inp placeholder="🔍 Nombre, cédula o N° recibo..." value={busq} onChange={e => setBusq(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
+        <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))} style={{ width: "auto", minWidth: 80 }}>
+          {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
+        </Sel>
+        <Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))} style={{ width: "auto", minWidth: 110 }}>
+          <option value={0}>Todos los meses</option>
+          {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+        </Sel>
+        <Inp type="date" value={filtroDia} onChange={e => setFiltroDia(e.target.value)} style={{ width: "auto" }} title="Filtrar por día exacto" />
+        {(busq || filtroMes > 0 || filtroDia) && (
+          <button onClick={() => { setBusq(""); setFiltroMes(0); setFiltroDia(""); }}
+            style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 13, color: GC.ink2 }}>✕ Limpiar</button>
+        )}
+        <span style={{ fontSize: 12, color: GC.ink3 }}>{facturasAudit.length} registros</span>
+      </div>
+
+      {/* Totales del filtro */}
+      {facturasAudit.length > 0 && (
+        <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+          {[["Total facturado", formatCOP(totalFact), "#0ea5e9"], ["Total cobrado", formatCOP(totalCobrado), "#22c55e"], ["Saldo pendiente", formatCOP(totalPend), "#ef4444"]].map(([label, val, color]) => (
+            <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderRadius: 10, padding: "8px 14px" }}>
+              <div style={{ fontSize: 10, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</div>
+              <div style={{ fontWeight: 800, color, fontSize: 14 }}>{val}</div>
+            </div>
+          ))}
+          {/* Botón tirilla del cliente si la búsqueda devuelve solo uno */}
+          {clienteBuscado && (
+            <button onClick={() => imprimirTirilla(clienteBuscado, facturasAudit)}
+              style={{ background: GC.brandLight, color: GC.brand, border: "1px solid #bbf7d0", borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+              🖨️ Tirilla del cliente
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Resumen anual del cliente si es búsqueda específica */}
+      {clienteBuscado && (() => {
+        const todas = facturas.filter(f => f.clienteId === clienteBuscado.id);
+        const pagadasAnio = todas.filter(f => f.anio === filtroAnio && f.estado === "Pagado").length;
+        const totalAnio = todas.filter(f => f.anio === filtroAnio).length;
+        return (
+          <div style={{ background: GC.brandLight, border: "1px solid #bbf7d0", borderLeft: "4px solid " + GC.brand, borderRadius: 12, padding: "12px 16px", marginBottom: 14 }}>
+            <div style={{ fontWeight: 700, color: GC.brand, marginBottom: 4 }}>📊 Resumen anual {filtroAnio} — {clienteBuscado.nombre}</div>
+            <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, color: GC.ink2 }}>
+              <span>✅ Facturas pagadas: <strong>{pagadasAnio} / {totalAnio}</strong></span>
+              <span>💰 Total cobrado en {filtroAnio}: <strong>{formatCOP(todas.filter(f=>f.anio===filtroAnio).reduce((s,f)=>s+(f.monto-f.saldoPendiente),0))}</strong></span>
+              <span>⏳ Pendiente: <strong>{formatCOP(todas.filter(f=>f.anio===filtroAnio).reduce((s,f)=>s+f.saldoPendiente,0))}</strong></span>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Tabla de auditoría */}
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: GC.bg2, borderBottom: "2px solid #e2e8f0" }}>
+              {["#Recibo", "Fecha", "Cliente", "Cédula", "Mes", "Total", "Saldo", "Estado", "Acciones"].map(h => (
+                <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: GC.ink3, fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {facturasAudit.length === 0 ? (
+              <tr><td colSpan={9} style={{ padding: 30, textAlign: "center", color: GC.ink4 }}>Sin registros para el filtro seleccionado</td></tr>
+            ) : facturasAudit.map(f => (
+              <tr key={f.id} style={{ borderBottom: "1px solid #f1f5f9", opacity: f.estado === "Anulada" ? 0.5 : 1 }}>
+                <td style={{ padding: "8px 12px", color: GC.info, fontWeight: 700 }}>#{f.numeroRecibo || f.id?.slice(-6)}</td>
+                <td style={{ padding: "8px 12px", color: GC.ink2 }}>{f.fechaEmision}</td>
+                <td style={{ padding: "8px 12px", fontWeight: 600 }}>{f.clienteNombre}</td>
+                <td style={{ padding: "8px 12px", color: GC.ink2 }}>{f.clienteCedula}</td>
+                <td style={{ padding: "8px 12px", color: GC.ink2 }}>{MESES[(f.mes||1)-1]} {f.anio}</td>
+                <td style={{ padding: "8px 12px", fontWeight: 700 }}>{formatCOP(f.monto)}</td>
+                <td style={{ padding: "8px 12px", color: f.saldoPendiente > 0 ? "#ef4444" : "#22c55e", fontWeight: 700 }}>{formatCOP(f.saldoPendiente)}</td>
+                <td style={{ padding: "8px 12px" }}><span style={{ background: (COLOR_ESTADO[f.estado]||"#94a3b8") + "22", color: COLOR_ESTADO[f.estado]||"#64748b", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 11 }}>{f.estado}</span></td>
+                <td style={{ padding: "8px 6px" }}>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {f.estado !== "Anulada" && (esAdmin || usuario.rol === "secretario") && (
+                      <button onClick={() => setConfirmAnular({ id: f.id, nombre: f.clienteNombre })}
+                        style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 12 }} title="Anular">🚫</button>
+                    )}
+                    {esSuperusuario && (
+                      <button onClick={() => setConfirmDelete({ id: f.id, nombre: f.clienteNombre })}
+                        style={{ background: "#fef2f2", color: "#dc2626", border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 12 }} title="Eliminar permanente">🗑️</button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 
 // ── Vista facturación para el CLIENTE ─────────────────────────
 function FacturacionCliente({ usuario }) {
@@ -5004,6 +4915,10 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       </Sel>
                     </Field>
                     <Field label="Clave WiFi"><Inp value={editU.claveWifi || ""} onChange={e => setEditU({ ...editU, claveWifi: e.target.value })} placeholder="Clave del router" /></Field>
+                    <Field label="Primera factura desde">
+                      <Inp type="month" value={editU.fechaPrimeraFactura ? editU.fechaPrimeraFactura.slice(0,7) : ""} onChange={e => setEditU({ ...editU, fechaPrimeraFactura: e.target.value ? e.target.value + "-01" : null })} />
+                      <div style={{ fontSize: 11, color: GC.ink3, marginTop: 3 }}>📅 Mes desde el que se generará factura automática</div>
+                    </Field>
                     {editU.tipo === "empresa" && (
                       <Field label="Nombre empresa (solo admin asigna)">
                         <Sel value={editU.nombreEmpresa || ""} onChange={e => setEditU({ ...editU, nombreEmpresa: e.target.value })}>
