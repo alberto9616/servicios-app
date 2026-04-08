@@ -4396,6 +4396,310 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════
+//  ASIGNACIÓN MASIVA — Zona, Plan, Perfil de Pago
+// ══════════════════════════════════════════════════════════════
+function AsignacionMasiva({ usuarios, setUsuarios, zonas, planes, perfilesPago }) {
+  const [filtroZona,    setFiltroZona]    = useState("");
+  const [filtroPlan,    setFiltroPlan]    = useState("");
+  const [filtroPerfil,  setFiltroPerfil]  = useState("");
+  const [filtroEstado,  setFiltroEstado]  = useState("");
+  const [busq,          setBusq]          = useState("");
+  const [seleccionados, setSeleccionados] = useState(new Set());
+  const [asigZonaId,    setAsigZonaId]    = useState("");
+  const [asigPlanId,    setAsigPlanId]    = useState("");
+  const [asigPerfilId,  setAsigPerfilId]  = useState("");
+  const [aplicando,     setAplicando]     = useState(false);
+  const [progreso,      setProgreso]      = useState(0);
+  const [resultado,     setResultado]     = useState(null);
+  const [confirmando,   setConfirmando]   = useState(false);
+
+  const clientes = useMemo(() => usuarios.filter(u => u.rol === "cliente"), [usuarios]);
+
+  const clientesFiltrados = useMemo(() => {
+    const q = busq.toLowerCase().trim();
+    return clientes.filter(u => {
+      if (filtroZona   && u.zonaId       !== filtroZona)   return false;
+      if (filtroPlan   && u.planId       !== filtroPlan)   return false;
+      if (filtroPerfil && u.perfilPagoId !== filtroPerfil) return false;
+      if (filtroEstado && u.estado       !== filtroEstado) return false;
+      if (q && !(
+        u.nombre?.toLowerCase().includes(q) ||
+        u.cedula?.toLowerCase().includes(q) ||
+        u.usuario?.toLowerCase().includes(q) ||
+        u.telefono?.toLowerCase().includes(q)
+      )) return false;
+      return true;
+    });
+  }, [clientes, filtroZona, filtroPlan, filtroPerfil, filtroEstado, busq]);
+
+  const todosSeleccionados = clientesFiltrados.length > 0 && clientesFiltrados.every(u => seleccionados.has(u.id));
+  const algunoSeleccionado = seleccionados.size > 0;
+  const hayAlgoParaAsignar = asigZonaId || asigPlanId || asigPerfilId;
+
+  const toggleTodos = () => {
+    if (todosSeleccionados) {
+      setSeleccionados(prev => { const n = new Set(prev); clientesFiltrados.forEach(u => n.delete(u.id)); return n; });
+    } else {
+      setSeleccionados(prev => { const n = new Set(prev); clientesFiltrados.forEach(u => n.add(u.id)); return n; });
+    }
+  };
+  const toggleUno = (id) => setSeleccionados(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const limpiarFiltros = () => { setFiltroZona(""); setFiltroPlan(""); setFiltroPerfil(""); setFiltroEstado(""); setBusq(""); };
+  const limpiarAsignacion = () => { setAsigZonaId(""); setAsigPlanId(""); setAsigPerfilId(""); };
+  const limpiarSeleccion = () => setSeleccionados(new Set());
+
+  const nombreZona   = id => zonas.find(z => z.id === id)?.nombre || id;
+  const nombrePlan   = id => planes.find(p => p.id === id)?.nombre || id;
+  const nombrePerfil = id => perfilesPago.find(p => p.id === id)?.nombre || id;
+
+  const aplicar = async () => {
+    if (!algunoSeleccionado || !hayAlgoParaAsignar) return;
+    setAplicando(true); setProgreso(0); setResultado(null); setConfirmando(false);
+    const ids = [...seleccionados];
+    let ok = 0, err = 0;
+    for (let i = 0; i < ids.length; i++) {
+      const u = usuarios.find(x => x.id === ids[i]);
+      if (!u) { err++; continue; }
+      const patch = { ...u };
+      if (asigZonaId)   patch.zonaId      = asigZonaId;
+      if (asigPerfilId) patch.perfilPagoId = asigPerfilId;
+      if (asigPlanId) {
+        const plan = planes.find(p => p.id === asigPlanId);
+        patch.planId = asigPlanId;
+        if (plan) { patch.plan = plan.nombre; patch.monto = plan.precio; }
+      }
+      try {
+        const guardado = await db.upsertUsuario(patch);
+        setUsuarios(prev => prev.map(x => x.id === guardado.id ? guardado : x));
+        ok++;
+      } catch (e) { console.error("Error asignando a", u.nombre, e); err++; }
+      setProgreso(Math.round(((i + 1) / ids.length) * 100));
+    }
+    setResultado({ ok, err });
+    setAplicando(false);
+    if (ok > 0) { limpiarSeleccion(); limpiarAsignacion(); }
+  };
+
+  const selStyle = (activo, activeColor, activeBg, activeBdr) => ({
+    width: "100%", padding: "8px 10px", borderRadius: 8,
+    border: "1px solid " + (activo ? activeColor : GC.border2),
+    background: activo ? activeBg : GC.bg,
+    color: GC.ink, fontSize: 13, fontFamily: "inherit",
+  });
+
+  const tagStyle = (color, bg) => ({
+    display: "inline-block", background: bg, color: color,
+    borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700,
+  });
+
+  return (
+    <div style={{ maxWidth: 960 }}>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: GC.ink3 }}>
+          Filtra clientes por zona, plan o perfil actual y asígnales nuevos valores de forma simultánea.
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 16, alignItems: "start" }}>
+
+        {/* ── COLUMNA IZQUIERDA: filtros + lista ── */}
+        <div>
+          {/* Filtros */}
+          <div style={{ background: "#ffffff", border: "1px solid " + GC.border, borderRadius: 14, padding: "16px 20px", marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: GC.ink2, textTransform: "uppercase", letterSpacing: 0.9, fontWeight: 700, marginBottom: 10 }}>🔍 Filtrar clientes</div>
+            <input
+              value={busq} onChange={e => setBusq(e.target.value)}
+              placeholder="Nombre, cédula, usuario, teléfono…"
+              style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", borderRadius: 8, fontSize: 14, border: "1px solid " + GC.border2, background: GC.bg, color: GC.ink, outline: "none", fontFamily: "inherit", marginBottom: 12 }}
+            />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 12px" }}>
+              <div>
+                <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4 }}>📍 Zona actual</div>
+                <select value={filtroZona} onChange={e => setFiltroZona(e.target.value)} style={selStyle(!!filtroZona, GC.brand, GC.brandLight, GC.brandMid)}>
+                  <option value="">Todas las zonas</option>
+                  {zonas.map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4 }}>📦 Plan actual</div>
+                <select value={filtroPlan} onChange={e => setFiltroPlan(e.target.value)} style={selStyle(!!filtroPlan, GC.info, GC.infoBg, GC.infoBdr)}>
+                  <option value="">Todos los planes</option>
+                  {planes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4 }}>📅 Perfil de pago actual</div>
+                <select value={filtroPerfil} onChange={e => setFiltroPerfil(e.target.value)} style={selStyle(!!filtroPerfil, GC.purple, GC.purpleBg, GC.purpleBdr)}>
+                  <option value="">Todos los perfiles</option>
+                  {perfilesPago.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4 }}>🚦 Estado de pago</div>
+                <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)} style={selStyle(!!filtroEstado, GC.warning, GC.warningBg, GC.warningBdr)}>
+                  <option value="">Todos los estados</option>
+                  <option value="Al día">✅ Al día</option>
+                  <option value="Pendiente">⚠️ Pendiente</option>
+                  <option value="Vencido">🔴 Vencido</option>
+                </select>
+              </div>
+            </div>
+            {(filtroZona || filtroPlan || filtroPerfil || filtroEstado || busq) && (
+              <button onClick={limpiarFiltros} style={{ marginTop: 10, background: "none", border: "none", color: GC.danger, fontSize: 12, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
+                ✕ Limpiar filtros
+              </button>
+            )}
+          </div>
+
+          {/* Controles de selección */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, padding: "0 4px" }}>
+            <span style={{ fontSize: 13, color: GC.ink2, fontWeight: 600 }}>
+              {clientesFiltrados.length} cliente{clientesFiltrados.length !== 1 ? "s" : ""}
+              {seleccionados.size > 0 && <span style={{ marginLeft: 8, color: GC.brand, fontWeight: 800 }}>· {seleccionados.size} seleccionado{seleccionados.size !== 1 ? "s" : ""}</span>}
+            </span>
+            <div style={{ display: "flex", gap: 8 }}>
+              {seleccionados.size > 0 && (
+                <button onClick={limpiarSeleccion} style={{ background: "none", border: "none", color: GC.ink3, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Deseleccionar todo</button>
+              )}
+              {clientesFiltrados.length > 0 && (
+                <button onClick={toggleTodos} style={{ background: todosSeleccionados ? GC.brandLight : GC.bg3, color: todosSeleccionados ? GC.brandText : GC.ink2, border: "1px solid " + (todosSeleccionados ? GC.brand : GC.border), borderRadius: 8, padding: "5px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
+                  {todosSeleccionados ? "✓ Todos seleccionados" : "Seleccionar todos"}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Lista de clientes */}
+          <div style={{ maxHeight: 460, overflowY: "auto", borderRadius: 12, border: "1px solid " + GC.border }}>
+            {clientesFiltrados.length === 0 ? (
+              <div style={{ padding: 32, textAlign: "center", color: GC.ink3, fontSize: 14 }}>😶 No hay clientes con esos filtros</div>
+            ) : (
+              clientesFiltrados.map((u, idx) => {
+                const sel = seleccionados.has(u.id);
+                const zona   = zonas.find(z => z.id === u.zonaId);
+                const plan   = planes.find(p => p.id === u.planId);
+                const perfil = perfilesPago.find(p => p.id === u.perfilPagoId);
+                const eColor = { "Al día": GC.brand, Pendiente: GC.warning, Vencido: GC.danger }[u.estado] || GC.ink3;
+                const eBg    = { "Al día": GC.brandLight, Pendiente: GC.warningBg, Vencido: GC.dangerBg }[u.estado] || GC.bg3;
+                return (
+                  <div key={u.id} onClick={() => toggleUno(u.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: sel ? GC.brandLight : idx % 2 === 0 ? "#ffffff" : GC.bg, borderBottom: "1px solid " + GC.border, cursor: "pointer" }}>
+                    <div style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, border: "2px solid " + (sel ? GC.brand : GC.border2), background: sel ? GC.brand : "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {sel && <span style={{ color: "#fff", fontSize: 13, lineHeight: 1 }}>✓</span>}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, color: GC.ink, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.nombre}</div>
+                      <div style={{ display: "flex", gap: 5, marginTop: 3, flexWrap: "wrap" }}>
+                        {zona   ? <span style={tagStyle(zona.color, zona.color + "22")}>📍 {zona.nombre}</span> : <span style={tagStyle(GC.ink4, GC.bg3)}>Sin zona</span>}
+                        {plan   ? <span style={tagStyle(GC.info, GC.infoBg)}>📦 {plan.nombre}</span>         : <span style={tagStyle(GC.ink4, GC.bg3)}>Sin plan</span>}
+                        {perfil ? <span style={tagStyle(GC.purple, GC.purpleBg)}>📅 {perfil.nombre}</span>   : <span style={tagStyle(GC.ink4, GC.bg3)}>Sin perfil</span>}
+                      </div>
+                    </div>
+                    {u.estado && <span style={tagStyle(eColor, eBg)}>{u.estado}</span>}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* ── COLUMNA DERECHA: panel de asignación ── */}
+        <div style={{ position: "sticky", top: 80 }}>
+          <div style={{ background: "#ffffff", border: "2px solid " + (algunoSeleccionado && hayAlgoParaAsignar ? GC.brand : GC.border), borderRadius: 14, padding: "16px 20px", marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: GC.ink2, textTransform: "uppercase", letterSpacing: 0.9, fontWeight: 700, marginBottom: 14 }}>⚡ Qué asignar</div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: GC.ink2, fontWeight: 600, marginBottom: 5 }}>📍 Nueva zona</div>
+              <select value={asigZonaId} onChange={e => setAsigZonaId(e.target.value)} style={selStyle(!!asigZonaId, GC.brand, GC.brandLight, GC.brandMid)}>
+                <option value="">— No cambiar zona —</option>
+                {zonas.filter(z => z.activa).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: GC.ink2, fontWeight: 600, marginBottom: 5 }}>📦 Nuevo plan</div>
+              <select value={asigPlanId} onChange={e => setAsigPlanId(e.target.value)} style={selStyle(!!asigPlanId, GC.info, GC.infoBg, GC.infoBdr)}>
+                <option value="">— No cambiar plan —</option>
+                {planes.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre} — {formatCOP(p.precio)}</option>)}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: GC.ink2, fontWeight: 600, marginBottom: 5 }}>📅 Nuevo perfil de pago</div>
+              <select value={asigPerfilId} onChange={e => setAsigPerfilId(e.target.value)} style={selStyle(!!asigPerfilId, GC.purple, GC.purpleBg, GC.purpleBdr)}>
+                <option value="">— No cambiar perfil —</option>
+                {perfilesPago.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre} (días {p.diaInicio}–{p.diaFin})</option>)}
+              </select>
+            </div>
+
+            {/* Resumen pre-aplicación */}
+            {algunoSeleccionado && hayAlgoParaAsignar && (
+              <div style={{ background: GC.brandLight, border: "1px solid " + GC.brandMid, borderRadius: 10, padding: "10px 12px", marginBottom: 14, fontSize: 12, color: GC.brandText }}>
+                <div style={{ fontWeight: 800, marginBottom: 5 }}>Resumen de la operación:</div>
+                <div>👥 <strong>{seleccionados.size}</strong> cliente{seleccionados.size !== 1 ? "s" : ""} afectado{seleccionados.size !== 1 ? "s" : ""}</div>
+                {asigZonaId   && <div>📍 Zona → <strong>{nombreZona(asigZonaId)}</strong></div>}
+                {asigPlanId   && <div>📦 Plan → <strong>{nombrePlan(asigPlanId)}</strong></div>}
+                {asigPerfilId && <div>📅 Perfil → <strong>{nombrePerfil(asigPerfilId)}</strong></div>}
+              </div>
+            )}
+
+            {/* Botón / confirmación */}
+            {!confirmando ? (
+              <button
+                onClick={() => { if (algunoSeleccionado && hayAlgoParaAsignar) setConfirmando(true); }}
+                disabled={!algunoSeleccionado || !hayAlgoParaAsignar || aplicando}
+                style={{ width: "100%", padding: "11px 0", borderRadius: 10, background: (algunoSeleccionado && hayAlgoParaAsignar) ? GC.brand : GC.bg3, color: (algunoSeleccionado && hayAlgoParaAsignar) ? "#fff" : GC.ink3, border: "none", fontWeight: 800, fontSize: 14, cursor: (algunoSeleccionado && hayAlgoParaAsignar) ? "pointer" : "not-allowed", fontFamily: "inherit", opacity: aplicando ? 0.7 : 1 }}
+              >
+                {!algunoSeleccionado ? "Selecciona clientes primero" : !hayAlgoParaAsignar ? "Elige qué asignar" : `⚡ Aplicar a ${seleccionados.size} cliente${seleccionados.size !== 1 ? "s" : ""}`}
+              </button>
+            ) : (
+              <div style={{ background: GC.dangerBg, border: "1px solid " + GC.dangerBdr, borderRadius: 10, padding: 12 }}>
+                <div style={{ fontSize: 13, color: "#7f1d1d", fontWeight: 700, marginBottom: 6 }}>⚠️ ¿Confirmas esta asignación masiva?</div>
+                <div style={{ fontSize: 12, color: GC.danger, marginBottom: 10 }}>Se modificarán <strong>{seleccionados.size}</strong> clientes. Esta acción no se puede deshacer fácilmente.</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={aplicar} style={{ flex: 1, padding: "9px 0", background: GC.danger, color: "#fff", border: "none", borderRadius: 8, fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Sí, aplicar</button>
+                  <button onClick={() => setConfirmando(false)} style={{ flex: 1, padding: "9px 0", background: GC.bg3, color: GC.ink2, border: "1px solid " + GC.border, borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            {/* Barra de progreso */}
+            {aplicando && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 12, color: GC.ink3, marginBottom: 5 }}>Aplicando… {progreso}%</div>
+                <div style={{ height: 6, background: GC.bg3, borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: progreso + "%", background: GC.brand, borderRadius: 99, transition: "width .2s" }} />
+                </div>
+              </div>
+            )}
+
+            {/* Resultado */}
+            {resultado && (
+              <div style={{ marginTop: 14, background: resultado.err === 0 ? GC.brandLight : GC.warningBg, border: "1px solid " + (resultado.err === 0 ? GC.brandMid : GC.warningBdr), borderRadius: 10, padding: "10px 12px", fontSize: 13 }}>
+                {resultado.err === 0
+                  ? <span style={{ color: GC.brandText, fontWeight: 700 }}>✅ {resultado.ok} cliente{resultado.ok !== 1 ? "s" : ""} actualizados correctamente.</span>
+                  : <span style={{ color: GC.warning, fontWeight: 700 }}>⚠️ {resultado.ok} OK · {resultado.err} con error. Revisa la consola.</span>}
+                <button onClick={() => setResultado(null)} style={{ display: "block", marginTop: 6, background: "none", border: "none", color: GC.ink3, fontSize: 11, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>Cerrar</button>
+              </div>
+            )}
+
+            {(asigZonaId || asigPlanId || asigPerfilId) && !confirmando && (
+              <button onClick={limpiarAsignacion} style={{ display: "block", marginTop: 10, background: "none", border: "none", color: GC.ink3, fontSize: 12, cursor: "pointer", fontFamily: "inherit", width: "100%", textAlign: "center" }}>
+                ✕ Limpiar selección de asignación
+              </button>
+            )}
+          </div>
+
+          <div style={{ padding: "4px 4px", fontSize: 11, color: GC.ink4, lineHeight: 1.8 }}>
+            <div>💡 Combina filtros para segmentar exactamente los clientes que quieres.</div>
+            <div>✅ Solo se modifican los campos que seleccionaste. Los demás permanecen igual.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion, tabExterno, setTabExterno }) {
   const [tabLocal, setTabLocal] = useState("usuarios"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const [editU, setEditU] = useState(null);
@@ -4533,14 +4837,14 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     zonas: zonas.length,
   };
 
-  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
+  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["masivo", "⚡ Asignación masiva"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
 
   const getNombreZona = (zonaId) => zonas.find(z => z.id === zonaId)?.nombre || "Sin zona";
 
   // Sincronizar tab con el SideNav
 
 
-  const LABEL_TAB = { tickets:"🎫 Tickets", ordenes:"📋 Órdenes", usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación", caja:"💼 Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta", superusuario:"👑 Superusuario" };
+  const LABEL_TAB = { tickets:"🎫 Tickets", ordenes:"📋 Órdenes", usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", masivo:"⚡ Asignación masiva", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación", caja:"💼 Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta", superusuario:"👑 Superusuario" };
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px" }}>
@@ -4728,6 +5032,17 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
       {/* ── TAB PERFILES DE PAGO ── */}
       {tab === "perfiles" && <TabPerfiles perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} usuarios={usuarios} />}
+
+      {/* ── TAB ASIGNACIÓN MASIVA ── */}
+      {tab === "masivo" && (
+        <AsignacionMasiva
+          usuarios={usuarios}
+          setUsuarios={setUsuarios}
+          zonas={zonas}
+          planes={planes}
+          perfilesPago={perfilesPago}
+        />
+      )}
       {confirmEliminar && <ModalConfirm titulo={confirmEliminar.titulo} mensaje={confirmEliminar.mensaje} onCancel={() => setConfirmEliminar(null)} onConfirm={() => { confirmEliminar.accion(); setConfirmEliminar(null); }} />}
 
       {/* ── TAB ZONAS ── */}
