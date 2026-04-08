@@ -4402,23 +4402,23 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion }) {
 //  ASIGNACIÓN MASIVA — Zona, Plan, Perfil de Pago
 // ══════════════════════════════════════════════════════════════
 function AsignacionMasiva({ usuarios, setUsuarios, zonas, planes, perfilesPago }) {
-  const [filtroZona,    setFiltroZona]    = useState("");
-  const [filtroPlan,    setFiltroPlan]    = useState("");
-  const [filtroPerfil,  setFiltroPerfil]  = useState("");
-  const [filtroEstado,  setFiltroEstado]  = useState("");
-  const [busq,          setBusq]          = useState("");
-  const [seleccionados, setSeleccionados] = useState(new Set());
-  const [asigZonaId,    setAsigZonaId]    = useState("");
-  const [asigPlanId,    setAsigPlanId]    = useState("");
-  const [asigPerfilId,  setAsigPerfilId]  = useState("");
-  const [aplicando,     setAplicando]     = useState(false);
-  const [progreso,      setProgreso]      = useState(0);
-  const [resultado,     setResultado]     = useState(null);
-  const [confirmando,   setConfirmando]   = useState(false);
+  const [filtroZona,    setFiltroZona]    = React.useState("");
+  const [filtroPlan,    setFiltroPlan]    = React.useState("");
+  const [filtroPerfil,  setFiltroPerfil]  = React.useState("");
+  const [filtroEstado,  setFiltroEstado]  = React.useState("");
+  const [busq,          setBusq]          = React.useState("");
+  const [seleccionados, setSeleccionados] = React.useState(new Set());
+  const [asigZonaId,    setAsigZonaId]    = React.useState("");
+  const [asigPlanId,    setAsigPlanId]    = React.useState("");
+  const [asigPerfilId,  setAsigPerfilId]  = React.useState("");
+  const [aplicando,     setAplicando]     = React.useState(false);
+  const [progreso,      setProgreso]      = React.useState(0);
+  const [resultado,     setResultado]     = React.useState(null);
+  const [confirmando,   setConfirmando]   = React.useState(false);
 
-  const clientes = useMemo(() => usuarios.filter(u => u.rol === "cliente"), [usuarios]);
+  const clientes = React.useMemo(() => usuarios.filter(u => u.rol === "cliente"), [usuarios]);
 
-  const clientesFiltrados = useMemo(() => {
+  const clientesFiltrados = React.useMemo(() => {
     const q = busq.toLowerCase().trim();
     return clientes.filter(u => {
       if (filtroZona   && u.zonaId       !== filtroZona)   return false;
