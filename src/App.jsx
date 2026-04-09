@@ -2369,100 +2369,109 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
   const totalAbonado = abonos.reduce((s, a) => s + a.monto, 0);
   const saldo = factura.monto - totalAbonado;
   const pagado = saldo <= 0;
+  // Abonos solo si pago parcial (saldo pendiente)
+  const mostrarAbonos = abonos.length > 0 && !pagado;
 
   const imprimir = () => window.print();
+
+  const row = (label, valor) => (
+    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2, fontSize: 12 }}>
+      <span>{label}</span><span>{valor}</span>
+    </div>
+  );
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#00000077", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background: "#fff", borderRadius: 16, padding: 0, width: "100%", maxWidth: 420, maxHeight: "95vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
-        {/* Botones acción */}
         <div style={{ display: "flex", gap: 8, padding: "14px 16px", borderBottom: "1px solid #e2e8f0" }}>
           <Btn onClick={imprimir} style={{ flex: 1, fontSize: 13 }}>🖨️ Imprimir</Btn>
           <button onClick={onClose} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: GC.ink3 }}>Cerrar</button>
         </div>
-        {/* Cuerpo del recibo */}
-        <div id="recibo-print" style={{ padding: "24px 28px", fontFamily: "monospace", fontSize: 13, color: GC.ink }}>
-          <div style={{ textAlign: "center", marginBottom: 16 }}>
-            <div style={{ fontWeight: 800, fontSize: 15 }}>{nombreEmpresa || "GC HOGAR.NET SAS"}</div>
-            <div style={{ fontSize: 12 }}>OFICINA VIJES</div>
-            <div style={{ fontSize: 12 }}>Tel.: {telefono || "318-8255601"}</div>
+        <div id="recibo-print" style={{ padding: "18px 22px", fontFamily: "monospace", fontSize: 12, color: "#000" }}>
+
+          {/* Encabezado */}
+          <div style={{ textAlign: "center", marginBottom: 8 }}>
+            <div style={{ fontSize: 13 }}>{(nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase()}</div>
+            <div style={{ fontSize: 11 }}>OFICINA VIJES</div>
+            <div style={{ fontSize: 11 }}>Tel.: {telefono || "318-8255601"}</div>
           </div>
-          <div style={{ borderTop: "1px dashed #94a3b8", borderBottom: "1px dashed #94a3b8", padding: "10px 0", marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Recibo No.:</span><strong>{String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0")}</strong>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Fecha:</span><span>{factura.fechaEmision || new Date().toISOString().split("T")[0]}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Cod. Usuario:</span><span>{factura.clienteCedula || "—"}</span>
-            </div>
+
+          <div style={{ borderTop: "1px dashed #94a3b8", margin: "8px 0" }} />
+
+          {row("Recibo No.:", String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0"))}
+          {row("Fecha:", factura.fechaEmision || new Date().toISOString().split("T")[0])}
+          {row("Cod. Usuario:", factura.clienteCedula || "—")}
+
+          <div style={{ borderTop: "1px dashed #94a3b8", margin: "8px 0" }} />
+
+          <div style={{ fontSize: 13, marginBottom: 2 }}>{(factura.clienteNombre || "").toUpperCase()}</div>
+          <div style={{ fontSize: 11, marginBottom: 6 }}>{(factura.clienteDireccion || "").toUpperCase()}</div>
+
+          <div style={{ borderTop: "1px dashed #94a3b8", margin: "8px 0" }} />
+
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#555", marginBottom: 6 }}>
+            <span>CONCEPTO</span><span>VALOR</span>
           </div>
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontWeight: 700 }}>{factura.clienteNombre}</div>
-            <div style={{ fontSize: 12, color: GC.ink2 }}>{factura.clienteDireccion || "—"}</div>
-          </div>
-          <div style={{ borderTop: "1px dashed #94a3b8", padding: "10px 0" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontWeight: 700, fontSize: 11, color: GC.ink3 }}>
-              <span>CONCEPTO</span><span>VALOR</span>
-            </div>
-            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 8 }}>
-              {/* Si tiene ítems detallados los muestra línea por línea */}
-              {factura.items && factura.items.length > 0 ? (
-                <>
-                  {factura.items.map((item, i) => (
-                    <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                      <span>{item.concepto}</span>
-                      <span>{formatCOP(item.monto)}</span>
-                    </div>
-                  ))}
-                  <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #e2e8f0", paddingTop: 6, marginTop: 4, fontWeight: 700 }}>
-                    <span>SUBTOTAL</span>
-                    <strong>{formatCOP(factura.items.reduce((s,i) => s + (Number(i.monto)||0), 0))}</strong>
-                  </div>
-                </>
-              ) : (
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>{factura.concepto}</span>
-                  <strong>{formatCOP(factura.monto)}</strong>
+
+          {factura.items && factura.items.length > 0 ? (
+            <>
+              {factura.items.map((item, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 3, fontSize: 12 }}>
+                  <span>{(item.concepto || "").toUpperCase()}</span>
+                  <span>{formatCOP(item.monto)}</span>
                 </div>
-              )}
+              ))}
+              <div style={{ borderTop: "1px dashed #94a3b8", margin: "6px 0" }} />
+              {row("SUBTOTAL", formatCOP(factura.items.reduce((s,i) => s + (Number(i.monto)||0), 0)))}
+            </>
+          ) : (
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+              <span>{(factura.concepto || "").toUpperCase()}</span>
+              <span>{formatCOP(factura.monto)}</span>
             </div>
-          </div>
-          {abonos.length > 0 && (
-            <div style={{ borderTop: "1px dashed #94a3b8", padding: "8px 0" }}>
-              <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4, fontWeight: 700 }}>ABONOS REGISTRADOS</div>
+          )}
+
+          {mostrarAbonos && (
+            <>
+              <div style={{ borderTop: "1px dashed #94a3b8", margin: "8px 0" }} />
+              <div style={{ fontSize: 11, color: "#555", marginBottom: 4 }}>ABONOS REGISTRADOS</div>
               {abonos.map((a, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
                   <span>{a.fecha} · {a.metodoPago}</span>
                   <span>- {formatCOP(a.monto)}</span>
                 </div>
               ))}
-            </div>
+            </>
           )}
-          <div style={{ borderTop: "1px dashed #94a3b8", padding: "10px 0" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-              <span>Total factura:</span><span>{formatCOP(factura.monto)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-              <span>Total abonado:</span><span>{formatCOP(totalAbonado)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 14, marginTop: 6, borderTop: "1px solid #0f172a", paddingTop: 6 }}>
-              <span>{pagado ? "CANCELADO" : "SALDO PENDIENTE"}:</span>
-              <span style={{ color: pagado ? "#16a34a" : "#dc2626" }}>{formatCOP(Math.max(0, saldo))}</span>
-            </div>
+
+          <div style={{ borderTop: "1px dashed #94a3b8", margin: "8px 0" }} />
+
+          {row("Total factura:", formatCOP(factura.monto))}
+          {row("Total abonado:", formatCOP(totalAbonado))}
+
+          <div style={{ borderTop: "1px dashed #94a3b8", margin: "8px 0" }} />
+
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+            <span>{pagado ? "CANCELADO:" : "SALDO PENDIENTE:"}</span>
+            <span style={{ color: pagado ? "#16a34a" : "#dc2626" }}>$ {Math.max(0, saldo).toLocaleString("es-CO")}</span>
           </div>
-          <div style={{ borderTop: "1px dashed #94a3b8", marginTop: 8, paddingTop: 12, fontSize: 12, textAlign: "center" }}>
-            <div style={{ marginBottom: 16, fontStyle: "italic" }}>{numeroALetras(factura.monto)}</div>
-            <div>Firma: _______________________</div>
+
+          <div style={{ borderTop: "1px dashed #94a3b8", margin: "12px 0 8px" }} />
+
+          <div style={{ textAlign: "center", fontSize: 12 }}>
+            Firma: _______________________
           </div>
-          {factura.notas && <div style={{ marginTop: 10, fontSize: 11, color: GC.ink3, textAlign: "center" }}>{factura.notas}</div>}
+
+          {factura.notas && (
+            <div style={{ marginTop: 8, fontSize: 11, color: GC.ink3, textAlign: "center" }}>{factura.notas}</div>
+          )}
         </div>
         <style>{`@media print { @page { size: 76mm auto; margin: 2mm; } body * { visibility: hidden; } #recibo-print, #recibo-print * { visibility: visible; } #recibo-print { position: fixed; top: 0; left: 0; width: 72mm; font-size: 11px; padding: 2mm; } }`}</style>
       </div>
     </div>
   );
 }
+
 
 
 // ══════════════════════════════════════════════════════════════
