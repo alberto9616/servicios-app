@@ -2762,11 +2762,29 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
     return matchQ && matchEstado && f.mes === filtroMes && f.anio === filtroAnio;
   });
 
-  const totalMes = facturasFiltradas.reduce((s, f) => s + f.monto, 0);
-  const totalCaja = facturas.reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
-  const totalDia = facturas.filter(f => f.fechaPago === hoyStr).reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
-  const totalPendiente = facturasFiltradas.filter(f => f.estado !== "Pagado" && f.estado !== "Anulada").reduce((s, f) => s + f.saldoPendiente, 0);
-  const morosos = facturasFiltradas.filter(f => f.estado === "Vencido").length;
+  // ── Totales correctos ──────────────────────────────────────────
+  // Facturas activas del mes (excluye Anuladas)
+  const facturasActivasMes = facturasFiltradas.filter(f => f.estado !== "Anulada");
+  // Cobrado hoy: facturas pagadas hoy (no anuladas)
+  const totalDia = facturas.filter(f => f.estado !== "Anulada" && f.fechaPago === hoyStr)
+    .reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
+  // Total en caja: movimientos de caja + cobrado hoy en facturas (no anuladas)
+  const totalCaja = facturas.filter(f => f.estado !== "Anulada")
+    .reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
+  // Pendientes: facturas del mes que NO han sido pagadas (ni anuladas)
+  const totalPendiente = facturasActivasMes
+    .filter(f => f.estado !== "Pagado")
+    .reduce((s, f) => s + f.saldoPendiente, 0);
+  // Morosos: clientes con facturas de MESES ANTERIORES sin pagar (no anuladas)
+  const hoy = new Date();
+  const mesActual = hoy.getMonth() + 1;
+  const anioActual = hoy.getFullYear();
+  const morosos = [...new Set(
+    facturas
+      .filter(f => f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0)
+      .filter(f => f.anio < anioActual || (f.anio === anioActual && f.mes < mesActual))
+      .map(f => f.clienteId)
+  )].length;
 
   const generarFacturasMasivas = async (perfilFiltro = null) => {
     setGenerandoMasivo(true);
@@ -2858,21 +2876,37 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
 
   // Tarjetas resumen clicables con tirilla
   const tarjetas = [
-    { label: "💰 Total mes", val: formatCOP(totalMes), color: GC.info,
-      getTirilla: () => ({ titulo: `💰 Total mes — ${MESES[filtroMes-1]} ${filtroAnio}`, subtitulo: "Todas las facturas emitidas del mes", total: totalMes, labelTotal: "Total facturado", colorTotal: GC.info,
-        filas: facturasFiltradas.map(f => ({ nombre: f.clienteNombre, detalle: f.concepto, estado: f.estado, monto: f.monto })) }) },
     { label: "📅 Cobrado hoy", val: formatCOP(totalDia), color: GC.purple,
-      getTirilla: () => { const hF = facturas.filter(f => f.fechaPago === hoyStr); return { titulo: `📅 Cobrado hoy — ${hoyStr}`, subtitulo: "Facturas con fecha de pago hoy", total: totalDia, labelTotal: "Total cobrado hoy", colorTotal: GC.purple,
-        filas: hF.map(f => ({ nombre: f.clienteNombre, detalle: f.concepto, estado: f.estado, monto: f.monto - f.saldoPendiente })) }; } },
+      getTirilla: () => {
+        const hF = facturas.filter(f => f.estado !== "Anulada" && f.fechaPago === hoyStr);
+        return { titulo: `📅 Cobrado hoy — ${hoyStr}`, subtitulo: "Facturas cobradas hoy (excluye anuladas)", total: totalDia, labelTotal: "Total cobrado hoy", colorTotal: GC.purple,
+          filas: hF.map(f => ({ nombre: f.clienteNombre, detalle: f.concepto, estado: f.estado, monto: f.monto - f.saldoPendiente })) };
+      }},
     { label: "🏦 Total en caja", val: formatCOP(totalCaja), color: GC.brand,
-      getTirilla: () => { const p = facturas.filter(f => f.monto - f.saldoPendiente > 0); return { titulo: "🏦 Total en caja — Histórico", subtitulo: "Todo el dinero cobrado", total: totalCaja, labelTotal: "Total en caja", colorTotal: GC.brand,
-        filas: p.map(f => ({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio}`, estado: f.estado, monto: f.monto - f.saldoPendiente })) }; } },
+      getTirilla: () => {
+        const p = facturas.filter(f => f.estado !== "Anulada" && f.monto - f.saldoPendiente > 0);
+        return { titulo: "🏦 Total en caja — Histórico", subtitulo: "Todo lo cobrado (excluye anuladas)", total: totalCaja, labelTotal: "Total en caja", colorTotal: GC.brand,
+          filas: p.map(f => ({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio}`, estado: f.estado, monto: f.monto - f.saldoPendiente })) };
+      }},
     { label: "⏳ Pendiente", val: formatCOP(totalPendiente), color: GC.warning,
-      getTirilla: () => ({ titulo: `⏳ Pendiente — ${MESES[filtroMes-1]} ${filtroAnio}`, subtitulo: "Saldo por cobrar", total: totalPendiente, labelTotal: "Total pendiente", colorTotal: GC.warning,
-        filas: facturasFiltradas.filter(f => f.estado !== "Pagado" && f.estado !== "Anulada").map(f => ({ nombre: f.clienteNombre, detalle: f.concepto, estado: f.estado, monto: f.saldoPendiente })) }) },
+      getTirilla: () => ({
+        titulo: `⏳ Pendiente — ${MESES[filtroMes-1]} ${filtroAnio}`, subtitulo: "Facturas del mes sin pagar (excluye anuladas)",
+        total: totalPendiente, labelTotal: "Total pendiente", colorTotal: GC.warning,
+        filas: facturasActivasMes.filter(f => f.estado !== "Pagado")
+          .map(f => ({ nombre: f.clienteNombre, detalle: f.concepto, estado: f.estado, monto: f.saldoPendiente }))
+      })},
     { label: "🔴 Morosos", val: morosos + " clientes", color: GC.danger,
-      getTirilla: () => ({ titulo: `🔴 Morosos — ${MESES[filtroMes-1]} ${filtroAnio}`, subtitulo: "Clientes con facturas Vencidas", total: facturasFiltradas.filter(f=>f.estado==="Vencido").reduce((s,f)=>s+f.saldoPendiente,0), labelTotal: "Deuda vencida", colorTotal: GC.danger,
-        filas: facturasFiltradas.filter(f=>f.estado==="Vencido").map(f=>({ nombre: f.clienteNombre, detalle: f.clienteDireccion||"", estado: "Vencido", monto: f.saldoPendiente })) }) },
+      getTirilla: () => {
+        const morososFact = facturas.filter(f =>
+          f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
+          (f.anio < anioActual || (f.anio === anioActual && f.mes < mesActual))
+        );
+        return {
+          titulo: "🔴 Morosos — meses anteriores", subtitulo: "Clientes con facturas de meses anteriores sin pagar",
+          total: morososFact.reduce((s,f)=>s+f.saldoPendiente,0), labelTotal: "Deuda morosa", colorTotal: GC.danger,
+          filas: morososFact.map(f=>({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio}`, estado: f.estado, monto: f.saldoPendiente }))
+        };
+      }},
   ];
 
   return (
