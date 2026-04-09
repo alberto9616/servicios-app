@@ -2520,8 +2520,13 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
       const abono = await db.registrarAbono({ ...nuevoAbono, monto, facturaId: modalAbono.id, registradoPor: usuario.id });
       const nuevoSaldo = modalAbono.saldoPendiente - monto;
       const nuevoEstado = nuevoSaldo <= 0 ? "Pagado" : "Abono parcial";
-      await db.actualizarFactura(modalAbono.id, { saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: nuevoAbono.metodoPago, fecha_pago: nuevoSaldo <= 0 ? nuevoAbono.fecha : null });
-      setFacturas(prev => prev.map(f => f.id === modalAbono.id ? { ...f, saldoPendiente: nuevoSaldo, estado: nuevoEstado, metodoPago: nuevoAbono.metodoPago } : f));
+      const nuevaFechaPago = nuevoSaldo <= 0 ? nuevoAbono.fecha : null;
+      await db.actualizarFactura(modalAbono.id, { saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: nuevoAbono.metodoPago, fecha_pago: nuevaFechaPago });
+      // Actualizar estado local completo incluyendo fechaPago para que cobradoHoy y totalCaja se recalculen inmediatamente
+      setFacturas(prev => prev.map(f => f.id === modalAbono.id
+        ? { ...f, saldoPendiente: nuevoSaldo, estado: nuevoEstado, metodoPago: nuevoAbono.metodoPago, fechaPago: nuevaFechaPago }
+        : f
+      ));
       setAbonosModal(prev => [abono, ...prev]);
       setModalAbono(prev => ({ ...prev, saldoPendiente: nuevoSaldo, estado: nuevoEstado }));
       setNuevoAbono({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: new Date().toISOString().split("T")[0] });
@@ -5747,7 +5752,10 @@ export default function App() {
   const [loginError, setLoginError] = useState("");
   const [cargando, setCargando] = useState(true);
   const [errorBD, setErrorBD] = useState(null);
-  const [tabActual, setTabActual] = useState(""); // Tab activo del portal actual
+  const [tabActual, setTabActual] = useState(() => {
+    // Restaurar la última pestaña visitada al recargar
+    try { return localStorage.getItem("gc_last_tab") || ""; } catch { return ""; }
+  }); // Tab activo del portal actual
   const [showRecuperar, setShowRecuperar] = useState(false);
   const [recuperarCorreo, setRecuperar] = useState("");
   const [recuperarMsg, setRecuperarMsg] = useState(null);
@@ -6010,13 +6018,13 @@ export default function App() {
         <PortalCliente usuario={sesion} tickets={tickets} setTickets={setTickets} avisos={avisos} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} propaganda={propaganda} perfilesPago={perfilesPago} />
       )}
       {sesion && sesion.rol === "secretario" && (
-        <PortalSecretario usuario={sesion} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} planes={planes} perfilesPago={perfilesPago} zonas={zonas} propaganda={propaganda} tabExterno={tabActual} setTabExterno={setTabActual} />
+        <PortalSecretario usuario={sesion} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} planes={planes} perfilesPago={perfilesPago} zonas={zonas} propaganda={propaganda} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
       {sesion && sesion.rol === "tecnico" && (
-        <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} tabExterno={tabActual} setTabExterno={setTabActual} />
+        <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
       {sesion && (sesion.rol === "admin" || sesion.rol === "superusuario") && (
-        <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} tabExterno={tabActual} setTabExterno={setTabActual} />
+        <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
     </div>
   );
