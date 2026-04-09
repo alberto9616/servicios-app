@@ -347,7 +347,8 @@ const GC = {
 const ROL_COLOR = { superusuario: GC.danger, admin: GC.brand, secretario: GC.purple, tecnico: GC.warning, cliente: GC.brand };
 const ROL_BG_MAP = { superusuario: GC.dangerBg, admin: GC.brandLight, secretario: GC.purpleBg, tecnico: GC.warningBg, cliente: GC.brandLight };
 const ROL_TEXT_MAP = { superusuario: "#991b1b", admin: GC.brandText, secretario: "#6b21a8", tecnico: "#92400e", cliente: GC.brandText };
-const ESTADO_COLOR = { "Al día": GC.brand, Pendiente: GC.warning, Vencido: GC.danger };
+const ESTADO_COLOR = { "Activo": GC.brand, "Al día": GC.brand, "DPP": GC.danger, "DPS": GC.info, "Cortesía": GC.purple, Pendiente: GC.warning, Vencido: GC.danger };
+const ESTADO_LABEL = { "Activo": "Activo", "Al día": "Al día", "DPP": "DPP · Desc. x Pago", "DPS": "DPS · Desc. x Solicitud", "Cortesía": "Cortesía", "Pendiente": "Pendiente", "Vencido": "Vencido" };
 const TICKET_COLOR = { Abierto: GC.warning, "En proceso": GC.info, Resuelto: GC.brand };
 const ORDEN_COLOR = { Pendiente: GC.warning, "En camino": GC.info, Completada: GC.brand, Cancelada: GC.danger };
 const TIPO_COLOR = { Mantenimiento: GC.info, Falla: GC.danger, Información: GC.purple };
@@ -679,8 +680,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "masivo",      icon: "⚡", label: "Asignación masiva" },
       { key: "avisos",      icon: "📢", label: "Avisos" },
       { key: "propaganda",  icon: "🎁", label: "Promociones" },
-      { key: "facturacion", icon: "🧾", label: "Facturación" },
-      { key: "caja",        icon: "💼", label: "Caja" },
+      { key: "facturacion", icon: "🧾", label: "Facturación y Caja" },
       { key: "equipo",      icon: "👷", label: "Equipo de trabajo" },
       { key: "resumen",     icon: "📊", label: "Resumen" },
       { key: "micuenta",    icon: "🔐", label: "Mi cuenta" },
@@ -695,8 +695,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "masivo",      icon: "⚡", label: "Asignación masiva" },
       { key: "avisos",      icon: "📢", label: "Avisos" },
       { key: "propaganda",  icon: "🎁", label: "Promociones" },
-      { key: "facturacion", icon: "🧾", label: "Facturación" },
-      { key: "caja",        icon: "💼", label: "Caja" },
+      { key: "facturacion", icon: "🧾", label: "Facturación y Caja" },
       { key: "equipo",      icon: "👷", label: "Equipo de trabajo" },
       { key: "resumen",     icon: "📊", label: "Resumen" },
       { key: "micuenta",    icon: "🔐", label: "Mi cuenta" },
@@ -1716,8 +1715,14 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   })()}
                 </Field>
                 <Field label="Estado de cuenta">
-                  <Sel value={editCliente.estado || "Al día"} onChange={e => setEditCliente({ ...editCliente, estado: e.target.value })}>
-                    <option>Al día</option><option>Pendiente</option><option>Vencido</option>
+                  <Sel value={editCliente.estado || "Activo"} onChange={e => setEditCliente({ ...editCliente, estado: e.target.value })}>
+                    <option value="Activo">✅ Activo</option>
+                    <option value="Al día">✅ Al día</option>
+                    <option value="DPP">🔴 DPP · Desconectado por Pago</option>
+                    <option value="DPS">🔵 DPS · Desconectado por Solicitud</option>
+                    <option value="Cortesía">💜 Cortesía (sin factura)</option>
+                    <option value="Pendiente">⚠️ Pendiente</option>
+                    <option value="Vencido">🔴 Vencido</option>
                   </Sel>
                 </Field>
                 <Field label="Clave WiFi"><Inp value={editCliente.claveWifi || ""} onChange={e => setEditCliente({ ...editCliente, claveWifi: e.target.value })} placeholder="Clave del router del cliente" /></Field>
@@ -2560,6 +2565,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
     { key: "emitidas", icon: "🧾", label: "Emitidas" },
     { key: "cierre",   icon: "💼", label: "Cierre de caja" },
     { key: "historial",icon: "🔍", label: "Historial" },
+    { key: "caja",     icon: "💰", label: "Caja" },
   ];
 
   return (
@@ -2714,6 +2720,13 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
           setConfirmDelete={setConfirmDelete} setConfirmAnular={setConfirmAnular}
         />
       )}
+
+      {/* ════════════════════════════════════════════════════ */}
+      {/* TAB CAJA — movimientos + saldo base admin            */}
+      {/* ════════════════════════════════════════════════════ */}
+      {subTab === "caja" && (
+        <ModuloCaja usuario={usuario} esAdmin={esAdmin || esSuperusuario} />
+      )}
     </div>
   );
 }
@@ -2753,6 +2766,8 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
       const nextNum = await db.getSiguienteNumeroRecibo();
       const clientesTarget = clientesVisibles.filter(c => {
         if (!c.monto) return false;
+        // Clientes en Cortesía NO generan factura
+        if (c.estado === "Cortesía") return false;
         // Respetar fechaPrimeraFactura si existe
         if (c.fechaPrimeraFactura) {
           const [anioInicio, mesInicio] = c.fechaPrimeraFactura.split("-").map(Number);
@@ -3529,7 +3544,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
             <tr style={{ background: GC.bg2, borderBottom: "2px solid #e2e8f0" }}>
-              {["#Recibo", "Fecha", "Cliente", "Cédula", "Mes", "Total", "Saldo", "Estado", "Acciones"].map(h => (
+              {["#Recibo", "Fecha", "Cliente", "Cédula", "Mes", "Total", "Saldo", "Método", "Estado", "Acciones"].map(h => (
                 <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: GC.ink3, fontWeight: 700, whiteSpace: "nowrap" }}>{h}</th>
               ))}
             </tr>
@@ -3537,7 +3552,16 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
           <tbody>
             {facturasAudit.length === 0 ? (
               <tr><td colSpan={9} style={{ padding: 30, textAlign: "center", color: GC.ink4 }}>Sin registros para el filtro seleccionado</td></tr>
-            ) : facturasAudit.map(f => (
+            ) : facturasAudit.map(f => {
+              const verFact = () => {
+                const w = window.open("", "_blank", "width=380,height=640");
+                const its = Array.isArray(f.items) ? f.items : [];
+                const cop = v => Number(v).toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
+                const mp = {"Efectivo":"💵","Transferencia":"🏦","Nequi":"📱","Daviplata":"📲"}[f.metodoPago]||"💳";
+                w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Factura #${f.numeroRecibo}</title><style>@page{size:76mm auto;margin:8mm 6mm}body{font-family:'Courier New',monospace;font-size:9pt;width:64mm;padding:4mm;line-height:1.5}.c{text-align:center}.b{font-weight:bold}.sep{border:none;border-top:1px dashed #555;margin:6px 0}table{width:100%;border-collapse:collapse;font-size:8pt}td,th{padding:3px 2px}th{border-bottom:1px solid #000;font-size:7.5pt}.tr td{font-weight:900;border-top:2px solid #000;padding:5px 2px}@media print{.btn{display:none}body{width:64mm;padding:0}}</style></head><body><div class="c b" style="font-size:11pt;text-transform:uppercase">FACTURA #${f.numeroRecibo||"—"}</div><div class="c" style="font-size:8pt">Fecha: ${f.fechaEmision||"—"}</div><hr class="sep"/><div class="b">${f.clienteNombre}</div><div style="font-size:8pt">CC: ${f.clienteCedula||"—"}</div><div style="font-size:8pt">${f.clienteDireccion||""}</div><hr class="sep"/><table><thead><tr><th>Concepto</th><th style="text-align:right">Valor</th></tr></thead><tbody>${its.map(i=>`<tr><td>${i.concepto||""}</td><td style="text-align:right">${cop(i.monto||0)}</td></tr>`).join("")}</tbody><tr class="tr"><td>TOTAL</td><td style="text-align:right">${cop(f.monto)}</td></tr></table><hr class="sep"/><div style="font-size:8pt">Estado: <b>${f.estado}</b></div><div style="font-size:8pt">Método de pago: <b>${mp} ${f.metodoPago||"—"}</b></div>${f.saldoPendiente>0?`<div style="font-size:8pt;color:#dc2626">Saldo pendiente: <b>${cop(f.saldoPendiente)}</b></div>`:`<div style="font-size:8pt;color:#16a34a">✅ Pagado completo</div>`}<hr class="sep"/><div class="c" style="font-size:7.5pt">Gracias por su pago</div><br/><button class="btn" onclick="window.print()" style="display:block;margin:10px auto;padding:8px 20px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">🖨️ Imprimir</button></body></html>`);
+                w.document.close();
+              };
+              return (
               <tr key={f.id} style={{ borderBottom: "1px solid #f1f5f9", opacity: f.estado === "Anulada" ? 0.5 : 1 }}>
                 <td style={{ padding: "8px 12px", color: GC.info, fontWeight: 700 }}>#{f.numeroRecibo || f.id?.slice(-6)}</td>
                 <td style={{ padding: "8px 12px", color: GC.ink2 }}>{f.fechaEmision}</td>
@@ -3546,9 +3570,17 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
                 <td style={{ padding: "8px 12px", color: GC.ink2 }}>{MESES[(f.mes||1)-1]} {f.anio}</td>
                 <td style={{ padding: "8px 12px", fontWeight: 700 }}>{formatCOP(f.monto)}</td>
                 <td style={{ padding: "8px 12px", color: f.saldoPendiente > 0 ? "#ef4444" : "#22c55e", fontWeight: 700 }}>{formatCOP(f.saldoPendiente)}</td>
+                <td style={{ padding: "8px 12px" }}>
+                  {f.metodoPago ? (
+                    <span style={{ background: GC.infoBg, color: GC.info, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>
+                      {{"Efectivo":"💵","Transferencia":"🏦","Nequi":"📱","Daviplata":"📲"}[f.metodoPago]||"💳"} {f.metodoPago}
+                    </span>
+                  ) : <span style={{ color: GC.ink4, fontSize: 11 }}>—</span>}
+                </td>
                 <td style={{ padding: "8px 12px" }}><span style={{ background: (COLOR_ESTADO[f.estado]||"#94a3b8") + "22", color: COLOR_ESTADO[f.estado]||"#64748b", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 11 }}>{f.estado}</span></td>
                 <td style={{ padding: "8px 6px" }}>
                   <div style={{ display: "flex", gap: 4 }}>
+                    <button onClick={verFact} style={{ background: GC.infoBg, color: GC.info, border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 12 }} title="Ver factura">🧾</button>
                     {f.estado !== "Anulada" && (esAdmin || usuario.rol === "secretario") && (
                       <button onClick={() => setConfirmAnular({ id: f.id, nombre: f.clienteNombre })}
                         style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 12 }} title="Anular">🚫</button>
@@ -3560,7 +3592,8 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -3872,7 +3905,7 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
 // ══════════════════════════════════════════════════════════════
 // MÓDULO CAJA — Ingresos y Egresos
 // ══════════════════════════════════════════════════════════════
-function ModuloCaja({ usuario }) {
+function ModuloCaja({ usuario, esAdmin = false }) {
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState(false);
@@ -3881,6 +3914,17 @@ function ModuloCaja({ usuario }) {
   const [errMsg, setErrMsg] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("todos");
   const [confirmDel, setConfirmDel] = useState(null);
+  const [saldoBase, setSaldoBase] = useState(() => { try { return Number(localStorage.getItem("caja_saldo_base") || 0); } catch { return 0; } });
+  const [editandoSaldoBase, setEditandoSaldoBase] = useState(false);
+  const [saldoBaseInput, setSaldoBaseInput] = useState("");
+
+  const guardarSaldoBase = () => {
+    const v = Number(saldoBaseInput);
+    if (isNaN(v) || v < 0) return;
+    setSaldoBase(v);
+    try { localStorage.setItem("caja_saldo_base", String(v)); } catch {}
+    setEditandoSaldoBase(false);
+  };
 
   useEffect(() => {
     db.getMovimientosCaja()
@@ -3891,7 +3935,7 @@ function ModuloCaja({ usuario }) {
 
   const totalIngresos = movimientos.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
   const totalEgresos = movimientos.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
-  const saldo = totalIngresos - totalEgresos;
+  const saldo = saldoBase + totalIngresos - totalEgresos;
 
   const guardar = async () => {
     setErrMsg("");
@@ -3915,12 +3959,42 @@ function ModuloCaja({ usuario }) {
 
   return (
     <div>
+      {/* Saldo base — solo admin puede editar */}
+      <div style={{ background: GC.bg2, border: "1px solid " + GC.border, borderRadius: 12, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8 }}>💵 Saldo base de apertura</div>
+          {editandoSaldoBase ? (
+            <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
+              <Inp type="number" value={saldoBaseInput} onChange={e => setSaldoBaseInput(e.target.value)} placeholder="Ej: 50000" style={{ width: 140 }} autoFocus />
+              <Btn onClick={guardarSaldoBase} style={{ fontSize: 12, padding: "7px 12px" }}>✅ Guardar</Btn>
+              <Btn variant="ghost" onClick={() => setEditandoSaldoBase(false)} style={{ fontSize: 12, padding: "7px 12px" }}>Cancelar</Btn>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+              <span style={{ fontWeight: 800, fontSize: 18, color: GC.ink }}>{formatCOP(saldoBase)}</span>
+              {esAdmin && (
+                <button onClick={() => { setSaldoBaseInput(String(saldoBase)); setEditandoSaldoBase(true); }}
+                  style={{ background: GC.bg3, border: "1px solid " + GC.border, borderRadius: 7, padding: "4px 10px", cursor: "pointer", fontSize: 12, color: GC.ink2 }}>
+                  ✏️ Editar
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        <div style={{ flex: 1 }} />
+        <div style={{ fontSize: 12, color: GC.ink3, textAlign: "right" }}>
+          <div>Saldo base es el dinero con que inicia la caja cada día.</div>
+          {esAdmin && <div style={{ color: GC.brand, fontWeight: 600 }}>Solo el administrador puede modificarlo.</div>}
+        </div>
+      </div>
+
       {/* Resumen */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px,1fr))", gap: 10, marginBottom: 18 }}>
         {[
+          ["💵 Saldo base", formatCOP(saldoBase), "#64748b"],
           ["💚 Ingresos", formatCOP(totalIngresos), "#22c55e"],
           ["🔴 Egresos", formatCOP(totalEgresos), "#ef4444"],
-          ["💼 Saldo", formatCOP(saldo), saldo >= 0 ? "#0ea5e9" : "#ef4444"],
+          ["💼 Saldo total", formatCOP(saldo), saldo >= 0 ? "#0ea5e9" : "#ef4444"],
         ].map(([label, val, color]) => (
           <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px" }}>
             <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4 }}>{label}</div>
@@ -4582,8 +4656,8 @@ function AsignacionMasiva({ usuarios, setUsuarios, zonas, planes, perfilesPago }
                 const zona   = zonas.find(z => z.id === u.zonaId);
                 const plan   = planes.find(p => p.id === u.planId);
                 const perfil = perfilesPago.find(p => p.id === u.perfilPagoId);
-                const eColor = { "Al día": GC.brand, Pendiente: GC.warning, Vencido: GC.danger }[u.estado] || GC.ink3;
-                const eBg    = { "Al día": GC.brandLight, Pendiente: GC.warningBg, Vencido: GC.dangerBg }[u.estado] || GC.bg3;
+                const eColor = ESTADO_COLOR[u.estado] || GC.ink3;
+                const eBg    = { "Activo": GC.brandLight, "Al día": GC.brandLight, "DPP": GC.dangerBg, "DPS": GC.infoBg, "Cortesía": GC.purpleBg, Pendiente: GC.warningBg, Vencido: GC.dangerBg }[u.estado] || GC.bg3;
                 return (
                   <div key={u.id} onClick={() => toggleUno(u.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: sel ? GC.brandLight : idx % 2 === 0 ? "#ffffff" : GC.bg, borderBottom: "1px solid " + GC.border, cursor: "pointer" }}>
                     <div style={{ width: 20, height: 20, borderRadius: 5, flexShrink: 0, border: "2px solid " + (sel ? GC.brand : GC.border2), background: sel ? GC.brand : "#fff", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -4712,6 +4786,9 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const [showForm, setShowForm] = useState(false);
   const [busqAdmin, setBusqAdmin] = useState("");
   const [filtroAdminTipo, setFiltroAdminTipo] = useState("todos");
+  const [filtroAdminPlan, setFiltroAdminPlan] = useState("");
+  const [filtroAdminPerfil, setFiltroAdminPerfil] = useState("");
+  const [filtroAdminEstado, setFiltroAdminEstado] = useState("");
   const [formTipo, setFormTipo] = useState(null);
   const [confirmEliminar, setConfirmEliminar] = useState(null); // { accion, titulo, mensaje }
   // Mi cuenta
@@ -4721,15 +4798,19 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const usuariosFiltradosAdmin = (() => {
     const q = busqAdmin.toLowerCase().trim();
     return usuarios.filter(u => {
-      const matchQ = !q || u.nombre?.toLowerCase().includes(q) || u.cedula?.toLowerCase().includes(q) || u.usuario?.toLowerCase().includes(q);
-      if (filtroAdminTipo === "cliente_final") return matchQ && u.rol === "cliente" && u.tipo === "final";
-      if (filtroAdminTipo === "cliente_empresa") return matchQ && u.rol === "cliente" && u.tipo === "empresa";
-      if (filtroAdminTipo === "inactivo") return matchQ && !u.activo;
-      return matchQ;
+      const matchQ = !q || u.nombre?.toLowerCase().includes(q) || u.cedula?.toLowerCase().includes(q) || u.usuario?.toLowerCase().includes(q) || u.telefono?.toLowerCase().includes(q);
+      if (!matchQ) return false;
+      if (filtroAdminTipo === "cliente_final") { if (!(u.rol === "cliente" && u.tipo === "final")) return false; }
+      else if (filtroAdminTipo === "cliente_empresa") { if (!(u.rol === "cliente" && u.tipo === "empresa")) return false; }
+      else if (filtroAdminTipo === "inactivo") { if (u.activo) return false; }
+      if (filtroAdminPlan && u.planId !== filtroAdminPlan) return false;
+      if (filtroAdminPerfil && u.perfilPagoId !== filtroAdminPerfil) return false;
+      if (filtroAdminEstado && u.estado !== filtroAdminEstado) return false;
+      return true;
     });
   })();
 
-  const emptyU = { id: "", usuario: "", clave: "", rol: "secretario", nombre: "", tipo: "final", cedula: "", servicio: "Internet", plan: "", monto: "", fechaPago: "", estado: "Al día", activo: true, zonaId: "", direccion: "", claveWifi: "", telefono: "", privilegios: [] };
+  const emptyU = { id: "", usuario: "", clave: "", rol: "secretario", nombre: "", tipo: "final", cedula: "", servicio: "Internet", plan: "", monto: "", fechaPago: "", estado: "Activo", activo: true, zonaId: "", direccion: "", claveWifi: "", telefono: "", privilegios: [] };
   const emptyA = { id: "", tipo: "Información", titulo: "", mensaje: "", fecha: new Date().toISOString().split("T")[0], afecta: "Internet", activo: true };
   const emptyPlan = { id: "", nombre: "", precio: "", descripcion: "", activo: true };
   const emptyZona = { id: "", nombre: "", color: GC.info, activa: true };
@@ -4839,14 +4920,14 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     zonas: zonas.length,
   };
 
-  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["masivo", "⚡ Asignación masiva"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
+  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["masivo", "⚡ Asignación masiva"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación y Caja"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
 
   const getNombreZona = (zonaId) => zonas.find(z => z.id === zonaId)?.nombre || "Sin zona";
 
   // Sincronizar tab con el SideNav
 
 
-  const LABEL_TAB = { tickets:"🎫 Tickets", ordenes:"📋 Órdenes", usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", masivo:"⚡ Asignación masiva", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación", caja:"💼 Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta", superusuario:"👑 Superusuario" };
+  const LABEL_TAB = { tickets:"🎫 Tickets", ordenes:"📋 Órdenes", usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", masivo:"⚡ Asignación masiva", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación y Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta", superusuario:"👑 Superusuario" };
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px" }}>
@@ -4887,10 +4968,6 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {/* ── TAB RESUMEN ── */}
       {tab === "facturacion" && (
         <ModuloFacturacion usuario={sesion} usuarios={usuarios} zonas={zonas} planes={planes} perfilesPago={perfilesPago} />
-      )}
-
-      {tab === "caja" && (
-        <ModuloCaja usuario={sesion} />
       )}
 
       {tab === "resumen" && (
@@ -5239,8 +5316,14 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       })()}
                     </Field>
                     <Field label="Estado de cuenta">
-                      <Sel value={editU.estado || "Al día"} onChange={e => setEditU({ ...editU, estado: e.target.value })}>
-                        <option>Al día</option><option>Pendiente</option><option>Vencido</option>
+                      <Sel value={editU.estado || "Activo"} onChange={e => setEditU({ ...editU, estado: e.target.value })}>
+                        <option value="Activo">✅ Activo</option>
+                        <option value="Al día">✅ Al día</option>
+                        <option value="DPP">🔴 DPP · Desconectado por Pago</option>
+                        <option value="DPS">🔵 DPS · Desconectado por Solicitud</option>
+                        <option value="Cortesía">💜 Cortesía (sin factura)</option>
+                        <option value="Pendiente">⚠️ Pendiente</option>
+                        <option value="Vencido">🔴 Vencido</option>
                       </Sel>
                     </Field>
                     <Field label="Clave WiFi"><Inp value={editU.claveWifi || ""} onChange={e => setEditU({ ...editU, claveWifi: e.target.value })} placeholder="Clave del router" /></Field>
@@ -5269,18 +5352,49 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
             </div>
           )}
 
-          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
-            <Inp placeholder="🔍  Buscar..." value={busqAdmin} onChange={e => setBusqAdmin(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-            {busqAdmin && <button onClick={() => setBusqAdmin("")} style={{ background: GC.ink2, color: GC.ink2, border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
-            <Sel value={filtroAdminTipo} onChange={e => setFiltroAdminTipo(e.target.value)} style={{ width: "auto", minWidth: 130 }}>
-              <option value="todos">Todos los roles</option>
-              <option value="cliente_final">Clientes finales</option>
-              <option value="cliente_empresa">Clientes empresa</option>
-              <option value="inactivo">Inactivos</option>
-            </Sel>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <Inp placeholder="🔍 Nombre, cédula, usuario, teléfono..." value={busqAdmin} onChange={e => setBusqAdmin(e.target.value)} style={{ flex: 1, minWidth: 220 }} />
+              {busqAdmin && <button onClick={() => setBusqAdmin("")} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13 }}>✕</button>}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Sel value={filtroAdminTipo} onChange={e => setFiltroAdminTipo(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
+                <option value="todos">Todos los roles</option>
+                <option value="cliente_final">👤 Clientes finales</option>
+                <option value="cliente_empresa">🏢 Clientes empresa</option>
+                <option value="inactivo">🚫 Inactivos</option>
+              </Sel>
+              <Sel value={filtroAdminEstado} onChange={e => setFiltroAdminEstado(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
+                <option value="">🚦 Todos los estados</option>
+                <option value="Activo">✅ Activo</option>
+                <option value="Al día">✅ Al día</option>
+                <option value="DPP">🔴 DPP</option>
+                <option value="DPS">🔵 DPS</option>
+                <option value="Cortesía">💜 Cortesía</option>
+                <option value="Pendiente">⚠️ Pendiente</option>
+                <option value="Vencido">🔴 Vencido</option>
+              </Sel>
+              <Sel value={filtroAdminPlan} onChange={e => setFiltroAdminPlan(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
+                <option value="">📦 Todos los planes</option>
+                {planes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </Sel>
+              <Sel value={filtroAdminPerfil} onChange={e => setFiltroAdminPerfil(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
+                <option value="">📅 Todos los perfiles</option>
+                {perfilesPago.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              </Sel>
+              {(busqAdmin || filtroAdminTipo !== "todos" || filtroAdminEstado || filtroAdminPlan || filtroAdminPerfil) && (
+                <button onClick={() => { setBusqAdmin(""); setFiltroAdminTipo("todos"); setFiltroAdminEstado(""); setFiltroAdminPlan(""); setFiltroAdminPerfil(""); }}
+                  style={{ background: GC.dangerBg, color: GC.danger, border: "1px solid " + GC.dangerBdr, borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+                  ✕ Limpiar filtros
+                </button>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: GC.ink3, marginTop: 6, paddingLeft: 2 }}>
+              {usuariosFiltradosAdmin.length} usuario{usuariosFiltradosAdmin.length !== 1 ? "s" : ""} encontrado{usuariosFiltradosAdmin.length !== 1 ? "s" : ""}
+            </div>
           </div>
 
-          {busqAdmin || filtroAdminTipo !== "todos" ? (
+          {(busqAdmin || filtroAdminTipo !== "todos" || filtroAdminEstado || filtroAdminPlan || filtroAdminPerfil) ? (
             <div>
               {usuariosFiltradosAdmin.length === 0 ? (
                 <div style={{ textAlign: "center", color: GC.ink3, padding: 30, fontSize: 14 }}>No se encontraron usuarios</div>
