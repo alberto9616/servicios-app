@@ -2753,6 +2753,11 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
   const [tirilla, setTirilla] = useState(null);
   const [modalExport, setModalExport] = useState(null);
   const [exportando, setExportando] = useState(false);
+  const [movimientosCaja, setMovimientosCaja] = useState([]);
+
+  useEffect(() => {
+    db.getMovimientosCaja().then(setMovimientosCaja).catch(() => {});
+  }, []);
 
   const hoyStr = new Date().toISOString().split("T")[0];
   const facturasFiltradas = facturas.filter(f => {
@@ -2762,23 +2767,44 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
     return matchQ && matchEstado && f.mes === filtroMes && f.anio === filtroAnio;
   });
 
-  // ── Totales correctos ──────────────────────────────────────────
-  // Facturas activas del mes (excluye Anuladas)
-  const facturasActivasMes = facturasFiltradas.filter(f => f.estado !== "Anulada");
-  // Cobrado hoy: facturas pagadas hoy (no anuladas)
-  const totalDia = facturas.filter(f => f.estado !== "Anulada" && f.fechaPago === hoyStr)
-    .reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
-  // Total en caja: movimientos de caja + cobrado hoy en facturas (no anuladas)
-  const totalCaja = facturas.filter(f => f.estado !== "Anulada")
-    .reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
-  // Pendientes: facturas del mes que NO han sido pagadas (ni anuladas)
-  const totalPendiente = facturasActivasMes
-    .filter(f => f.estado !== "Pagado")
-    .reduce((s, f) => s + f.saldoPendiente, 0);
-  // Morosos: clientes con facturas de MESES ANTERIORES sin pagar (no anuladas)
+  // ── Totales ────────────────────────────────────────────────────
   const hoy = new Date();
   const mesActual = hoy.getMonth() + 1;
   const anioActual = hoy.getFullYear();
+
+  // Facturas activas del mes (excluye Anuladas)
+  const facturasActivasMes = facturasFiltradas.filter(f => f.estado !== "Anulada");
+
+  // 📅 COBRADO HOY: lo cobrado en facturas hoy (no anuladas)
+  const cobradoHoyFacturas = facturas
+    .filter(f => f.estado !== "Anulada" && f.fechaPago === hoyStr)
+    .reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
+  const totalDia = cobradoHoyFacturas;
+
+  // Movimientos de caja de HOY
+  const ingresosHoy = movimientosCaja
+    .filter(m => m.tipo === "Ingreso" && m.fecha === hoyStr)
+    .reduce((s, m) => s + m.monto, 0);
+  const egresosHoy = movimientosCaja
+    .filter(m => m.tipo === "Egreso" && m.fecha === hoyStr)
+    .reduce((s, m) => s + m.monto, 0);
+
+  // 🏦 TOTAL EN CAJA (del día): cobrado hoy en facturas + ingresos caja hoy - egresos caja hoy
+  // Se reinicia cada día igual que "Cobrado hoy"
+  const totalCaja = cobradoHoyFacturas + ingresosHoy - egresosHoy;
+
+  // 🌐 TOTAL GLOBAL (acumulado histórico): todas las facturas pagadas/abonadas + todos los ingresos - todos los egresos
+  const totalGlobal =
+    facturas.filter(f => f.estado !== "Anulada").reduce((s, f) => s + (f.monto - f.saldoPendiente), 0) +
+    movimientosCaja.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0) -
+    movimientosCaja.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
+
+  // ⏳ PENDIENTES: facturas del mes que NO han sido pagadas (ni anuladas)
+  const totalPendiente = facturasActivasMes
+    .filter(f => f.estado !== "Pagado")
+    .reduce((s, f) => s + f.saldoPendiente, 0);
+
+  // 🔴 MOROSOS: clientes con facturas de MESES ANTERIORES sin pagar (no anuladas)
   const morosos = [...new Set(
     facturas
       .filter(f => f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0)
@@ -2876,26 +2902,53 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
 
   // Tarjetas resumen clicables con tirilla
   const tarjetas = [
+    // 📅 COBRADO HOY — se reinicia cada día automáticamente
     { label: "📅 Cobrado hoy", val: formatCOP(totalDia), color: GC.purple,
+      tooltip: "Facturas cobradas hoy. Se reinicia automáticamente cada día.",
       getTirilla: () => {
         const hF = facturas.filter(f => f.estado !== "Anulada" && f.fechaPago === hoyStr);
-        return { titulo: `📅 Cobrado hoy — ${hoyStr}`, subtitulo: "Facturas cobradas hoy (excluye anuladas)", total: totalDia, labelTotal: "Total cobrado hoy", colorTotal: GC.purple,
+        return { titulo: `📅 Cobrado hoy — ${hoyStr}`, subtitulo: "Facturas cobradas hoy (excluye anuladas)",
+          total: totalDia, labelTotal: "Total cobrado hoy", colorTotal: GC.purple,
           filas: hF.map(f => ({ nombre: f.clienteNombre, detalle: f.concepto, estado: f.estado, monto: f.monto - f.saldoPendiente })) };
       }},
+
+    // 🏦 TOTAL EN CAJA del día — cobrado hoy en facturas + ingresos caja hoy - egresos caja hoy
     { label: "🏦 Total en caja", val: formatCOP(totalCaja), color: GC.brand,
+      tooltip: "Cobrado hoy en facturas + ingresos de caja hoy − egresos de caja hoy. Se reinicia cada día.",
       getTirilla: () => {
-        const p = facturas.filter(f => f.estado !== "Anulada" && f.monto - f.saldoPendiente > 0);
-        return { titulo: "🏦 Total en caja — Histórico", subtitulo: "Todo lo cobrado (excluye anuladas)", total: totalCaja, labelTotal: "Total en caja", colorTotal: GC.brand,
-          filas: p.map(f => ({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio}`, estado: f.estado, monto: f.monto - f.saldoPendiente })) };
+        const hF = facturas.filter(f => f.estado !== "Anulada" && f.fechaPago === hoyStr);
+        const movHoy = movimientosCaja.filter(m => m.fecha === hoyStr);
+        const filasFacturas = hF.map(f => ({ nombre: f.clienteNombre, detalle: `Factura: ${f.concepto}`, estado: "Cobrado", monto: f.monto - f.saldoPendiente }));
+        const filasIngresos = movHoy.filter(m => m.tipo === "Ingreso").map(m => ({ nombre: m.concepto, detalle: "Ingreso caja", estado: "Ingreso", monto: m.monto }));
+        const filasEgresos = movHoy.filter(m => m.tipo === "Egreso").map(m => ({ nombre: m.concepto, detalle: "Egreso caja", estado: "Egreso", monto: -m.monto }));
+        return { titulo: `🏦 Total en caja — ${hoyStr}`, subtitulo: "Cobrado hoy + ingresos caja − egresos caja (del día)",
+          total: totalCaja, labelTotal: "Total caja hoy", colorTotal: GC.brand,
+          filas: [...filasFacturas, ...filasIngresos, ...filasEgresos] };
       }},
+
+    // 🌐 TOTAL GLOBAL — acumulado histórico, nunca vuelve a cero
+    { label: "🌐 Total global", val: formatCOP(totalGlobal), color: "#0891b2",
+      tooltip: "Suma histórica de todo lo cobrado en facturas + ingresos de caja − egresos de caja. Nunca se reinicia.",
+      getTirilla: () => {
+        const fPagadas = facturas.filter(f => f.estado !== "Anulada" && f.monto - f.saldoPendiente > 0);
+        return { titulo: "🌐 Total global — Histórico", subtitulo: "Todo lo cobrado + ingresos caja − egresos caja (histórico)",
+          total: totalGlobal, labelTotal: "Total acumulado", colorTotal: "#0891b2",
+          filas: fPagadas.map(f => ({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio}`, estado: f.estado, monto: f.monto - f.saldoPendiente })) };
+      }},
+
+    // ⏳ PENDIENTE del mes
     { label: "⏳ Pendiente", val: formatCOP(totalPendiente), color: GC.warning,
+      tooltip: "Facturas del mes seleccionado que aún no han sido pagadas (excluye anuladas).",
       getTirilla: () => ({
         titulo: `⏳ Pendiente — ${MESES[filtroMes-1]} ${filtroAnio}`, subtitulo: "Facturas del mes sin pagar (excluye anuladas)",
         total: totalPendiente, labelTotal: "Total pendiente", colorTotal: GC.warning,
         filas: facturasActivasMes.filter(f => f.estado !== "Pagado")
           .map(f => ({ nombre: f.clienteNombre, detalle: f.concepto, estado: f.estado, monto: f.saldoPendiente }))
       })},
+
+    // 🔴 MOROSOS — meses anteriores sin pagar
     { label: "🔴 Morosos", val: morosos + " clientes", color: GC.danger,
+      tooltip: "Clientes con facturas de meses anteriores sin pagar (excluye anuladas).",
       getTirilla: () => {
         const morososFact = facturas.filter(f =>
           f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
@@ -2929,14 +2982,21 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
       </div>
 
       {/* Tarjetas */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8, marginBottom: 16 }}>
-        {tarjetas.map(({ label, val, color, getTirilla }) => (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8, marginBottom: 16 }}>
+        {tarjetas.map(({ label, val, color, tooltip, getTirilla }) => (
           <div key={label} onClick={() => setTirilla(getTirilla())}
-            style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 10, padding: "12px 14px", cursor: "pointer" }}
+            title={tooltip || ""}
+            style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 10, padding: "12px 14px", cursor: "pointer", position: "relative" }}
             onMouseEnter={e => e.currentTarget.style.boxShadow = "0 4px 16px " + color + "33"}
             onMouseLeave={e => e.currentTarget.style.boxShadow = "none"}>
             <div style={{ fontSize: 10, color: GC.ink3, marginBottom: 3 }}>{label}</div>
             <div style={{ fontWeight: 800, color, fontSize: 14 }}>{val}</div>
+            {label === "🌐 Total global" && (
+              <div style={{ fontSize: 8, color: color, marginTop: 2, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>acumulado histórico</div>
+            )}
+            {label === "🏦 Total en caja" && (
+              <div style={{ fontSize: 8, color: GC.ink4, marginTop: 2 }}>se reinicia cada día</div>
+            )}
             <div style={{ fontSize: 9, color: GC.ink4, marginTop: 3 }}>Ver detalle →</div>
           </div>
         ))}
