@@ -2539,8 +2539,8 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
       ));
       setAbonosModal(prev => [abono, ...prev]);
       // Notificar a SeccionEmitidas para actualizar cobradoHoy inmediatamente
-      if (abono.fecha === hoyStr && agregarAbonoHoyRef.current) {
-        agregarAbonoHoyRef.current(abono);
+      if (abono.fecha === hoyStr && agregarAbonoHoyRef.current?.agregar) {
+        agregarAbonoHoyRef.current.agregar(abono);
       }
       setModalAbono(prev => ({ ...prev, saldoPendiente: nuevoSaldo, estado: nuevoEstado }));
       setNuevoAbono({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: new Date().toISOString().split("T")[0] });
@@ -2618,19 +2618,29 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
           mensaje={`Se eliminará permanentemente la factura de ${confirmDelete.nombre}. Esta acción no se puede deshacer.`}
           onCancel={() => setConfirmDelete(null)}
           onConfirm={async () => {
-            try { await db.deleteFactura(confirmDelete.id); setFacturas(p => p.filter(x => x.id !== confirmDelete.id)); }
+            try {
+              await db.deleteFactura(confirmDelete.id);
+              setFacturas(p => p.filter(x => x.id !== confirmDelete.id));
+              // Quitar abonos de esta factura de abonosHoy para que los contadores bajen de inmediato
+              if (agregarAbonoHoyRef?.current?.limpiarFactura) agregarAbonoHoyRef.current.limpiarFactura(confirmDelete.id);
+            }
             catch(e) { alert("Error: " + e.message); }
             setConfirmDelete(null);
           }} />
       )}
       {confirmAnular && (
         <ModalConfirm titulo="¿Anular factura?" icono="🚫"
-          mensaje={`Se marcará como Anulada la factura de ${confirmAnular.nombre}. El saldo quedará en 0.`}
+          mensaje={`Se marcará como Anulada la factura de ${confirmAnular.nombre}. No sumará en ningún contador.`}
           onCancel={() => setConfirmAnular(null)}
           onConfirm={async () => {
             try {
-              await db.actualizarFactura(confirmAnular.id, { estado: "Anulada", saldo_pendiente: 0 });
-              setFacturas(p => p.map(f => f.id === confirmAnular.id ? { ...f, estado: "Anulada", saldoPendiente: 0 } : f));
+              const facturaReal = facturas.find(f => f.id === confirmAnular.id);
+              const montoReal = facturaReal?.monto || 0;
+              // saldo_pendiente = monto → monto - saldoPendiente = 0 → no suma en totalGlobal
+              await db.actualizarFactura(confirmAnular.id, { estado: "Anulada", saldo_pendiente: montoReal });
+              setFacturas(p => p.map(f => f.id === confirmAnular.id ? { ...f, estado: "Anulada", saldoPendiente: montoReal } : f));
+              // Quitar abonos de esta factura de abonosHoy
+              if (agregarAbonoHoyRef?.current?.limpiarFactura) agregarAbonoHoyRef.current.limpiarFactura(confirmAnular.id);
             } catch(e) { alert("Error: " + e.message); }
             setConfirmAnular(null);
           }} />
@@ -2778,10 +2788,15 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
 
   const hoyStr = new Date().toISOString().split("T")[0];
 
-  // Exponer función para que ModuloFacturacion pueda agregar abonos al estado local
+  // Exponer funciones para que ModuloFacturacion pueda modificar abonosHoy sin prop drilling
   useEffect(() => {
     if (agregarAbonoHoyRef) {
-      agregarAbonoHoyRef.current = (abono) => setAbonosHoy(prev => [abono, ...prev]);
+      agregarAbonoHoyRef.current = {
+        // Agregar un abono nuevo al estado local
+        agregar: (abono) => setAbonosHoy(prev => [abono, ...prev]),
+        // Quitar todos los abonos de una factura (al eliminar o anular)
+        limpiarFactura: (facturaId) => setAbonosHoy(prev => prev.filter(a => a.facturaId !== facturaId)),
+      };
     }
     return () => { if (agregarAbonoHoyRef) agregarAbonoHoyRef.current = null; };
   }, [agregarAbonoHoyRef]);
