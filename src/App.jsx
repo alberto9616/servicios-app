@@ -214,6 +214,11 @@ const db = {
     if (error) throw error;
     return data.map(mapAbono);
   },
+  async getAbonosByFecha(fecha) {
+    const { data, error } = await sb.from("abonos").select("*").eq("fecha", fecha).order("created_at", { ascending: false });
+    if (error) throw error;
+    return data.map(mapAbono);
+  },
   async registrarAbono(a) {
     const { data, error } = await sb.from("abonos").insert({
       factura_id: a.facturaId, monto: a.monto,
@@ -2528,6 +2533,10 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
         : f
       ));
       setAbonosModal(prev => [abono, ...prev]);
+      // Actualizar abonosHoy para que cobradoHoy y totalCaja sumen inmediatamente
+      if (abono.fecha === hoyStr) {
+        setAbonosHoy(prev => [abono, ...prev]);
+      }
       setModalAbono(prev => ({ ...prev, saldoPendiente: nuevoSaldo, estado: nuevoEstado }));
       setNuevoAbono({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: new Date().toISOString().split("T")[0] });
     } catch (e) { setErrAbono("Error: " + e.message); }
@@ -2759,12 +2768,18 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
   const [modalExport, setModalExport] = useState(null);
   const [exportando, setExportando] = useState(false);
   const [movimientosCaja, setMovimientosCaja] = useState([]);
+  const [abonosHoy, setAbonosHoy] = useState([]);
 
   useEffect(() => {
     db.getMovimientosCaja().then(setMovimientosCaja).catch(() => {});
   }, []);
 
+  // Cargar abonos de hoy al montar y cuando se registre un nuevo abono
   const hoyStr = new Date().toISOString().split("T")[0];
+  useEffect(() => {
+    db.getAbonosByFecha(hoyStr).then(setAbonosHoy).catch(() => {});
+  }, [hoyStr]);
+
   const facturasFiltradas = facturas.filter(f => {
     const q = busq.toLowerCase().trim();
     const matchQ = !q || f.clienteNombre?.toLowerCase().includes(q) || f.clienteCedula?.toLowerCase().includes(q) || String(f.numeroRecibo).includes(q);
@@ -2780,10 +2795,15 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
   // Facturas activas del mes (excluye Anuladas)
   const facturasActivasMes = facturasFiltradas.filter(f => f.estado !== "Anulada");
 
-  // 📅 COBRADO HOY: lo cobrado en facturas hoy (no anuladas)
-  const cobradoHoyFacturas = facturas
-    .filter(f => f.estado !== "Anulada" && f.fechaPago === hoyStr)
-    .reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
+  // 📅 COBRADO HOY: suma de TODOS los abonos registrados hoy (pagos totales + parciales, no anuladas)
+  // Usamos la tabla de abonos porque fechaPago solo existe en facturas totalmente pagadas
+  const cobradoHoyFacturas = abonosHoy
+    .filter(a => {
+      // Excluir abonos de facturas anuladas
+      const factura = facturas.find(f => f.id === a.facturaId);
+      return !factura || factura.estado !== "Anulada";
+    })
+    .reduce((s, a) => s + a.monto, 0);
   const totalDia = cobradoHoyFacturas;
 
   // Movimientos de caja de HOY
@@ -2798,7 +2818,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
   // Se reinicia cada día igual que "Cobrado hoy"
   const totalCaja = cobradoHoyFacturas + ingresosHoy - egresosHoy;
 
-  // 🌐 TOTAL GLOBAL (acumulado histórico): todas las facturas pagadas/abonadas + todos los ingresos - todos los egresos
+  // 🌐 TOTAL GLOBAL (acumulado histórico): suma de TODOS los abonos registrados + ingresos caja - egresos caja
   const totalGlobal =
     facturas.filter(f => f.estado !== "Anulada").reduce((s, f) => s + (f.monto - f.saldoPendiente), 0) +
     movimientosCaja.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0) -
@@ -2909,26 +2929,35 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
   const tarjetas = [
     // 📅 COBRADO HOY — se reinicia cada día automáticamente
     { label: "📅 Cobrado hoy", val: formatCOP(totalDia), color: GC.purple,
-      tooltip: "Facturas cobradas hoy. Se reinicia automáticamente cada día.",
+      tooltip: "Suma de todos los abonos registrados hoy (pagos totales y parciales). Se reinicia automáticamente cada día.",
       getTirilla: () => {
-        const hF = facturas.filter(f => f.estado !== "Anulada" && f.fechaPago === hoyStr);
-        return { titulo: `📅 Cobrado hoy — ${hoyStr}`, subtitulo: "Facturas cobradas hoy (excluye anuladas)",
+        const filasAbonos = abonosHoy
+          .filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; })
+          .map(a => {
+            const f = facturas.find(x => x.id === a.facturaId);
+            return { nombre: f?.clienteNombre || "—", detalle: `${a.metodoPago} · ${f?.concepto || ""}`, estado: "Cobrado", monto: a.monto };
+          });
+        return { titulo: `📅 Cobrado hoy — ${hoyStr}`, subtitulo: "Abonos registrados hoy (totales y parciales)",
           total: totalDia, labelTotal: "Total cobrado hoy", colorTotal: GC.purple,
-          filas: hF.map(f => ({ nombre: f.clienteNombre, detalle: f.concepto, estado: f.estado, monto: f.monto - f.saldoPendiente })) };
+          filas: filasAbonos };
       }},
 
     // 🏦 TOTAL EN CAJA del día — cobrado hoy en facturas + ingresos caja hoy - egresos caja hoy
     { label: "🏦 Total en caja", val: formatCOP(totalCaja), color: GC.brand,
-      tooltip: "Cobrado hoy en facturas + ingresos de caja hoy − egresos de caja hoy. Se reinicia cada día.",
+      tooltip: "Abonos de hoy (totales + parciales) + ingresos de caja hoy − egresos de caja hoy. Se reinicia cada día.",
       getTirilla: () => {
-        const hF = facturas.filter(f => f.estado !== "Anulada" && f.fechaPago === hoyStr);
         const movHoy = movimientosCaja.filter(m => m.fecha === hoyStr);
-        const filasFacturas = hF.map(f => ({ nombre: f.clienteNombre, detalle: `Factura: ${f.concepto}`, estado: "Cobrado", monto: f.monto - f.saldoPendiente }));
+        const filasAbonos = abonosHoy
+          .filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; })
+          .map(a => {
+            const f = facturas.find(x => x.id === a.facturaId);
+            return { nombre: f?.clienteNombre || "—", detalle: `Cobro factura · ${a.metodoPago}`, estado: "Cobrado", monto: a.monto };
+          });
         const filasIngresos = movHoy.filter(m => m.tipo === "Ingreso").map(m => ({ nombre: m.concepto, detalle: "Ingreso caja", estado: "Ingreso", monto: m.monto }));
         const filasEgresos = movHoy.filter(m => m.tipo === "Egreso").map(m => ({ nombre: m.concepto, detalle: "Egreso caja", estado: "Egreso", monto: -m.monto }));
-        return { titulo: `🏦 Total en caja — ${hoyStr}`, subtitulo: "Cobrado hoy + ingresos caja − egresos caja (del día)",
+        return { titulo: `🏦 Total en caja — ${hoyStr}`, subtitulo: "Cobros hoy + ingresos caja − egresos caja (del día)",
           total: totalCaja, labelTotal: "Total caja hoy", colorTotal: GC.brand,
-          filas: [...filasFacturas, ...filasIngresos, ...filasEgresos] };
+          filas: [...filasAbonos, ...filasIngresos, ...filasEgresos] };
       }},
 
     // 🌐 TOTAL GLOBAL — acumulado histórico, nunca vuelve a cero
