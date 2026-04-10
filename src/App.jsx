@@ -48,7 +48,8 @@ const mapTicket = (r, mensajes = []) => r ? ({
 }) : null;
 const mapOrden = r => r ? ({
   id: r.id, ticketId: r.ticket_id, clienteId: r.cliente_id, clienteNombre: r.cliente_nombre,
-  secretarioId: r.secretario_id, tecnicoId: r.tecnico_id, tipo: r.tipo,
+  secretarioId: r.secretario_id, tecnicoId: r.tecnico_id,
+  tecnicosIds: r.tecnicos_ids || (r.tecnico_id ? [r.tecnico_id] : []), tipo: r.tipo,
   descripcion: r.descripcion, direccion: r.direccion, telefonoCliente: r.telefono_cliente,
   direccionAnterior: r.direccion_anterior, direccionNueva: r.direccion_nueva,
   fecha: r.fecha, hora: r.hora, estado: r.estado, prioridad: r.prioridad,
@@ -169,10 +170,12 @@ const db = {
   // ÓRDENES
   async getOrdenes() { const { data, error } = await sb.from("ordenes").select("*").order("fecha_creacion", { ascending: false }); if (error) throw error; return data.map(mapOrden); },
   async crearOrden(o) {
-    const { data, error } = await sb.from("ordenes").insert({ ticket_id: o.ticketId||null, cliente_id: o.clienteId||null, cliente_nombre: o.clienteNombre, secretario_id: o.secretarioId||null, tecnico_id: o.tecnicoId||null, tipo: o.tipo, descripcion: o.descripcion||null, direccion: o.direccion||null, telefono_cliente: o.telefonoCliente||null, direccion_anterior: o.direccionAnterior||null, direccion_nueva: o.direccionNueva||null, fecha: o.fecha, hora: o.hora, estado: o.estado||"Pendiente", prioridad: o.prioridad||"normal", es_manual: o.esManual||false, zona_id: o.zonaId||null, datos_instalacion: o.datosInstalacion||null, notas: o.notas||[] }).select().single();
+    const tecnicoPrincipal = Array.isArray(o.tecnicosIds) && o.tecnicosIds.length > 0 ? o.tecnicosIds[0] : (o.tecnicoId||null);
+    const { data, error } = await sb.from("ordenes").insert({ ticket_id: o.ticketId||null, cliente_id: o.clienteId||null, cliente_nombre: o.clienteNombre, secretario_id: o.secretarioId||null, tecnico_id: tecnicoPrincipal, tecnicos_ids: Array.isArray(o.tecnicosIds) ? o.tecnicosIds : (o.tecnicoId ? [o.tecnicoId] : []), tipo: o.tipo, descripcion: o.descripcion||null, direccion: o.direccion||null, telefono_cliente: o.telefonoCliente||null, direccion_anterior: o.direccionAnterior||null, direccion_nueva: o.direccionNueva||null, fecha: o.fecha, hora: o.hora, estado: o.estado||"Pendiente", prioridad: o.prioridad||"normal", es_manual: o.esManual||false, zona_id: o.zonaId||null, datos_instalacion: o.datosInstalacion||null, notas: o.notas||[] }).select().single();
     if (error) throw error; return mapOrden(data);
   },
   async actualizarEstadoOrden(id, estado) { const { error } = await sb.from("ordenes").update({ estado }).eq("id", id); if (error) throw error; },
+  async actualizarOrden(id, data) { const { error } = await sb.from("ordenes").update(data).eq("id", id); if (error) throw error; },
   async agregarNotaOrden(id, notas) { const { error } = await sb.from("ordenes").update({ notas }).eq("id", id); if (error) throw error; },
 
   // PROPAGANDA
@@ -1343,9 +1346,9 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   const [ticketAbierto, setTicketAbierto] = useState(null);
   const [confirmElimSecretario, setConfirmElimSecretario] = useState(null);
   const [modalOrden, setModalOrden] = useState(null);
-  const [nuevaOrden, setNuevaOrden] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicoId: "", fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "" });
+  const [nuevaOrden, setNuevaOrden] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "" });
   const [showModalOrdenManual, setShowModalOrdenManual] = useState(false);
-  const [ordenManual, setOrdenManual] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicoId: "", fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "" });
+  const [ordenManual, setOrdenManual] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "" });
   const [erroresOrdenManual, setErroresOrdenManual] = useState({});
   const [editCliente, setEditCliente] = useState(null);
   const [showFormCliente, setShowFormCliente] = useState(false);
@@ -1453,13 +1456,14 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   };
 
   const crearOrden = async () => {
-    if (!nuevaOrden.tecnicoId) return;
+    if (!nuevaOrden.tecnicosIds || nuevaOrden.tecnicosIds.length === 0) return;
     const cliente = usuarios.find(u => u.id === modalOrden.clienteId);
     const esTraslado = nuevaOrden.tipo === "Traslado / cambio de domicilio";
     const ordenData = {
       ticketId: modalOrden.id, clienteId: modalOrden.clienteId,
       clienteNombre: modalOrden.clienteNombre, secretarioId: usuario.id,
-      tecnicoId: nuevaOrden.tecnicoId,
+      tecnicosIds: nuevaOrden.tecnicosIds,
+      tecnicoId: nuevaOrden.tecnicosIds[0] || null,
       tipo: nuevaOrden.tipo === "Otro" ? (nuevaOrden.otro || "Otro") : nuevaOrden.tipo,
       descripcion: nuevaOrden.descripcion,
       direccion: cliente?.direccion || "Sin dirección registrada",
@@ -1476,7 +1480,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       await db.actualizarOrdenIdTicket(modalOrden.id, orden.id);
       setTickets(p => p.map(t => t.id === modalOrden.id ? { ...t, estado: "En proceso", ordenId: orden.id } : t));
       setModalOrden(null);
-      setNuevaOrden({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicoId: "", fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", nuevaDireccionTraslado: "" });
+      setNuevaOrden({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", nuevaDireccionTraslado: "" });
     } catch (err) { console.error("Error creando orden:", err); }
   };
 
@@ -1497,7 +1501,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
     } else {
       if (!ordenManual.clienteExistente) errs.clienteExistente = true;
     }
-    if (!ordenManual.tecnicoId) errs.tecnicoId = true;
+    if (!ordenManual.tecnicosIds || ordenManual.tecnicosIds.length === 0) errs.tecnicoId = true;
     if (Object.keys(errs).length > 0) { setErroresOrdenManual(errs); return; }
     setErroresOrdenManual({});
 
@@ -1519,7 +1523,8 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
     const orden = {
       id: genId(), ticketId: null, clienteId,
       clienteNombre, secretarioId: usuario.id,
-      tecnicoId: ordenManual.tecnicoId,
+      tecnicosIds: ordenManual.tecnicosIds,
+      tecnicoId: ordenManual.tecnicosIds[0] || null,
       tipo: ordenManual.tipo === "Otro" ? (ordenManual.otro || "Otro") : ordenManual.tipo,
       descripcion: ordenManual.descripcion,
       direccion: clienteDireccion,
@@ -1543,7 +1548,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       const guardada = await db.crearOrden(orden);
       setOrdenes(p => [...p, guardada]);
       setShowModalOrdenManual(false);
-      setOrdenManual({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicoId: "", fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevaDireccionTraslado: "" });
+      setOrdenManual({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevaDireccionTraslado: "" });
     } catch (err) { console.error("Error creando orden manual:", err); }
   };
 
@@ -1899,18 +1904,32 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             <Field label="Descripción / instrucciones">
               <textarea value={nuevaOrden.descripcion} onChange={e => setNuevaOrden({ ...nuevaOrden, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: GC.bg2, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical" }} />
             </Field>
-            <Field label={`Asignar técnico · Zona: ${zonaSecretario?.nombre || ""}`}>
-              <Sel value={nuevaOrden.tecnicoId} onChange={e => setNuevaOrden({ ...nuevaOrden, tecnicoId: e.target.value })}>
-                <option value="">— Seleccionar técnico —</option>
-                {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-              </Sel>
+            <Field label={`Técnicos asignados · Zona: ${zonaSecretario?.nombre || ""}`}>
+              <div style={{ border: "1px solid " + GC.border2, borderRadius: 8, padding: "8px 10px", background: GC.bg, maxHeight: 130, overflowY: "auto" }}>
+                {tecnicos.length === 0
+                  ? <div style={{ fontSize: 12, color: GC.ink4 }}>Sin técnicos en esta zona</div>
+                  : tecnicos.map(t => {
+                    const sel = nuevaOrden.tecnicosIds.includes(t.id);
+                    return (
+                      <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 4px", cursor: "pointer", borderRadius: 6, background: sel ? GC.brandLight : "transparent" }}>
+                        <input type="checkbox" checked={sel} onChange={() => {
+                          const ids = sel ? nuevaOrden.tecnicosIds.filter(id => id !== t.id) : [...nuevaOrden.tecnicosIds, t.id];
+                          setNuevaOrden({ ...nuevaOrden, tecnicosIds: ids });
+                        }} style={{ width: 15, height: 15, accentColor: GC.brand }} />
+                        <span style={{ fontSize: 13, color: sel ? GC.brandText : GC.ink }}>🔧 {t.nombre}</span>
+                      </label>
+                    );
+                  })
+                }
+              </div>
+              {nuevaOrden.tecnicosIds.length === 0 && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Selecciona al menos un técnico</div>}
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
               <Field label="Fecha"><Inp type="date" value={nuevaOrden.fecha} onChange={e => setNuevaOrden({ ...nuevaOrden, fecha: e.target.value })} /></Field>
               <Field label="Hora"><Inp type="time" value={nuevaOrden.hora} onChange={e => setNuevaOrden({ ...nuevaOrden, hora: e.target.value })} /></Field>
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <Btn onClick={crearOrden} disabled={!nuevaOrden.tecnicoId}>Crear orden</Btn>
+              <Btn onClick={crearOrden} disabled={nuevaOrden.tecnicosIds.length === 0}>Crear orden</Btn>
               <Btn variant="ghost" onClick={() => setModalOrden(null)}>Cancelar</Btn>
             </div>
           </div>
@@ -1993,12 +2012,25 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             <Field label="Descripción / instrucciones">
               <textarea value={ordenManual.descripcion} onChange={e => setOrdenManual({ ...ordenManual, descripcion: e.target.value })} placeholder="Detalles para el técnico..." style={{ background: GC.bg2, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 60, resize: "vertical" }} />
             </Field>
-            <Field label={`Asignar técnico · Zona: ${zonaSecretario?.nombre || ""}`}>
-              <Sel value={ordenManual.tecnicoId} onChange={e => setOrdenManual({ ...ordenManual, tecnicoId: e.target.value })} style={{ borderColor: erroresOrdenManual.tecnicoId ? "#ef4444" : undefined }}>
-                <option value="">— Seleccionar técnico —</option>
-                {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
-              </Sel>
-              {erroresOrdenManual.tecnicoId && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Debes asignar un técnico</div>}
+            <Field label={`Técnicos asignados · Zona: ${zonaSecretario?.nombre || ""}`}>
+              <div style={{ border: "1px solid " + (erroresOrdenManual.tecnicoId ? "#ef4444" : GC.border2), borderRadius: 8, padding: "8px 10px", background: GC.bg, maxHeight: 130, overflowY: "auto" }}>
+                {tecnicos.length === 0
+                  ? <div style={{ fontSize: 12, color: GC.ink4 }}>Sin técnicos en esta zona</div>
+                  : tecnicos.map(t => {
+                    const sel = ordenManual.tecnicosIds.includes(t.id);
+                    return (
+                      <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 4px", cursor: "pointer", borderRadius: 6, background: sel ? GC.brandLight : "transparent" }}>
+                        <input type="checkbox" checked={sel} onChange={() => {
+                          const ids = sel ? ordenManual.tecnicosIds.filter(id => id !== t.id) : [...ordenManual.tecnicosIds, t.id];
+                          setOrdenManual({ ...ordenManual, tecnicosIds: ids });
+                        }} style={{ width: 15, height: 15, accentColor: GC.brand }} />
+                        <span style={{ fontSize: 13, color: sel ? GC.brandText : GC.ink }}>🔧 {t.nombre}</span>
+                      </label>
+                    );
+                  })
+                }
+              </div>
+              {erroresOrdenManual.tecnicoId && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Debes asignar al menos un técnico</div>}
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
               <Field label="Fecha"><Inp type="date" value={ordenManual.fecha} onChange={e => setOrdenManual({ ...ordenManual, fecha: e.target.value })} /></Field>
@@ -2119,7 +2151,28 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
   const [subTab, setSubTab] = useState("activas");
   const [filtroFecha, setFiltroFecha] = useState("");
   const [filtroTecnico, setFiltroTecnico] = useState("");
+  const [editOrden, setEditOrden] = useState(null); // orden siendo editada
   const tecnicos = usuarios.filter(u => u.rol === "tecnico" && u.activo && (!sesion?.zonaId || u.zonaId === sesion.zonaId));
+
+  const guardarEdicionOrden = async () => {
+    if (!editOrden || editOrden.tecnicosIds.length === 0) return;
+    try {
+      await db.actualizarOrden(editOrden.id, {
+        tipo: editOrden.tipo,
+        descripcion: editOrden.descripcion,
+        fecha: editOrden.fecha,
+        hora: editOrden.hora,
+        tecnico_id: editOrden.tecnicosIds[0],
+        tecnicos_ids: editOrden.tecnicosIds,
+        direccion: editOrden.direccion,
+      });
+      setOrdenes(prev => prev.map(o => o.id === editOrden.id
+        ? { ...o, tipo: editOrden.tipo, descripcion: editOrden.descripcion, fecha: editOrden.fecha, hora: editOrden.hora, tecnicoId: editOrden.tecnicosIds[0], tecnicosIds: editOrden.tecnicosIds, direccion: editOrden.direccion }
+        : o
+      ));
+      setEditOrden(null);
+    } catch(e) { alert("Error al guardar: " + e.message); }
+  };
   const ordenarPorFecha = arr => [...arr].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "") || (a.hora || "").localeCompare(b.hora || ""));
   const ordenesFiltradas = ordenes.filter(o => {
     if (filtroFecha && o.fecha !== filtroFecha) return false;
@@ -2133,7 +2186,9 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
   const otrosList = activas.filter(o => o.fecha !== hoy && o.fecha !== manana);
   const listaActual = subTab === "activas" ? ordenarPorFecha(activas) : subTab === "hoy" ? ordenarPorFecha(hoyList) : subTab === "manana" ? ordenarPorFecha(mananaList) : ordenarPorFecha(completadas);
   const OrdenCardSec = ({ o }) => {
-    const tecnico = usuarios.find(u => u.id === o.tecnicoId);
+    const tecnicos_asignados = Array.isArray(o.tecnicosIds) && o.tecnicosIds.length > 0
+      ? o.tecnicosIds.map(id => usuarios.find(u => u.id === id)).filter(Boolean)
+      : (o.tecnicoId ? [usuarios.find(u => u.id === o.tecnicoId)].filter(Boolean) : []);
     const zona = zonas.find(z => z.id === o.zonaId);
     const colorEstado = { Pendiente: "#f59e0b", "En camino": "#0ea5e9", Completada: "#22c55e", Cancelada: "#ef4444" };
     return (
@@ -2143,9 +2198,16 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
             <div style={{ fontWeight: 700, fontSize: 14, color: GC.ink }}>{o.tipo} — {o.clienteNombre}</div>
             <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>📅 {o.fecha} {o.hora} {zona ? `· ${zona.nombre}` : ""}</div>
             {o.direccion && <div style={{ fontSize: 12, color: GC.ink2, marginTop: 2 }}>📍 {o.direccion}</div>}
-            {tecnico && <div style={{ fontSize: 12, color: GC.purple, marginTop: 2 }}>🔧 {tecnico.nombre}</div>}
+            {tecnicos_asignados.length > 0 && (
+              <div style={{ fontSize: 12, color: GC.purple, marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {tecnicos_asignados.map(t => (
+                  <span key={t.id} style={{ background: GC.purpleBg, color: GC.purple, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>🔧 {t.nombre}</span>
+                ))}
+              </div>
+            )}
+            {o.descripcion && <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4, fontStyle: "italic" }}>{o.descripcion}</div>}
           </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ background: colorEstado[o.estado] + "22", color: colorEstado[o.estado], borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{o.estado}</span>
             <Sel value={o.estado} onChange={async e => {
               const nuevoEstado = e.target.value;
@@ -2158,6 +2220,15 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
             }} style={{ fontSize: 12, padding: "4px 8px", width: "auto" }}>
               {["Pendiente","En camino","Completada","Cancelada"].map(s => <option key={s} value={s}>{s}</option>)}
             </Sel>
+            {o.estado !== "Completada" && o.estado !== "Cancelada" && (
+              <button onClick={() => setEditOrden({
+                ...o,
+                tecnicosIds: Array.isArray(o.tecnicosIds) && o.tecnicosIds.length > 0 ? o.tecnicosIds : (o.tecnicoId ? [o.tecnicoId] : [])
+              })}
+                style={{ background: GC.infoBg, color: GC.info, border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                ✏️ Editar
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -2183,6 +2254,64 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
           <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>Sin órdenes activas.</div>
         ) : listaActual.map(o => <OrdenCardSec key={o.id} o={o} />)}
       </div>
+
+      {/* ── Modal editar orden ── */}
+      {editOrden && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+          onClick={e => e.target === e.currentTarget && setEditOrden(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff" }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: GC.ink }}>✏️ Editar orden — {editOrden.clienteNombre}</h3>
+              <button onClick={() => setEditOrden(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: 20, color: GC.ink3 }}>×</button>
+            </div>
+            <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+
+              <Field label="Tipo de orden">
+                <Sel value={editOrden.tipo} onChange={e => setEditOrden({ ...editOrden, tipo: e.target.value })}>
+                  {["Revisión / diagnóstico","Instalación nueva","Traslado / cambio de domicilio","Retiro de equipo","Corte programado","Otro"].map(t => <option key={t} value={t}>{t}</option>)}
+                </Sel>
+              </Field>
+
+              <Field label="Descripción / instrucciones">
+                <textarea value={editOrden.descripcion || ""} onChange={e => setEditOrden({ ...editOrden, descripcion: e.target.value })}
+                  style={{ background: GC.bg, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical", fontFamily: "inherit" }} />
+              </Field>
+
+              <Field label="Dirección">
+                <Inp value={editOrden.direccion || ""} onChange={e => setEditOrden({ ...editOrden, direccion: e.target.value })} />
+              </Field>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                <Field label="Fecha"><Inp type="date" value={editOrden.fecha} onChange={e => setEditOrden({ ...editOrden, fecha: e.target.value })} /></Field>
+                <Field label="Hora"><Inp type="time" value={editOrden.hora} onChange={e => setEditOrden({ ...editOrden, hora: e.target.value })} /></Field>
+              </div>
+
+              <Field label="Técnicos asignados">
+                <div style={{ border: "1px solid " + GC.border2, borderRadius: 8, padding: "8px 10px", background: GC.bg, maxHeight: 140, overflowY: "auto" }}>
+                  {tecnicos.map(t => {
+                    const sel = editOrden.tecnicosIds.includes(t.id);
+                    return (
+                      <label key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 4px", cursor: "pointer", borderRadius: 6, background: sel ? GC.brandLight : "transparent" }}>
+                        <input type="checkbox" checked={sel} onChange={() => {
+                          const ids = sel ? editOrden.tecnicosIds.filter(id => id !== t.id) : [...editOrden.tecnicosIds, t.id];
+                          setEditOrden({ ...editOrden, tecnicosIds: ids });
+                        }} style={{ width: 15, height: 15, accentColor: GC.brand }} />
+                        <span style={{ fontSize: 13, color: sel ? GC.brandText : GC.ink }}>🔧 {t.nombre}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {editOrden.tecnicosIds.length === 0 && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Selecciona al menos un técnico</div>}
+              </Field>
+
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <Btn onClick={guardarEdicionOrden} disabled={editOrden.tecnicosIds.length === 0} style={{ flex: 1 }}>✅ Guardar cambios</Btn>
+                <Btn variant="ghost" onClick={() => setEditOrden(null)}>Cancelar</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4391,12 +4520,13 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
   };
 
   const crearOrden = async () => {
-    if (!nuevaOrden.tecnicoId) return;
+    if (!nuevaOrden.tecnicosIds || nuevaOrden.tecnicosIds.length === 0) return;
     const cliente = usuarios.find(u => u.id === modalOrden.clienteId);
     const ordenData = {
       ticketId: modalOrden.id, clienteId: modalOrden.clienteId,
       clienteNombre: modalOrden.clienteNombre, secretarioId: sesion.id,
-      tecnicoId: nuevaOrden.tecnicoId,
+      tecnicosIds: nuevaOrden.tecnicosIds,
+      tecnicoId: nuevaOrden.tecnicosIds[0] || null,
       tipo: nuevaOrden.tipo === "Otro" ? (nuevaOrden.otro || "Otro") : nuevaOrden.tipo,
       descripcion: nuevaOrden.descripcion,
       direccion: cliente?.direccion || "Sin dirección",
@@ -4412,7 +4542,7 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
       await db.actualizarOrdenIdTicket(modalOrden.id, orden.id);
       setTickets(p => p.map(t => t.id === modalOrden.id ? { ...t, estado: "En proceso", ordenId: orden.id } : t));
       setModalOrden(null);
-      setNuevaOrden({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicoId: "", fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", nuevaDireccionTraslado: "" });
+      setNuevaOrden({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", nuevaDireccionTraslado: "" });
     } catch(err) { console.error("Error creando orden:", err); }
   };
 
@@ -4504,7 +4634,7 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
               <Field label="Hora"><Inp type="time" value={nuevaOrden.hora} onChange={e => setNuevaOrden({ ...nuevaOrden, hora: e.target.value })} /></Field>
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <Btn onClick={crearOrden} disabled={!nuevaOrden.tecnicoId}>Crear orden</Btn>
+              <Btn onClick={crearOrden} disabled={nuevaOrden.tecnicosIds.length === 0}>Crear orden</Btn>
               <Btn variant="ghost" onClick={() => setModalOrden(null)}>Cancelar</Btn>
             </div>
           </div>
