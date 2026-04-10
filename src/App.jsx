@@ -2496,6 +2496,11 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmAnular, setConfirmAnular] = useState(null);
 
+  // hoyStr disponible en todo el módulo
+  const hoyStr = new Date().toISOString().split("T")[0];
+  // Ref para notificar a SeccionEmitidas que agregue un abono a su estado local
+  const agregarAbonoHoyRef = useRef(null);
+
   const esSuperusuario = usuario.rol === "superusuario";
   const esAdmin = usuario.rol === "admin" || esSuperusuario;
   const esSecretario = usuario.rol === "secretario";
@@ -2533,9 +2538,9 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
         : f
       ));
       setAbonosModal(prev => [abono, ...prev]);
-      // Actualizar abonosHoy para que cobradoHoy y totalCaja sumen inmediatamente
-      if (abono.fecha === hoyStr) {
-        setAbonosHoy(prev => [abono, ...prev]);
+      // Notificar a SeccionEmitidas para actualizar cobradoHoy inmediatamente
+      if (abono.fecha === hoyStr && agregarAbonoHoyRef.current) {
+        agregarAbonoHoyRef.current(abono);
       }
       setModalAbono(prev => ({ ...prev, saldoPendiente: nuevoSaldo, estado: nuevoEstado }));
       setNuevoAbono({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: new Date().toISOString().split("T")[0] });
@@ -2716,6 +2721,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
           clientesVisibles={clientesVisibles} nombreEmpresa={nombreEmpresa}
           esAdmin={esAdmin} esSuperusuario={esSuperusuario}
           COLOR_ESTADO={COLOR_ESTADO} AccionesFact={AccionesFact}
+          agregarAbonoHoyRef={agregarAbonoHoyRef}
         />
       )}
 
@@ -2755,7 +2761,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
 }
 
 // ── Sección 1: Emitidas ───────────────────────────────────────
-function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, zonas, planes, perfilesPago, clientesVisibles, nombreEmpresa, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact }) {
+function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, zonas, planes, perfilesPago, clientesVisibles, nombreEmpresa, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, agregarAbonoHoyRef }) {
   const [filtroMes, setFiltroMes] = useState(new Date().getMonth() + 1);
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
   const [busq, setBusq] = useState("");
@@ -2769,6 +2775,14 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
   const [exportando, setExportando] = useState(false);
   const [movimientosCaja, setMovimientosCaja] = useState([]);
   const [abonosHoy, setAbonosHoy] = useState([]);
+
+  // Exponer función para que ModuloFacturacion pueda agregar abonos al estado local
+  useEffect(() => {
+    if (agregarAbonoHoyRef) {
+      agregarAbonoHoyRef.current = (abono) => setAbonosHoy(prev => [abono, ...prev]);
+    }
+    return () => { if (agregarAbonoHoyRef) agregarAbonoHoyRef.current = null; };
+  }, [agregarAbonoHoyRef]);
 
   useEffect(() => {
     db.getMovimientosCaja().then(setMovimientosCaja).catch(() => {});
