@@ -2776,6 +2776,8 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
   const [movimientosCaja, setMovimientosCaja] = useState([]);
   const [abonosHoy, setAbonosHoy] = useState([]);
 
+  const hoyStr = new Date().toISOString().split("T")[0];
+
   // Exponer función para que ModuloFacturacion pueda agregar abonos al estado local
   useEffect(() => {
     if (agregarAbonoHoyRef) {
@@ -2788,11 +2790,11 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
     db.getMovimientosCaja().then(setMovimientosCaja).catch(() => {});
   }, []);
 
-  // Cargar abonos de hoy al montar y cuando se registre un nuevo abono
-  const hoyStr = new Date().toISOString().split("T")[0];
+  // Cargar abonos de hoy solo al montar — el ref se encarga de actualizaciones en tiempo real
   useEffect(() => {
     db.getAbonosByFecha(hoyStr).then(setAbonosHoy).catch(() => {});
-  }, [hoyStr]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Solo al montar — hoyStr no cambia dentro de una sesión del día
 
   const facturasFiltradas = facturas.filter(f => {
     const q = busq.toLowerCase().trim();
