@@ -3254,21 +3254,19 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
                 <div style={{ display: "flex", gap: 6 }}>
                   <button onClick={async () => {
                     const fecha = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
-                    let ingresosExtra = 0; let movsCaja = [];
-                    try {
-                      const todos = await db.getMovimientosCaja();
-                      const esTirillaDia = tirilla.titulo.toLowerCase().includes("hoy");
-                      movsCaja = esTirillaDia ? todos.filter(m => m.tipo === "Ingreso" && m.fecha === hoyStr) : todos.filter(m => m.tipo === "Ingreso");
-                      ingresosExtra = movsCaja.reduce((s, m) => s + m.monto, 0);
-                    } catch(e) {}
-                    const totalGlobal = tirilla.total + ingresosExtra;
                     const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
+                    // La tirilla impresa muestra EXACTAMENTE lo mismo que el modal en pantalla
+                    // tirilla.filas ya contiene todos los datos correctos (cobros + ingresos + egresos)
+                    // tirilla.total es el total calculado igual que en pantalla
                     const filasTirilla = tirilla.filas.map(f => {
-                      const colorBg = {"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2","Anulada":"#f1f5f9"}[f.estado]||"#f1f5f9";
-                      const colorTxt = {"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c","Anulada":"#64748b"}[f.estado]||"#555";
-                      return `<tr><td class="td-nombre">${f.nombre}</td><td class="td-concepto">${f.detalle}</td><td class="td-estado"><span style="background:${colorBg};color:${colorTxt}">${f.estado}</span></td><td class="td-monto">${cop(f.monto)}</td></tr>`;
+                      const esEgreso = f.monto < 0;
+                      const colorBg = f.estado === "Cobrado" ? "#dcfce7" : f.estado === "Ingreso" ? "#dbeafe" : f.estado === "Egreso" ? "#fee2e2" : {"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2","Anulada":"#f1f5f9"}[f.estado]||"#f1f5f9";
+                      const colorTxt = f.estado === "Cobrado" ? "#16a34a" : f.estado === "Ingreso" ? "#0369a1" : f.estado === "Egreso" ? "#b91c1c" : {"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c","Anulada":"#64748b"}[f.estado]||"#555";
+                      return `<tr><td class="td-nombre">${f.nombre}</td><td class="td-concepto">${f.detalle}</td><td class="td-estado"><span style="background:${colorBg};color:${colorTxt}">${f.estado}</span></td><td class="td-monto">${esEgreso ? cop(f.monto) : cop(f.monto)}</td></tr>`;
                     }).join("");
-                    const filasCaja = movsCaja.map(m => `<tr><td class="td-nombre">${m.concepto}</td><td class="td-concepto">${m.observacion||"-"}</td><td class="td-estado"><span style="background:#dcfce7;color:#16a34a">Caja</span></td><td class="td-monto">+${cop(m.monto)}</td></tr>`).join("");
+                    // Total es exactamente el mismo valor que muestra el modal
+                    const totalFinal = tirilla.total;
+                    const filasCaja = []; // ya incluido en tirilla.filas
                     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Tirilla</title>
                     <style>
                       @page { size: 76mm auto; margin: 8mm 6mm; }
@@ -3299,12 +3297,11 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
                     <div class="center bold" style="font-size:9pt;margin:3px 0">${tirilla.titulo}</div>
                     <div class="center" style="font-size:7.5pt;color:#444;margin-bottom:3px">${tirilla.subtitulo}</div>
                     <hr class="sep"/>
-                    <table><thead><tr><th>Cliente</th><th>Concepto</th><th>Estado</th><th class="r">Valor</th></tr></thead>
+                    <table><thead><tr><th>Cliente / Concepto</th><th>Detalle</th><th>Estado</th><th class="r">Valor</th></tr></thead>
                     <tbody>${filasTirilla}</tbody>
-                    <tr class="subtotal-row"><td colspan="3" class="bold">Subtotal (${tirilla.filas.length} registros)</td><td style="text-align:right;font-weight:900">${cop(tirilla.total)}</td></tr></table>
-                    ${ingresosExtra > 0 ? `<hr class="sep"/><div class="bold" style="font-size:8.5pt;margin:3px 2px">Ingresos adicionales (Caja):</div><table><tbody>${filasCaja}</tbody><tr class="subtotal-row"><td colspan="3" class="bold">Subtotal caja</td><td style="text-align:right;font-weight:900">${cop(ingresosExtra)}</td></tr></table>` : ""}
+                    <tr class="subtotal-row"><td colspan="3" class="bold">${tirilla.filas.length} registro${tirilla.filas.length !== 1 ? "s" : ""}</td><td style="text-align:right;font-weight:900">${cop(totalFinal)}</td></tr></table>
                     <hr class="sep-solid"/>
-                    <table><tbody><tr class="total-row"><td colspan="3">TOTAL GLOBAL</td><td style="text-align:right">${cop(totalGlobal)}</td></tr></tbody></table>
+                    <table><tbody><tr class="total-row"><td colspan="3">${tirilla.labelTotal || "TOTAL"}</td><td style="text-align:right">${cop(totalFinal)}</td></tr></tbody></table>
                     <hr class="sep"/><div class="footer">Firma: ______________________</div>
                     <div class="footer" style="margin-top:8px">Gracias por su pago</div>
                     <br/><button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir tirilla</button>
@@ -3321,7 +3318,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
               {tirilla.filas.length === 0 ? (
                 <div style={{ textAlign: "center", color: GC.ink4, padding: 30, fontSize: 13 }}>Sin registros</div>
               ) : tirilla.filas.map((fila, i) => {
-                const c = (COLOR_ESTADO[fila.estado] || "#94a3b8");
+                const c = fila.estado === "Cobrado" ? GC.brand : fila.estado === "Ingreso" ? GC.info : fila.estado === "Egreso" ? GC.danger : (COLOR_ESTADO[fila.estado] || "#94a3b8");
                 return (
                   <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 0", borderBottom: "1px solid #f8fafc", gap: 10 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -3329,7 +3326,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
                       <div style={{ fontSize: 11, color: GC.ink3, marginTop: 1 }}>{fila.detalle}</div>
                       <span style={{ fontSize: 10, background: c + "22", color: c, borderRadius: 6, padding: "1px 6px", fontWeight: 700, display: "inline-block", marginTop: 2 }}>{fila.estado}</span>
                     </div>
-                    <div style={{ fontWeight: 800, color: tirilla.colorTotal, fontSize: 14, whiteSpace: "nowrap" }}>{formatCOP(fila.monto)}</div>
+                    <div style={{ fontWeight: 800, color: fila.monto < 0 ? GC.danger : tirilla.colorTotal, fontSize: 14, whiteSpace: "nowrap" }}>{fila.monto < 0 ? "-" + formatCOP(Math.abs(fila.monto)) : formatCOP(fila.monto)}</div>
                   </div>
                 );
               })}
