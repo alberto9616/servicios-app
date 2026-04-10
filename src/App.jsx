@@ -2893,7 +2893,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
       {/* TAB CAJA — movimientos + saldo base admin            */}
       {/* ════════════════════════════════════════════════════ */}
       {subTab === "caja" && (
-        <ModuloCaja usuario={usuario} esAdmin={esAdmin || esSuperusuario} />
+        <ModuloCaja usuario={usuario} esAdmin={esAdmin || esSuperusuario} facturas={facturas} nombreEmpresa={nombreEmpresa} />
       )}
     </div>
   );
@@ -4199,7 +4199,7 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
 // ══════════════════════════════════════════════════════════════
 // MÓDULO CAJA — Ingresos y Egresos
 // ══════════════════════════════════════════════════════════════
-function ModuloCaja({ usuario, esAdmin = false }) {
+function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "GC HOGAR.NET SAS" }) {
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState(false);
@@ -4211,6 +4211,7 @@ function ModuloCaja({ usuario, esAdmin = false }) {
   const [saldoBase, setSaldoBase] = useState(() => { try { return Number(localStorage.getItem("caja_saldo_base") || 0); } catch { return 0; } });
   const [editandoSaldoBase, setEditandoSaldoBase] = useState(false);
   const [saldoBaseInput, setSaldoBaseInput] = useState("");
+  const [fechaInforme, setFechaInforme] = useState(new Date().toISOString().split("T")[0]);
 
   const guardarSaldoBase = () => {
     const v = Number(saldoBaseInput);
@@ -4218,6 +4219,145 @@ function ModuloCaja({ usuario, esAdmin = false }) {
     setSaldoBase(v);
     try { localStorage.setItem("caja_saldo_base", String(v)); } catch {}
     setEditandoSaldoBase(false);
+  };
+
+  const generarInformeDiario = async () => {
+    const cop = v => Number(v).toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
+    const fechaLabel = new Date(fechaInforme + "T12:00:00").toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric" });
+    const ahora = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+    // Ingresos del día = abonos de facturas del día (no anuladas) + movimientos ingreso del día
+    let abonosDia = [];
+    try { abonosDia = await db.getAbonosByFecha(fechaInforme); } catch {}
+    const abonosDiaValidos = abonosDia.filter(a => {
+      const f = facturas.find(x => x.id === a.facturaId);
+      return !f || f.estado !== "Anulada";
+    });
+    const totalAbonosDia = abonosDiaValidos.reduce((s, a) => s + a.monto, 0);
+
+    const movsDia = movimientos.filter(m => m.fecha === fechaInforme);
+    const ingresosCajaDia = movsDia.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
+    const egresosCajaDia = movsDia.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
+
+    // Total ingresos del día = cobros facturación + ingresos caja
+    const totalIngresosDia = totalAbonosDia + ingresosCajaDia;
+
+    // Saldo anterior = todo lo acumulado ANTES de la fecha del informe
+    // Facturas cobradas antes de fechaInforme (no anuladas)
+    const cobradoAntes = facturas
+      .filter(f => f.estado !== "Anulada" && f.fechaPago && f.fechaPago < fechaInforme)
+      .reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
+    // Movimientos de caja antes de fechaInforme
+    const ingresosAntes = movimientos.filter(m => m.tipo === "Ingreso" && m.fecha < fechaInforme).reduce((s, m) => s + m.monto, 0);
+    const egresosAntes = movimientos.filter(m => m.tipo === "Egreso" && m.fecha < fechaInforme).reduce((s, m) => s + m.monto, 0);
+    const saldoAnterior = saldoBase + cobradoAntes + ingresosAntes - egresosAntes;
+    const nuevoSaldo = saldoAnterior + totalIngresosDia - egresosCajaDia;
+
+    // Detalle cobros del día
+    const filasAbonos = abonosDiaValidos.map(a => {
+      const f = facturas.find(x => x.id === a.facturaId);
+      return `<tr><td>${(f?.clienteNombre || "—").toUpperCase()}</td><td>${a.metodoPago || "Efectivo"}</td><td style="text-align:right">${cop(a.monto)}</td></tr>`;
+    }).join("");
+
+    const filasIngCaja = movsDia.filter(m => m.tipo === "Ingreso").map(m =>
+      `<tr><td>${m.concepto.toUpperCase()}</td><td>${m.observacion || "—"}</td><td style="text-align:right">${cop(m.monto)}</td></tr>`
+    ).join("");
+
+    const filasEgr = movsDia.filter(m => m.tipo === "Egreso").map(m =>
+      `<tr><td>${m.concepto.toUpperCase()}</td><td>${m.observacion || "—"}</td><td style="text-align:right">${cop(m.monto)}</td></tr>`
+    ).join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Informe Diario</title>
+    <style>
+      @page { size: A4; margin: 20mm 18mm; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: Arial, sans-serif; font-size: 10pt; color: #111; background: #fff; }
+      .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; border-bottom: 3px solid #111; padding-bottom: 12px; }
+      .header h1 { font-size: 15pt; font-weight: 900; letter-spacing: 1px; }
+      .empresa-name { font-size: 11pt; font-weight: 700; }
+      .empresa-nit { font-size: 9pt; color: #555; }
+      .box { border: 1px solid #bbb; border-radius: 6px; padding: 14px 18px; margin-bottom: 16px; }
+      .box-title { font-size: 10pt; font-weight: 700; background: #f3f4f6; padding: 6px 10px; margin: -14px -18px 12px; border-radius: 5px 5px 0 0; border-bottom: 1px solid #bbb; }
+      .row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 10pt; }
+      .row.bold { font-weight: 700; font-size: 11pt; }
+      .row.total { font-weight: 900; font-size: 13pt; border-top: 2px solid #111; margin-top: 10px; padding-top: 8px; }
+      .section-title { font-size: 10.5pt; font-weight: 700; text-transform: uppercase; margin: 16px 0 6px; letter-spacing: 0.5px; border-left: 4px solid #111; padding-left: 8px; }
+      table { width: 100%; border-collapse: collapse; font-size: 9pt; margin-top: 6px; }
+      th { background: #f3f4f6; border-bottom: 2px solid #bbb; padding: 6px 8px; text-align: left; font-size: 9pt; text-transform: uppercase; }
+      td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; }
+      tr:last-child td { border-bottom: none; }
+      .subtotal td { font-weight: 700; border-top: 1px dashed #999; padding-top: 7px; }
+      .saldo-box { background: #f0fdf4; border: 2px solid #16a34a; border-radius: 8px; padding: 16px 20px; margin-top: 16px; }
+      .saldo-label { font-size: 10pt; color: #15803d; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+      .saldo-value { font-size: 22pt; font-weight: 900; color: #15803d; margin-top: 4px; }
+      .footer { margin-top: 32px; display: flex; justify-content: space-between; font-size: 9pt; color: #555; border-top: 1px solid #ddd; padding-top: 10px; }
+      .btn-print { display: block; margin: 20px auto; padding: 10px 30px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; }
+      @media print { .no-print { display: none !important; } }
+    </style></head><body>
+
+    <div class="header">
+      <div>
+        <div class="empresa-name">${nombreEmpresa.toUpperCase()}</div>
+        <div class="empresa-nit">NIT: 900.007.541-8</div>
+      </div>
+      <h1>INFORME DIARIO DE GERENCIA</h1>
+    </div>
+
+    <div class="box">
+      <div class="box-title">Parámetros del Informe</div>
+      <div style="display:flex;gap:40px;flex-wrap:wrap">
+        <div><span style="color:#555">Fecha del informe:</span> <strong>${fechaLabel}</strong></div>
+        <div><span style="color:#555">Fecha de generación:</span> <strong>${ahora}</strong></div>
+        <div><span style="color:#555">Usuario:</span> <strong>${usuario.usuario || usuario.nombre}</strong></div>
+      </div>
+    </div>
+
+    <div class="box">
+      <div class="box-title">Resumen del Día</div>
+      <div class="row"><span>Saldo anterior (al ${new Date(fechaInforme + "T12:00:00").toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" })}):</span><strong>${cop(saldoAnterior)}</strong></div>
+      <div class="row" style="color:#16a34a"><span>+ Ingresos del día (suscripciones + caja):</span><strong>${cop(totalIngresosDia)}</strong></div>
+      <div class="row" style="color:#dc2626"><span>− Egresos del día:</span><strong>${cop(egresosCajaDia)}</strong></div>
+      <div class="row total"><span>NUEVO SALDO:</span><span>${cop(nuevoSaldo)}</span></div>
+    </div>
+
+    ${abonosDiaValidos.length > 0 ? `
+    <div class="section-title">Ingresos — Cobros de Suscripciones</div>
+    <table><thead><tr><th>Cliente</th><th>Método de pago</th><th style="text-align:right">Valor</th></tr></thead>
+    <tbody>${filasAbonos}</tbody>
+    <tr class="subtotal"><td colspan="2"><strong>Subtotal suscripciones</strong></td><td style="text-align:right"><strong>${cop(totalAbonosDia)}</strong></td></tr>
+    </table>` : ""}
+
+    ${movsDia.filter(m => m.tipo === "Ingreso").length > 0 ? `
+    <div class="section-title">Ingresos — Caja</div>
+    <table><thead><tr><th>Concepto</th><th>Observación</th><th style="text-align:right">Valor</th></tr></thead>
+    <tbody>${filasIngCaja}</tbody>
+    <tr class="subtotal"><td colspan="2"><strong>Subtotal ingresos caja</strong></td><td style="text-align:right"><strong>${cop(ingresosCajaDia)}</strong></td></tr>
+    </table>` : ""}
+
+    ${movsDia.filter(m => m.tipo === "Egreso").length > 0 ? `
+    <div class="section-title">Egresos</div>
+    <table><thead><tr><th>Concepto</th><th>Observación</th><th style="text-align:right">Valor</th></tr></thead>
+    <tbody>${filasEgr}</tbody>
+    <tr class="subtotal"><td colspan="2"><strong>Total egresos</strong></td><td style="text-align:right"><strong>${cop(egresosCajaDia)}</strong></td></tr>
+    </table>` : ""}
+
+    <div class="saldo-box">
+      <div class="saldo-label">Nuevo saldo al ${fechaLabel}</div>
+      <div class="saldo-value">${cop(nuevoSaldo)}</div>
+    </div>
+
+    <div class="footer">
+      <span>Generado por: ${usuario.nombre}</span>
+      <span>${ahora}</span>
+      <span>${nombreEmpresa}</span>
+    </div>
+
+    <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir informe</button>
+    </body></html>`;
+
+    const w = window.open("", "_blank", "width=900,height=700");
+    w.document.write(html);
+    w.document.close();
   };
 
   useEffect(() => {
@@ -4305,6 +4445,15 @@ function ModuloCaja({ usuario, esAdmin = false }) {
           <option value="Egreso">Solo egresos</option>
         </Sel>
         <div style={{ flex: 1 }} />
+        {/* Informe diario */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, background: GC.bg2, border: "1px solid " + GC.border, borderRadius: 8, padding: "4px 10px" }}>
+          <span style={{ fontSize: 12, color: GC.ink3, whiteSpace: "nowrap" }}>📊 Informe:</span>
+          <Inp type="date" value={fechaInforme} onChange={e => setFechaInforme(e.target.value)} style={{ width: 140, padding: "5px 8px", fontSize: 12 }} />
+          <button onClick={generarInformeDiario}
+            style={{ background: GC.ink, color: "#fff", border: "none", borderRadius: 7, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
+            🖨️ Generar
+          </button>
+        </div>
         <button onClick={() => { setNuevoMov({ tipo: "Ingreso", concepto: "", monto: "", fecha: new Date().toISOString().split("T")[0], observacion: "" }); setShowForm(true); setErrMsg(""); }}
           style={{ background: GC.brandLight, color: GC.brand, border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
           💚 + Ingreso
