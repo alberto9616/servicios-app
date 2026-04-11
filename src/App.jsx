@@ -44,7 +44,9 @@ const mapUsuario = r => r ? ({
   telefono: r.telefono, servicio: r.servicio, plan: r.plan, planId: r.plan_id,
   monto: r.monto ? Number(r.monto) : null, fechaPago: r.fecha_pago, estado: r.estado,
   direccion: r.direccion, claveWifi: r.clave_wifi, nombreEmpresa: r.nombre_empresa,
-  privilegios: r.privilegios || [], perfilPagoId: r.perfil_pago_id || null,
+  privilegios: (r.privilegios || []).filter(p => !p.startsWith("zona:")),
+  zonasIds: (r.privilegios || []).filter(p => p.startsWith("zona:")).map(p => p.slice(5)),
+  perfilPagoId: r.perfil_pago_id || null,
   fechaPrimeraFactura: r.fecha_primera_factura || null
 }) : null;
 const mapAviso = r => r ? ({ id: r.id, tipo: r.tipo, titulo: r.titulo, mensaje: r.mensaje, fecha: r.fecha, afecta: r.afecta, activo: r.activo }) : null;
@@ -128,6 +130,10 @@ const db = {
     return all.map(mapUsuario);
   },
   async upsertUsuario(u) {
+    const privilegiosBase = u.privilegios || [];
+    const zonasEntries = (u.rol === "admin" || u.rol === "superusuario")
+      ? (u.zonasIds || []).map(id => "zona:" + id)
+      : [];
     const row = {
       id: u.id && u.id.trim() !== "" ? u.id : undefined,
       usuario: u.usuario, clave: u.clave, rol: u.rol, nombre: u.nombre,
@@ -137,7 +143,8 @@ const db = {
       servicio: u.servicio || null, plan: u.plan || null, plan_id: u.planId || null,
       monto: u.monto || null, fecha_pago: u.fechaPago || null, estado: u.estado || null,
       direccion: u.direccion || null, clave_wifi: u.claveWifi || null,
-      nombre_empresa: u.nombreEmpresa || null, privilegios: u.privilegios || [],
+      nombre_empresa: u.nombreEmpresa || null,
+      privilegios: [...privilegiosBase.filter(p => !p.startsWith("zona:")), ...zonasEntries],
       perfil_pago_id: u.perfilPagoId || null,
       fecha_primera_factura: u.fechaPrimeraFactura || null
     };
@@ -4841,7 +4848,7 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion, zonas = [] }) {
 
       {/* Botón nuevo admin */}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
-        <Btn onClick={() => setEditU({ id: "", usuario: "", clave: "", rol: "admin", nombre: "", activo: true, zonaId: "", telefono: "", privilegios: [] })}>
+        <Btn onClick={() => setEditU({ id: "", usuario: "", clave: "", rol: "admin", nombre: "", activo: true, zonaId: "", zonasIds: [], telefono: "", privilegios: [] })}>
           + Nuevo administrador
         </Btn>
       </div>
@@ -4857,11 +4864,23 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion, zonas = [] }) {
             <Field label="Clave"><Inp type="text" value={editU.clave} onChange={e => setEditU({ ...editU, clave: e.target.value })} /></Field>
             <Field label="Teléfono (opcional)"><Inp value={editU.telefono || ""} onChange={e => setEditU({ ...editU, telefono: e.target.value })} /></Field>
             {editU.rol !== "superusuario" && zonas.length > 0 && (
-              <Field label="Zona asignada">
-                <Sel value={editU.zonaId || ""} onChange={e => setEditU({ ...editU, zonaId: e.target.value })}>
-                  <option value="">— Sin zona —</option>
-                  {zonas.filter(z => z.activa).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
-                </Sel>
+              <Field label="Zonas asignadas (puede seleccionar varias)">
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                  {zonas.filter(z => z.activa).map(z => {
+                    const seleccionada = (editU.zonasIds || []).includes(z.id);
+                    return (
+                      <label key={z.id} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 10px", borderRadius: 8, border: "1px solid " + (seleccionada ? z.color : "#e2e8f0"), background: seleccionada ? z.color + "15" : "#fff" }}>
+                        <input type="checkbox" checked={seleccionada} onChange={() => {
+                          const ids = editU.zonasIds || [];
+                          setEditU({ ...editU, zonasIds: seleccionada ? ids.filter(id => id !== z.id) : [...ids, z.id] });
+                        }} style={{ accentColor: z.color, width: 16, height: 16 }} />
+                        <span style={{ width: 10, height: 10, borderRadius: "50%", background: z.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 13, fontWeight: seleccionada ? 700 : 400, color: seleccionada ? z.color : "#0f172a" }}>{z.nombre}</span>
+                      </label>
+                    );
+                  })}
+                  {(editU.zonasIds || []).length === 0 && <div style={{ fontSize: 11, color: "#94a3b8" }}>Sin zonas asignadas</div>}
+                </div>
               </Field>
             )}
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -4882,7 +4901,7 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion, zonas = [] }) {
                 <span style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{u.nombre}</span>
                 <Badge text={u.rol === "superusuario" ? "Superusuario" : "Administrador"} color={u.rol === "superusuario" ? "#dc2626" : "#8b5cf6"} />
               </div>
-              <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>@{u.usuario} {u.telefono ? "· 📞 " + u.telefono : ""}{u.rol !== "superusuario" && u.zonaId && zonas.find(z => z.id === u.zonaId) ? " · 📍 " + zonas.find(z => z.id === u.zonaId).nombre : ""}</div>
+              <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>@{u.usuario} {u.telefono ? "· 📞 " + u.telefono : ""}{u.rol !== "superusuario" && (u.zonasIds || []).length > 0 ? " · " + (u.zonasIds || []).map(id => { const z = zonas.find(x => x.id === id); return z ? "📍 " + z.nombre : ""; }).filter(Boolean).join(", ") : ""}</div>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               {u.rol !== "superusuario" && (
@@ -4890,7 +4909,7 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion, zonas = [] }) {
                   <button onClick={() => toggleActivo(u)} style={{ background: u.activo ? "#f0fdf4" : "#f1f5f9", color: u.activo ? "#16a34a" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
                     {u.activo ? "Activo" : "Inactivo"}
                   </button>
-                  <button onClick={() => setEditU({ ...u, privilegios: u.privilegios || [] })} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                  <button onClick={() => setEditU({ ...u, privilegios: u.privilegios || [], zonasIds: u.zonasIds || [] })} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
                   <button onClick={() => setConfirm(u)} style={{ background: "#fef2f2", color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                 </>
               )}
@@ -5253,7 +5272,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     });
   })();
 
-  const emptyU = { id: "", usuario: "", clave: "", rol: "secretario", nombre: "", tipo: "final", cedula: "", servicio: "Internet", plan: "", monto: "", fechaPago: "", estado: "Activo", activo: true, zonaId: "", direccion: "", claveWifi: "", telefono: "", privilegios: [] };
+  const emptyU = { id: "", usuario: "", clave: "", rol: "secretario", nombre: "", tipo: "final", cedula: "", servicio: "Internet", plan: "", monto: "", fechaPago: "", estado: "Activo", activo: true, zonaId: "", zonasIds: [], direccion: "", claveWifi: "", telefono: "", privilegios: [] };
   const emptyA = { id: "", tipo: "Información", titulo: "", mensaje: "", fecha: fechaLocal(), afecta: "Internet", activo: true };
   const emptyPlan = { id: "", nombre: "", precio: "", descripcion: "", activo: true };
   const emptyZona = { id: "", nombre: "", color: GC.info, activa: true };
@@ -5679,7 +5698,27 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   <Field label="Teléfono"><Inp value={editU.telefono || ""} onChange={e => setEditU({ ...editU, telefono: e.target.value })} placeholder="Ej: 3001234567" /></Field>
                   <Field label="Usuario (login)"><Inp value={editU.usuario} onChange={e => setEditU({ ...editU, usuario: e.target.value })} /></Field>
                   <Field label="Clave"><Inp type="text" value={editU.clave} onChange={e => setEditU({ ...editU, clave: e.target.value })} /></Field>
-                  {editU.rol !== "superusuario" && (
+                  {editU.rol === "admin" && (
+                    <Field label="Zonas asignadas (puede seleccionar varias)">
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                        {zonas.filter(z => z.activa).map(z => {
+                          const seleccionada = (editU.zonasIds || []).includes(z.id);
+                          return (
+                            <label key={z.id} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "6px 10px", borderRadius: 8, border: "1px solid " + (seleccionada ? z.color : "#e2e8f0"), background: seleccionada ? z.color + "15" : "#fff" }}>
+                              <input type="checkbox" checked={seleccionada} onChange={() => {
+                                const ids = editU.zonasIds || [];
+                                setEditU({ ...editU, zonasIds: seleccionada ? ids.filter(id => id !== z.id) : [...ids, z.id] });
+                              }} style={{ accentColor: z.color, width: 16, height: 16 }} />
+                              <span style={{ width: 10, height: 10, borderRadius: "50%", background: z.color, flexShrink: 0 }} />
+                              <span style={{ fontSize: 13, fontWeight: seleccionada ? 700 : 400, color: seleccionada ? z.color : "#0f172a" }}>{z.nombre}</span>
+                            </label>
+                          );
+                        })}
+                        {(editU.zonasIds || []).length === 0 && <div style={{ fontSize: 11, color: "#94a3b8" }}>Sin zonas asignadas</div>}
+                      </div>
+                    </Field>
+                  )}
+                  {editU.rol !== "superusuario" && editU.rol !== "admin" && (
                     <Field label="Zona asignada">
                       <Sel value={editU.zonaId || ""} onChange={e => setEditU({ ...editU, zonaId: e.target.value })}>
                         <option value="">— Sin zona —</option>
@@ -5848,6 +5887,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                     <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{u.nombre}</div>
                     <div style={{ fontSize: 12, color: GC.ink3 }}>
                       @{u.usuario}
+                      {u.rol === "admin" && (u.zonasIds || []).length > 0 && (u.zonasIds || []).map(id => { const z = zonas.find(x => x.id === id); return z ? <span key={id} style={{ color: z.color, marginLeft: 6 }}>📍 {z.nombre}</span> : null; })}
                       {u.rol !== "admin" && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
                       {u.telefono && <span style={{ color: GC.info, marginLeft: 6 }}>📞 {u.telefono}</span>}
                       {u.rol === "cliente" && u.direccion && <span style={{ marginLeft: 6 }}>· {u.direccion}</span>}
@@ -5866,7 +5906,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   {u.rol === "cliente" && u.monto && <div style={{ fontSize: 13, color: GC.info, fontWeight: 700 }}>{formatCOP(u.monto)}</div>}
                   <div style={{ display: "flex", gap: 6 }}>
                     {u.rol !== "superusuario" && <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>}
-                    {u.rol !== "superusuario" && <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>}
+                    {u.rol !== "superusuario" && <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [], zonasIds: u.zonasIds || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>}
                     {u.rol !== "superusuario" && (u.rol !== "admin" || sesion.rol === "superusuario") && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                   </div>
                 </div>
@@ -5890,7 +5930,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                           <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{u.nombre}</div>
                           <div style={{ fontSize: 12, color: GC.ink3 }}>
                             @{u.usuario}
-                            {u.zonaId && u.rol !== "cliente" && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
+                            {u.rol === "admin" && (u.zonasIds || []).length > 0 && (u.zonasIds || []).map(id => { const z = zonas.find(x => x.id === id); return z ? <span key={id} style={{ color: z.color, marginLeft: 6 }}>📍 {z.nombre}</span> : null; })}
+                            {u.rol !== "admin" && u.rol !== "cliente" && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
                             {u.telefono && <span style={{ color: GC.info, marginLeft: 6 }}>📞 {u.telefono}</span>}
                           </div>
                           {u.rol === "cliente" && u.direccion && <div style={{ fontSize: 11, color: GC.ink3 }}>📍 {u.direccion}</div>}
@@ -5910,7 +5951,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                         {u.rol === "cliente" && u.monto && <div style={{ fontSize: 13, color: GC.info, fontWeight: 700 }}>{formatCOP(u.monto)}</div>}
                         <div style={{ display: "flex", gap: 6 }}>
                           {u.rol !== "superusuario" && <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>}
-                          {u.rol !== "superusuario" && <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>}
+                          {u.rol !== "superusuario" && <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [], zonasIds: u.zonasIds || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>}
                           {u.rol !== "superusuario" && (u.rol !== "admin" || sesion.rol === "superusuario") && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                         </div>
                       </div>
