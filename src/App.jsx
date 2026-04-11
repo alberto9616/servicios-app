@@ -22,6 +22,16 @@ const LOGO_URL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1B
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 
+// ── Fecha local del dispositivo (evita desfase UTC) ────────────
+// new Date().toISOString() usa UTC — en Colombia (UTC-5) a las 11pm
+// ya muestra el día siguiente. Esta función usa la hora local real.
+const fechaLocal = (d = new Date()) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
 // ──────────────────────────────────────────────────────────
 // HELPERS: convierten snake_case (BD) ↔ camelCase (app)
 // ──────────────────────────────────────────────────────────
@@ -203,7 +213,7 @@ const db = {
       concepto: f.concepto, monto: f.monto,
       items: f.items ? JSON.stringify(f.items) : null,
       saldo_pendiente: f.monto, estado: "Pendiente",
-      fecha_emision: f.fechaEmision || new Date().toISOString().split("T")[0],
+      fecha_emision: f.fechaEmision || fechaLocal(),
       notas: f.notas || "", creado_por: f.creadoPor || null,
       numero_recibo: f.numeroRecibo || null,
     }).select().single();
@@ -225,7 +235,7 @@ const db = {
   async registrarAbono(a) {
     const { data, error } = await sb.from("abonos").insert({
       factura_id: a.facturaId, monto: a.monto,
-      metodo_pago: a.metodoPago, fecha: a.fecha || new Date().toISOString().split("T")[0],
+      metodo_pago: a.metodoPago, fecha: a.fecha || fechaLocal(),
       observacion: a.observacion || "", registrado_por: a.registradoPor || null,
     }).select().single();
     if (error) throw error;
@@ -243,7 +253,7 @@ const db = {
     return data.map(r => ({ id: r.id, tipo: r.tipo, concepto: r.concepto, monto: Number(r.monto), fecha: r.fecha, registradoPor: r.registrado_por, observacion: r.observacion || "", creadoEn: r.created_at }));
   },
   async crearMovimientoCaja(m) {
-    const { data, error } = await sb.from("caja_movimientos").insert({ tipo: m.tipo, concepto: m.concepto, monto: m.monto, fecha: m.fecha || new Date().toISOString().split("T")[0], registrado_por: m.registradoPor || null, observacion: m.observacion || "" }).select().single();
+    const { data, error } = await sb.from("caja_movimientos").insert({ tipo: m.tipo, concepto: m.concepto, monto: m.monto, fecha: m.fecha || fechaLocal(), registrado_por: m.registradoPor || null, observacion: m.observacion || "" }).select().single();
     if (error) throw error;
     return { id: data.id, tipo: data.tipo, concepto: data.concepto, monto: Number(data.monto), fecha: data.fecha, registradoPor: data.registrado_por, observacion: data.observacion || "", creadoEn: data.created_at };
   },
@@ -1346,9 +1356,9 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   const [ticketAbierto, setTicketAbierto] = useState(null);
   const [confirmElimSecretario, setConfirmElimSecretario] = useState(null);
   const [modalOrden, setModalOrden] = useState(null);
-  const [nuevaOrden, setNuevaOrden] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "" });
+  const [nuevaOrden, setNuevaOrden] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "" });
   const [showModalOrdenManual, setShowModalOrdenManual] = useState(false);
-  const [ordenManual, setOrdenManual] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "" });
+  const [ordenManual, setOrdenManual] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "" });
   const [erroresOrdenManual, setErroresOrdenManual] = useState({});
   const [editCliente, setEditCliente] = useState(null);
   const [showFormCliente, setShowFormCliente] = useState(false);
@@ -1367,7 +1377,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
     estado: "Al día", activo: true, zonaId: usuario.zonaId, secretarioId: usuario.id,
     direccion: "", claveWifi: "", telefono: ""
   };
-  const emptyAviso = { id: "", tipo: "Información", titulo: "", mensaje: "", fecha: new Date().toISOString().split("T")[0], afecta: "Internet", activo: true };
+  const emptyAviso = { id: "", tipo: "Información", titulo: "", mensaje: "", fecha: fechaLocal(), afecta: "Internet", activo: true };
 
   const saveCliente = async (u) => {
     if (!u.nombre?.trim()) { alert("El nombre es obligatorio."); return; }
@@ -1480,7 +1490,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       await db.actualizarOrdenIdTicket(modalOrden.id, orden.id);
       setTickets(p => p.map(t => t.id === modalOrden.id ? { ...t, estado: "En proceso", ordenId: orden.id } : t));
       setModalOrden(null);
-      setNuevaOrden({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", nuevaDireccionTraslado: "" });
+      setNuevaOrden({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", nuevaDireccionTraslado: "" });
     } catch (err) { console.error("Error creando orden:", err); }
   };
 
@@ -1548,7 +1558,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       const guardada = await db.crearOrden(orden);
       setOrdenes(p => [...p, guardada]);
       setShowModalOrdenManual(false);
-      setOrdenManual({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevaDireccionTraslado: "" });
+      setOrdenManual({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevaDireccionTraslado: "" });
     } catch (err) { console.error("Error creando orden manual:", err); }
   };
 
@@ -2146,8 +2156,8 @@ function ClienteBuscador({ clientes, value, onChange, error, placeholder = "🔍
 }
 
 function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
-  const hoy = new Date().toISOString().split("T")[0];
-  const manana = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+  const hoy = fechaLocal();
+  const manana = fechaLocal(new Date(Date.now() + 86400000));
   const [subTab, setSubTab] = useState("activas");
   const [filtroFecha, setFiltroFecha] = useState("");
   const [filtroTecnico, setFiltroTecnico] = useState("");
@@ -2320,7 +2330,7 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
   const [tabLocal, setTabLocal] = useState("hoy"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
 
   const zonaT = zonas.find(z => z.id === usuario.zonaId);
-  const hoy = new Date().toISOString().split("T")[0];
+  const hoy = fechaLocal();
   const misOrdenes = ordenes.filter(o => o.tecnicoId === usuario.id);
   // El técnico solo ve órdenes de hoy o anteriores (las futuras son "programadas" y las maneja el secretario)
   const misOrdenesVisibles = misOrdenes.filter(o => !o.fecha || o.fecha <= hoy);
@@ -2533,7 +2543,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
           <div style={{ borderTop: "1px dashed #94a3b8", margin: "8px 0" }} />
 
           {row("Recibo No.:", String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0"))}
-          {row("Fecha:", factura.fechaEmision || new Date().toISOString().split("T")[0])}
+          {row("Fecha:", factura.fechaEmision || fechaLocal())}
           {row("Cod. Usuario:", factura.clienteCedula || "—")}
 
           <div style={{ borderTop: "1px dashed #94a3b8", margin: "8px 0" }} />
@@ -2620,13 +2630,13 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
   const [modalAbono, setModalAbono] = useState(null);
   const [modalRecibo, setModalRecibo] = useState(null);
   const [abonosModal, setAbonosModal] = useState([]);
-  const [nuevoAbono, setNuevoAbono] = useState({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: new Date().toISOString().split("T")[0] });
+  const [nuevoAbono, setNuevoAbono] = useState({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: fechaLocal() });
   const [errAbono, setErrAbono] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmAnular, setConfirmAnular] = useState(null);
 
   // hoyStr disponible en todo el módulo
-  const hoyStr = new Date().toISOString().split("T")[0];
+  const hoyStr = fechaLocal();
   // Ref para notificar a SeccionEmitidas que agregue un abono a su estado local
   const agregarAbonoHoyRef = useRef(null);
 
@@ -2672,7 +2682,7 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
         agregarAbonoHoyRef.current.agregar(abono);
       }
       setModalAbono(prev => ({ ...prev, saldoPendiente: nuevoSaldo, estado: nuevoEstado }));
-      setNuevoAbono({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: new Date().toISOString().split("T")[0] });
+      setNuevoAbono({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: fechaLocal() });
     } catch (e) { setErrAbono("Error: " + e.message); }
   };
 
@@ -2915,7 +2925,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
   const [movimientosCaja, setMovimientosCaja] = useState([]);
   const [abonosHoy, setAbonosHoy] = useState([]);
 
-  const hoyStr = new Date().toISOString().split("T")[0];
+  const hoyStr = fechaLocal();
 
   // Exponer funciones para que ModuloFacturacion pueda modificar abonosHoy sin prop drilling
   useEffect(() => {
@@ -3518,8 +3528,8 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
 
 // ── Sección 2: Cierre de Caja ─────────────────────────────────
 function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSuperusuario, nombreEmpresa, COLOR_ESTADO }) {
-  const hoy = new Date().toISOString().split("T")[0];
-  const primerDiaMes = new Date().toISOString().slice(0,8) + "01";
+  const hoy = fechaLocal();
+  const primerDiaMes = fechaLocal().slice(0,8) + "01";
   const [fechaInicio, setFechaInicio] = useState(primerDiaMes);
   const [fechaFin, setFechaFin] = useState(hoy);
   const [secretarioFiltro, setSecretarioFiltro] = useState(esAdmin ? "todos" : usuario.id);
@@ -4018,7 +4028,7 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
   const [recogidas, setRecogidas] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem("gc_recogidas") || "[]"); } catch { return []; }
   });
-  const [formRecogida, setFormRecogida] = React.useState({ tecnicoId: "", descripcionEquipo: "", fecha: new Date().toISOString().split("T")[0], observacion: "" });
+  const [formRecogida, setFormRecogida] = React.useState({ tecnicoId: "", descripcionEquipo: "", fecha: fechaLocal(), observacion: "" });
   const [showActa, setShowActa] = React.useState(null);
 
   const morosos = usuarios.filter(u =>
@@ -4051,12 +4061,12 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
     setRecogidas(nuevas);
     try { localStorage.setItem("gc_recogidas", JSON.stringify(nuevas)); } catch {}
     setModalRecogida(null);
-    setFormRecogida({ tecnicoId: "", descripcionEquipo: "", fecha: new Date().toISOString().split("T")[0], observacion: "" });
+    setFormRecogida({ tecnicoId: "", descripcionEquipo: "", fecha: fechaLocal(), observacion: "" });
     alert(`✅ Recogida asignada a ${tecnico?.nombre}. Fecha: ${formRecogida.fecha}`);
   };
 
   const recogidaSemana = recogidas.filter(r => {
-    const hace7 = new Date(Date.now() - 7*86400000).toISOString().split("T")[0];
+    const hace7 = fechaLocal(new Date(Date.now() - 7*86400000));
     return r.fecha >= hace7;
   });
 
@@ -4204,14 +4214,14 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [nuevoMov, setNuevoMov] = useState({ tipo: "Ingreso", concepto: "", monto: "", fecha: new Date().toISOString().split("T")[0], observacion: "" });
+  const [nuevoMov, setNuevoMov] = useState({ tipo: "Ingreso", concepto: "", monto: "", fecha: fechaLocal(), observacion: "" });
   const [errMsg, setErrMsg] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("todos");
   const [confirmDel, setConfirmDel] = useState(null);
   const [saldoBase, setSaldoBase] = useState(() => { try { return Number(localStorage.getItem("caja_saldo_base") || 0); } catch { return 0; } });
   const [editandoSaldoBase, setEditandoSaldoBase] = useState(false);
   const [saldoBaseInput, setSaldoBaseInput] = useState("");
-  const [fechaInforme, setFechaInforme] = useState(new Date().toISOString().split("T")[0]);
+  const [fechaInforme, setFechaInforme] = useState(fechaLocal());
 
   const guardarSaldoBase = () => {
     const v = Number(saldoBaseInput);
@@ -4359,7 +4369,7 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
     try {
       const guardado = await db.crearMovimientoCaja({ ...nuevoMov, monto, registradoPor: usuario.id });
       setMovimientos(prev => [guardado, ...prev]);
-      setNuevoMov({ tipo: "Ingreso", concepto: "", monto: "", fecha: new Date().toISOString().split("T")[0], observacion: "" });
+      setNuevoMov({ tipo: "Ingreso", concepto: "", monto: "", fecha: fechaLocal(), observacion: "" });
       setShowForm(false);
     } catch(e) { setErrMsg("Error: " + e.message); }
   };
@@ -4434,11 +4444,11 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
             🖨️ Generar
           </button>
         </div>
-        <button onClick={() => { setNuevoMov({ tipo: "Ingreso", concepto: "", monto: "", fecha: new Date().toISOString().split("T")[0], observacion: "" }); setShowForm(true); setErrMsg(""); }}
+        <button onClick={() => { setNuevoMov({ tipo: "Ingreso", concepto: "", monto: "", fecha: fechaLocal(), observacion: "" }); setShowForm(true); setErrMsg(""); }}
           style={{ background: GC.brandLight, color: GC.brand, border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
           💚 + Ingreso
         </button>
-        <button onClick={() => { setNuevoMov({ tipo: "Egreso", concepto: "", monto: "", fecha: new Date().toISOString().split("T")[0], observacion: "" }); setShowForm(true); setErrMsg(""); }}
+        <button onClick={() => { setNuevoMov({ tipo: "Egreso", concepto: "", monto: "", fecha: fechaLocal(), observacion: "" }); setShowForm(true); setErrMsg(""); }}
           style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
           🔴 + Egreso
         </button>
@@ -4625,7 +4635,7 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
   const [ticketAbierto, setTicketAbierto] = useState(null);
   const [busqTicket, setBusqTicket] = useState("");
   const [modalOrden, setModalOrden] = useState(null);
-  const [nuevaOrden, setNuevaOrden] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicoId: "", fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", nuevaDireccionTraslado: "" });
+  const [nuevaOrden, setNuevaOrden] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicoId: "", fecha: fechaLocal(), hora: "08:00", otro: "", nuevaDireccionTraslado: "" });
 
   const pendientes = tickets.filter(t => t.estado === "Abierto").sort((a,b) => (b.prioridad === "alta" ? 1 : 0) - (a.prioridad === "alta" ? 1 : 0));
   const enProceso = tickets.filter(t => t.estado === "En proceso");
@@ -4668,7 +4678,7 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
       await db.actualizarOrdenIdTicket(modalOrden.id, orden.id);
       setTickets(p => p.map(t => t.id === modalOrden.id ? { ...t, estado: "En proceso", ordenId: orden.id } : t));
       setModalOrden(null);
-      setNuevaOrden({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: new Date().toISOString().split("T")[0], hora: "08:00", otro: "", nuevaDireccionTraslado: "" });
+      setNuevaOrden({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", nuevaDireccionTraslado: "" });
     } catch(err) { console.error("Error creando orden:", err); }
   };
 
@@ -5235,7 +5245,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   })();
 
   const emptyU = { id: "", usuario: "", clave: "", rol: "secretario", nombre: "", tipo: "final", cedula: "", servicio: "Internet", plan: "", monto: "", fechaPago: "", estado: "Activo", activo: true, zonaId: "", direccion: "", claveWifi: "", telefono: "", privilegios: [] };
-  const emptyA = { id: "", tipo: "Información", titulo: "", mensaje: "", fecha: new Date().toISOString().split("T")[0], afecta: "Internet", activo: true };
+  const emptyA = { id: "", tipo: "Información", titulo: "", mensaje: "", fecha: fechaLocal(), afecta: "Internet", activo: true };
   const emptyPlan = { id: "", nombre: "", precio: "", descripcion: "", activo: true };
   const emptyZona = { id: "", nombre: "", color: GC.info, activa: true };
   const emptyPropa = { id: "", categoria: "promocion", titulo: "", descripcion: "", activo: true, fecha: "", imagen: "🎁", color: GC.info };
@@ -6192,7 +6202,7 @@ export default function App() {
 
   const ticketsNuevos = tickets.filter(t => t.estado === "Abierto").length;
   const ordenesHoyTecnico = sesion?.rol === "tecnico"
-    ? ordenes.filter(o => o.tecnicoId === sesion.id && o.fecha === new Date().toISOString().split("T")[0] && o.estado !== "Completada" && o.estado !== "Cancelada").length
+    ? ordenes.filter(o => o.tecnicoId === sesion.id && o.fecha === fechaLocal() && o.estado !== "Completada" && o.estado !== "Cancelada").length
     : 0;
 
   // Nombre de empresa de la zona del usuario (para el header)
