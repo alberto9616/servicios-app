@@ -1365,7 +1365,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   const [modalOrden, setModalOrden] = useState(null);
   const [nuevaOrden, setNuevaOrden] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "" });
   const [showModalOrdenManual, setShowModalOrdenManual] = useState(false);
-  const [ordenManual, setOrdenManual] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "" });
+  const [ordenManual, setOrdenManual] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevoUsuario: "", nuevaClave: "", nuevoServicio: "Internet", nuevoPlan: "", nuevoPlanId: "", nuevoMonto: "", nuevoEstado: "Activo", nuevoClaveWifi: "", nuevoTipo: "final", nuevoPerfilPagoId: "", nuevoFechaPrimeraFactura: "" });
   const [erroresOrdenManual, setErroresOrdenManual] = useState({});
   const [editCliente, setEditCliente] = useState(null);
   const [showFormCliente, setShowFormCliente] = useState(false);
@@ -1515,6 +1515,8 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       if (!ordenManual.nuevaCedula.trim()) errs.nuevaCedula = true;
       if (!ordenManual.nuevoTelefono.trim()) errs.nuevoTelefono = true;
       if (!ordenManual.nuevaDireccion.trim()) errs.nuevaDireccion = true;
+      if (!ordenManual.nuevoUsuario.trim()) errs.nuevoUsuario = true;
+      if (!ordenManual.nuevaClave.trim()) errs.nuevaClave = true;
     } else {
       if (!ordenManual.clienteExistente) errs.clienteExistente = true;
     }
@@ -1524,10 +1526,37 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
 
     let clienteNombre, clienteDireccion, clienteId, telefonoCliente;
     if (esNueva) {
-      clienteNombre = ordenManual.nuevoNombre.trim();
-      clienteDireccion = ordenManual.nuevaDireccion.trim();
-      clienteId = null;
-      telefonoCliente = ordenManual.nuevoTelefono.trim();
+      // Crear el usuario cliente en Supabase
+      const nuevoCliente = {
+        id: "", usuario: ordenManual.nuevoUsuario.trim(), clave: ordenManual.nuevaClave.trim(),
+        rol: "cliente", nombre: ordenManual.nuevoNombre.trim(), activo: true,
+        zonaId: usuario.zonaId, secretarioId: usuario.id,
+        tipo: ordenManual.nuevoTipo || "final",
+        cedula: ordenManual.nuevaCedula.trim(),
+        telefono: ordenManual.nuevoTelefono.trim(),
+        servicio: ordenManual.nuevoServicio || "Internet",
+        plan: ordenManual.nuevoPlan || "",
+        planId: ordenManual.nuevoPlanId || null,
+        monto: ordenManual.nuevoMonto ? Number(ordenManual.nuevoMonto) : null,
+        estado: ordenManual.nuevoEstado || "Activo",
+        direccion: ordenManual.nuevaDireccion.trim(),
+        claveWifi: ordenManual.nuevoClaveWifi.trim() || null,
+        perfilPagoId: ordenManual.nuevoPerfilPagoId || null,
+        fechaPrimeraFactura: ordenManual.nuevoFechaPrimeraFactura ? ordenManual.nuevoFechaPrimeraFactura + "-01" : null,
+        privilegios: [], zonasIds: [],
+      };
+      try {
+        const clienteGuardado = await db.upsertUsuario(nuevoCliente);
+        setUsuarios(p => [...p, clienteGuardado]);
+        clienteNombre = clienteGuardado.nombre;
+        clienteDireccion = clienteGuardado.direccion || ordenManual.nuevaDireccion.trim();
+        clienteId = clienteGuardado.id;
+        telefonoCliente = clienteGuardado.telefono;
+      } catch (err) {
+        console.error("Error creando cliente:", err);
+        alert("❌ Error al crear el cliente: " + err.message);
+        return;
+      }
     } else {
       const c = usuarios.find(u => u.id === ordenManual.clienteExistente);
       clienteNombre = c?.nombre || "Sin nombre";
@@ -1551,21 +1580,12 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       estado: "Pendiente", prioridad: "normal",
       fechaCreacion: Date.now(), notas: [], zonaId: usuario.zonaId,
       esManual: true,
-      ...(esNueva ? {
-        datosInstalacion: {
-          nombre: ordenManual.nuevoNombre.trim(),
-          cedula: ordenManual.nuevaCedula.trim(),
-          telefono: ordenManual.nuevoTelefono.trim(),
-          direccion: ordenManual.nuevaDireccion.trim(),
-          correo: ordenManual.nuevoCorreo.trim() || null,
-        }
-      } : {})
     };
     try {
       const guardada = await db.crearOrden(orden);
       setOrdenes(p => [...p, guardada]);
       setShowModalOrdenManual(false);
-      setOrdenManual({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevaDireccionTraslado: "" });
+      setOrdenManual({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevoUsuario: "", nuevaClave: "", nuevoServicio: "Internet", nuevoPlan: "", nuevoPlanId: "", nuevoMonto: "", nuevoEstado: "Activo", nuevoClaveWifi: "", nuevoTipo: "final", nuevoPerfilPagoId: "", nuevoFechaPrimeraFactura: "" });
     } catch (err) { console.error("Error creando orden manual:", err); }
   };
 
@@ -1972,32 +1992,81 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
               </Field>
             )}
 
-            {/* INSTALACIÓN NUEVA: datos del nuevo cliente */}
+            {/* INSTALACIÓN NUEVA: datos completos del nuevo cliente */}
             {ordenManual.tipo === "Instalación nueva" ? (
               <div style={{ background: "#0ea5e911", border: "1px solid #0ea5e933", borderRadius: 12, padding: 14, marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: GC.info, fontWeight: 700, marginBottom: 12, textTransform: "uppercase", letterSpacing: 0.8 }}>📋 Datos del nuevo cliente</div>
+                <div style={{ fontSize: 12, color: GC.info, fontWeight: 700, marginBottom: 14, textTransform: "uppercase", letterSpacing: 0.8 }}>👤 Datos del nuevo cliente</div>
+
+                {/* Tipo de cliente */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                  <Field label="Tipo de cliente">
+                    <Sel value={ordenManual.nuevoTipo || "final"} onChange={e => setOrdenManual({ ...ordenManual, nuevoTipo: e.target.value })}>
+                      <option value="final">Cliente final</option>
+                      <option value="empresa">Cliente empresa</option>
+                    </Sel>
+                  </Field>
+                  <Field label="N° de cédula / NIT *">
+                    <Inp value={ordenManual.nuevaCedula} onChange={e => setOrdenManual({ ...ordenManual, nuevaCedula: e.target.value })} placeholder="Ej: 1234567890" style={{ borderColor: erroresOrdenManual.nuevaCedula ? "#ef4444" : undefined }} />
+                    {erroresOrdenManual.nuevaCedula && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
+                  </Field>
                   <Field label="Nombre completo *">
                     <Inp value={ordenManual.nuevoNombre} onChange={e => setOrdenManual({ ...ordenManual, nuevoNombre: e.target.value })} placeholder="Nombres y apellidos" style={{ borderColor: erroresOrdenManual.nuevoNombre ? "#ef4444" : undefined }} />
                     {erroresOrdenManual.nuevoNombre && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
-                  </Field>
-                  <Field label="N° de cédula *">
-                    <Inp value={ordenManual.nuevaCedula} onChange={e => setOrdenManual({ ...ordenManual, nuevaCedula: e.target.value })} placeholder="Ej: 1234567890" style={{ borderColor: erroresOrdenManual.nuevaCedula ? "#ef4444" : undefined }} />
-                    {erroresOrdenManual.nuevaCedula && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
                   </Field>
                   <Field label="N° de teléfono *">
                     <Inp value={ordenManual.nuevoTelefono} onChange={e => setOrdenManual({ ...ordenManual, nuevoTelefono: e.target.value })} placeholder="Ej: 3001234567" style={{ borderColor: erroresOrdenManual.nuevoTelefono ? "#ef4444" : undefined }} />
                     {erroresOrdenManual.nuevoTelefono && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
                   </Field>
-                  <Field label="Correo electrónico (opcional)">
-                    <Inp type="email" value={ordenManual.nuevoCorreo} onChange={e => setOrdenManual({ ...ordenManual, nuevoCorreo: e.target.value })} placeholder="correo@ejemplo.com" />
+                  <Field label="Usuario (login) *">
+                    <Inp value={ordenManual.nuevoUsuario} onChange={e => setOrdenManual({ ...ordenManual, nuevoUsuario: e.target.value })} placeholder="Ej: juan123" style={{ borderColor: erroresOrdenManual.nuevoUsuario ? "#ef4444" : undefined }} />
+                    {erroresOrdenManual.nuevoUsuario && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
+                  </Field>
+                  <Field label="Clave *">
+                    <Inp type="text" value={ordenManual.nuevaClave} onChange={e => setOrdenManual({ ...ordenManual, nuevaClave: e.target.value })} placeholder="Clave de acceso" style={{ borderColor: erroresOrdenManual.nuevaClave ? "#ef4444" : undefined }} />
+                    {erroresOrdenManual.nuevaClave && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
                   </Field>
                 </div>
-                <Field label="Dirección de instalación *">
+
+                <Field label="Dirección de instalación / domicilio *">
                   <Inp value={ordenManual.nuevaDireccion} onChange={e => setOrdenManual({ ...ordenManual, nuevaDireccion: e.target.value })} placeholder="Calle / Carrera, barrio, municipio" style={{ borderColor: erroresOrdenManual.nuevaDireccion ? "#ef4444" : undefined }} />
                   {erroresOrdenManual.nuevaDireccion && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
                 </Field>
-                <div style={{ fontSize: 11, color: GC.ink3, marginTop: 4 }}>* Campos obligatorios · El correo electrónico es opcional</div>
+
+                {/* Servicio */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                  <Field label="Servicio">
+                    <Sel value={ordenManual.nuevoServicio || "Internet"} onChange={e => setOrdenManual({ ...ordenManual, nuevoServicio: e.target.value })}>
+                      <option>Internet</option><option>TV</option><option>Internet + TV</option>
+                    </Sel>
+                  </Field>
+                  <Field label="Plan">
+                    <Sel value={planes.find(p => p.nombre === ordenManual.nuevoPlan)?.id || ""} onChange={e => { const plan = planes.find(pl => pl.id === e.target.value); setOrdenManual(prev => ({ ...prev, nuevoPlan: plan?.nombre || "", nuevoPlanId: plan?.id || "", nuevoMonto: plan?.precio || "" })); }}>
+                      <option value="">— Seleccionar plan —</option>
+                      {planes.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre} · {formatCOP(p.precio)}</option>)}
+                    </Sel>
+                    {ordenManual.nuevoPlan && <div style={{ fontSize: 11, color: GC.brand, marginTop: 4 }}>✓ {ordenManual.nuevoPlan}</div>}
+                  </Field>
+                  <Field label="Perfil de pago">
+                    <Sel value={ordenManual.nuevoPerfilPagoId || ""} onChange={e => setOrdenManual({ ...ordenManual, nuevoPerfilPagoId: e.target.value || "" })}>
+                      <option value="">— Sin perfil —</option>
+                      {perfilesPago.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre} (días {p.diaInicio}-{p.diaFin})</option>)}
+                    </Sel>
+                  </Field>
+                  <Field label="Estado de cuenta">
+                    <Sel value={ordenManual.nuevoEstado || "Activo"} onChange={e => setOrdenManual({ ...ordenManual, nuevoEstado: e.target.value })}>
+                      <option value="Activo">✅ Activo</option>
+                      <option value="Pendiente">⚠️ Pendiente</option>
+                      <option value="Cortesía">💜 Cortesía</option>
+                    </Sel>
+                  </Field>
+                  <Field label="Clave WiFi">
+                    <Inp value={ordenManual.nuevoClaveWifi} onChange={e => setOrdenManual({ ...ordenManual, nuevoClaveWifi: e.target.value })} placeholder="Clave del router" />
+                  </Field>
+                  <Field label="Primera factura desde">
+                    <Inp type="month" value={ordenManual.nuevoFechaPrimeraFactura || ""} onChange={e => setOrdenManual({ ...ordenManual, nuevoFechaPrimeraFactura: e.target.value })} />
+                  </Field>
+                </div>
+                <div style={{ fontSize: 11, color: GC.ink3, marginTop: 6 }}>* Campos obligatorios · El cliente quedará registrado en el sistema al crear la orden</div>
               </div>
             ) : (
               /* OTROS TIPOS: seleccionar cliente existente */
