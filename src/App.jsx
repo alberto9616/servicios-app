@@ -4234,64 +4234,51 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
       return !f || f.estado !== "Anulada";
     });
     const totalAbonosDia = abonosDiaValidos.reduce((s, a) => s + a.monto, 0);
-
     const movsDia = movimientos.filter(m => m.fecha === fechaInforme);
     const ingresosCajaDia = movsDia.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
     const egresosCajaDia = movsDia.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
-
-    // Total ingresos del día = cobros facturación + ingresos caja
     const totalIngresosDia = totalAbonosDia + ingresosCajaDia;
 
     // Saldo anterior = todo lo acumulado ANTES de la fecha del informe
-    // Facturas cobradas antes de fechaInforme (no anuladas)
     const cobradoAntes = facturas
       .filter(f => f.estado !== "Anulada" && f.fechaPago && f.fechaPago < fechaInforme)
       .reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
-    // Movimientos de caja antes de fechaInforme
     const ingresosAntes = movimientos.filter(m => m.tipo === "Ingreso" && m.fecha < fechaInforme).reduce((s, m) => s + m.monto, 0);
     const egresosAntes = movimientos.filter(m => m.tipo === "Egreso" && m.fecha < fechaInforme).reduce((s, m) => s + m.monto, 0);
     const saldoAnterior = saldoBase + cobradoAntes + ingresosAntes - egresosAntes;
     const nuevoSaldo = saldoAnterior + totalIngresosDia - egresosCajaDia;
 
-    // Detalle cobros del día
-    const filasAbonos = abonosDiaValidos.map(a => {
-      const f = facturas.find(x => x.id === a.facturaId);
-      return `<tr><td>${(f?.clienteNombre || "—").toUpperCase()}</td><td>${a.metodoPago || "Efectivo"}</td><td style="text-align:right">${cop(a.monto)}</td></tr>`;
-    }).join("");
-
-    const filasIngCaja = movsDia.filter(m => m.tipo === "Ingreso").map(m =>
-      `<tr><td>${m.concepto.toUpperCase()}</td><td>${m.observacion || "—"}</td><td style="text-align:right">${cop(m.monto)}</td></tr>`
-    ).join("");
-
-    const filasEgr = movsDia.filter(m => m.tipo === "Egreso").map(m =>
-      `<tr><td>${m.concepto.toUpperCase()}</td><td>${m.observacion || "—"}</td><td style="text-align:right">${cop(m.monto)}</td></tr>`
-    ).join("");
-
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Informe Diario</title>
     <style>
-      @page { size: A4; margin: 20mm 18mm; }
+      @page { size: A4; margin: 25mm 20mm; }
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: Arial, sans-serif; font-size: 10pt; color: #111; background: #fff; }
-      .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; border-bottom: 3px solid #111; padding-bottom: 12px; }
-      .header h1 { font-size: 15pt; font-weight: 900; letter-spacing: 1px; }
-      .empresa-name { font-size: 11pt; font-weight: 700; }
-      .empresa-nit { font-size: 9pt; color: #555; }
-      .box { border: 1px solid #bbb; border-radius: 6px; padding: 14px 18px; margin-bottom: 16px; }
-      .box-title { font-size: 10pt; font-weight: 700; background: #f3f4f6; padding: 6px 10px; margin: -14px -18px 12px; border-radius: 5px 5px 0 0; border-bottom: 1px solid #bbb; }
-      .row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 10pt; }
-      .row.bold { font-weight: 700; font-size: 11pt; }
-      .row.total { font-weight: 900; font-size: 13pt; border-top: 2px solid #111; margin-top: 10px; padding-top: 8px; }
-      .section-title { font-size: 10.5pt; font-weight: 700; text-transform: uppercase; margin: 16px 0 6px; letter-spacing: 0.5px; border-left: 4px solid #111; padding-left: 8px; }
-      table { width: 100%; border-collapse: collapse; font-size: 9pt; margin-top: 6px; }
-      th { background: #f3f4f6; border-bottom: 2px solid #bbb; padding: 6px 8px; text-align: left; font-size: 9pt; text-transform: uppercase; }
-      td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; }
-      tr:last-child td { border-bottom: none; }
-      .subtotal td { font-weight: 700; border-top: 1px dashed #999; padding-top: 7px; }
-      .saldo-box { background: #f0fdf4; border: 2px solid #16a34a; border-radius: 8px; padding: 16px 20px; margin-top: 16px; }
-      .saldo-label { font-size: 10pt; color: #15803d; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-      .saldo-value { font-size: 22pt; font-weight: 900; color: #15803d; margin-top: 4px; }
-      .footer { margin-top: 32px; display: flex; justify-content: space-between; font-size: 9pt; color: #555; border-top: 1px solid #ddd; padding-top: 10px; }
-      .btn-print { display: block; margin: 20px auto; padding: 10px 30px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; }
+      body { font-family: Arial, sans-serif; font-size: 11pt; color: #111; background: #fff; }
+      .header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; border-bottom: 3px solid #111; padding-bottom: 14px; }
+      .header h1 { font-size: 16pt; font-weight: 900; letter-spacing: 1px; text-align: right; }
+      .empresa-name { font-size: 12pt; font-weight: 700; }
+      .empresa-nit { font-size: 9pt; color: #555; margin-top: 3px; }
+      .params { border: 1px solid #ccc; border-radius: 6px; padding: 12px 16px; margin-bottom: 24px; display: flex; gap: 40px; flex-wrap: wrap; font-size: 10pt; }
+      .params span { color: #555; }
+      .params strong { color: #111; }
+      .main-box { border: 1.5px solid #bbb; border-radius: 8px; padding: 0; margin-bottom: 24px; overflow: hidden; }
+      .main-box-title { background: #f3f4f6; padding: 10px 18px; font-weight: 700; font-size: 10.5pt; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1.5px solid #bbb; }
+      .main-box-body { padding: 18px 20px; }
+      .row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: 11pt; border-bottom: 1px solid #f0f0f0; }
+      .row:last-child { border-bottom: none; }
+      .row .label { color: #333; }
+      .row .val { font-weight: 700; }
+      .row.ing .val { color: #16a34a; }
+      .row.egr .val { color: #dc2626; }
+      .row.ant { background: #f8fafc; margin: 0 -20px; padding: 10px 20px; }
+      .divider { border: none; border-top: 2px solid #111; margin: 8px 0; }
+      .row.total { padding: 12px 0 4px; }
+      .row.total .label { font-size: 13pt; font-weight: 900; }
+      .row.total .val { font-size: 18pt; font-weight: 900; color: #15803d; }
+      .footer { margin-top: 40px; display: flex; justify-content: space-between; font-size: 9pt; color: #777; border-top: 1px solid #ddd; padding-top: 10px; }
+      .firma { margin-top: 50px; display: flex; justify-content: space-around; }
+      .firma-linea { text-align: center; }
+      .firma-linea div:first-child { border-top: 1px solid #111; width: 180px; padding-top: 6px; font-size: 9pt; }
+      .btn-print { display: block; margin: 24px auto; padding: 10px 32px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; }
       @media print { .no-print { display: none !important; } }
     </style></head><body>
 
@@ -4300,56 +4287,49 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
         <div class="empresa-name">${nombreEmpresa.toUpperCase()}</div>
         <div class="empresa-nit">NIT: 900.007.541-8</div>
       </div>
-      <h1>INFORME DIARIO DE GERENCIA</h1>
+      <h1>INFORME DIARIO<br/>DE GERENCIA</h1>
     </div>
 
-    <div class="box">
-      <div class="box-title">Parámetros del Informe</div>
-      <div style="display:flex;gap:40px;flex-wrap:wrap">
-        <div><span style="color:#555">Fecha del informe:</span> <strong>${fechaLabel}</strong></div>
-        <div><span style="color:#555">Fecha de generación:</span> <strong>${ahora}</strong></div>
-        <div><span style="color:#555">Usuario:</span> <strong>${usuario.usuario || usuario.nombre}</strong></div>
+    <div class="params">
+      <div><span>Fecha del informe: </span><strong>${fechaLabel}</strong></div>
+      <div><span>Fecha de generación: </span><strong>${ahora}</strong></div>
+    </div>
+
+    <div class="main-box">
+      <div class="main-box-title">📊 Resumen del Día — ${fechaLabel}</div>
+      <div class="main-box-body">
+        <div class="row ant">
+          <span class="label">Saldo Anterior</span>
+          <span class="val">${cop(saldoAnterior)}</span>
+        </div>
+        <div class="row ing">
+          <span class="label">INGRESOS</span>
+          <span class="val">+ ${cop(totalIngresosDia)}</span>
+        </div>
+        <div class="row egr">
+          <span class="label">EGRESOS</span>
+          <span class="val">− ${cop(egresosCajaDia)}</span>
+        </div>
+        <hr class="divider"/>
+        <div class="row total">
+          <span class="label">Nuevo Saldo</span>
+          <span class="val">${cop(nuevoSaldo)}</span>
+        </div>
       </div>
     </div>
 
-    <div class="box">
-      <div class="box-title">Resumen del Día</div>
-      <div class="row"><span>Saldo anterior (al ${new Date(fechaInforme + "T12:00:00").toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" })}):</span><strong>${cop(saldoAnterior)}</strong></div>
-      <div class="row" style="color:#16a34a"><span>+ Ingresos del día (suscripciones + caja):</span><strong>${cop(totalIngresosDia)}</strong></div>
-      <div class="row" style="color:#dc2626"><span>− Egresos del día:</span><strong>${cop(egresosCajaDia)}</strong></div>
-      <div class="row total"><span>NUEVO SALDO:</span><span>${cop(nuevoSaldo)}</span></div>
-    </div>
-
-    ${abonosDiaValidos.length > 0 ? `
-    <div class="section-title">Ingresos — Cobros de Suscripciones</div>
-    <table><thead><tr><th>Cliente</th><th>Método de pago</th><th style="text-align:right">Valor</th></tr></thead>
-    <tbody>${filasAbonos}</tbody>
-    <tr class="subtotal"><td colspan="2"><strong>Subtotal suscripciones</strong></td><td style="text-align:right"><strong>${cop(totalAbonosDia)}</strong></td></tr>
-    </table>` : ""}
-
-    ${movsDia.filter(m => m.tipo === "Ingreso").length > 0 ? `
-    <div class="section-title">Ingresos — Caja</div>
-    <table><thead><tr><th>Concepto</th><th>Observación</th><th style="text-align:right">Valor</th></tr></thead>
-    <tbody>${filasIngCaja}</tbody>
-    <tr class="subtotal"><td colspan="2"><strong>Subtotal ingresos caja</strong></td><td style="text-align:right"><strong>${cop(ingresosCajaDia)}</strong></td></tr>
-    </table>` : ""}
-
-    ${movsDia.filter(m => m.tipo === "Egreso").length > 0 ? `
-    <div class="section-title">Egresos</div>
-    <table><thead><tr><th>Concepto</th><th>Observación</th><th style="text-align:right">Valor</th></tr></thead>
-    <tbody>${filasEgr}</tbody>
-    <tr class="subtotal"><td colspan="2"><strong>Total egresos</strong></td><td style="text-align:right"><strong>${cop(egresosCajaDia)}</strong></td></tr>
-    </table>` : ""}
-
-    <div class="saldo-box">
-      <div class="saldo-label">Nuevo saldo al ${fechaLabel}</div>
-      <div class="saldo-value">${cop(nuevoSaldo)}</div>
+    <div class="firma">
+      <div class="firma-linea">
+        <div>Elaborado por</div>
+      </div>
+      <div class="firma-linea">
+        <div>Revisado por</div>
+      </div>
     </div>
 
     <div class="footer">
-      <span>Generado por: ${usuario.nombre}</span>
-      <span>${ahora}</span>
       <span>${nombreEmpresa}</span>
+      <span>Generado: ${ahora}</span>
     </div>
 
     <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir informe</button>
