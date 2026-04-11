@@ -4783,7 +4783,7 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
 // ══════════════════════════════════════════════════════════════
 // TAB SUPERUSUARIO — gestión exclusiva del superusuario
 // ══════════════════════════════════════════════════════════════
-function TabSuperusuario({ usuarios, setUsuarios, sesion }) {
+function TabSuperusuario({ usuarios, setUsuarios, sesion, zonas = [] }) {
   const [editU, setEditU] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -4856,6 +4856,14 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion }) {
             <Field label="Usuario (login)"><Inp value={editU.usuario} onChange={e => setEditU({ ...editU, usuario: e.target.value })} /></Field>
             <Field label="Clave"><Inp type="text" value={editU.clave} onChange={e => setEditU({ ...editU, clave: e.target.value })} /></Field>
             <Field label="Teléfono (opcional)"><Inp value={editU.telefono || ""} onChange={e => setEditU({ ...editU, telefono: e.target.value })} /></Field>
+            {editU.rol !== "superusuario" && zonas.length > 0 && (
+              <Field label="Zona asignada">
+                <Sel value={editU.zonaId || ""} onChange={e => setEditU({ ...editU, zonaId: e.target.value })}>
+                  <option value="">— Sin zona —</option>
+                  {zonas.filter(z => z.activa).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+                </Sel>
+              </Field>
+            )}
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
               <Btn onClick={guardarAdmin} style={{ flex: 1 }}>Guardar</Btn>
               <Btn variant="ghost" onClick={() => setEditU(null)}>Cancelar</Btn>
@@ -4874,7 +4882,7 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion }) {
                 <span style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{u.nombre}</span>
                 <Badge text={u.rol === "superusuario" ? "Superusuario" : "Administrador"} color={u.rol === "superusuario" ? "#dc2626" : "#8b5cf6"} />
               </div>
-              <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>@{u.usuario} {u.telefono ? "· 📞 " + u.telefono : ""}</div>
+              <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>@{u.usuario} {u.telefono ? "· 📞 " + u.telefono : ""}{u.rol !== "superusuario" && u.zonaId && zonas.find(z => z.id === u.zonaId) ? " · 📍 " + zonas.find(z => z.id === u.zonaId).nombre : ""}</div>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               {u.rol !== "superusuario" && (
@@ -5232,6 +5240,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const usuariosFiltradosAdmin = (() => {
     const q = busqAdmin.toLowerCase().trim();
     return usuarios.filter(u => {
+      if (u.rol === "superusuario" && sesion.rol !== "superusuario") return false;
       const matchQ = !q || u.nombre?.toLowerCase().includes(q) || u.cedula?.toLowerCase().includes(q) || u.usuario?.toLowerCase().includes(q) || u.telefono?.toLowerCase().includes(q);
       if (!matchQ) return false;
       if (filtroAdminTipo === "cliente_final") { if (!(u.rol === "cliente" && u.tipo === "final")) return false; }
@@ -5396,6 +5405,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
         <TabSuperusuario
           usuarios={usuarios} setUsuarios={setUsuarios}
           sesion={sesion}
+          zonas={zonas}
         />
       )}
 
@@ -5856,7 +5866,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   {u.rol === "cliente" && u.monto && <div style={{ fontSize: 13, color: GC.info, fontWeight: 700 }}>{formatCOP(u.monto)}</div>}
                   <div style={{ display: "flex", gap: 6 }}>
                     {u.rol !== "superusuario" && <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>}
-                    <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                    {u.rol !== "superusuario" && <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>}
                     {u.rol !== "superusuario" && (u.rol !== "admin" || sesion.rol === "superusuario") && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                   </div>
                 </div>
@@ -5865,6 +5875,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           ) : (
             <div>
               {["superusuario", "admin", "secretario", "tecnico", "cliente"].map(rol => {
+                if (rol === "superusuario" && sesion.rol !== "superusuario") return null;
                 const lista = usuarios.filter(u => u.rol === rol);
                 if (lista.length === 0) return null;
                 return (
@@ -5879,7 +5890,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                           <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{u.nombre}</div>
                           <div style={{ fontSize: 12, color: GC.ink3 }}>
                             @{u.usuario}
-                            {u.rol !== "admin" && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
+                            {u.zonaId && u.rol !== "cliente" && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
                             {u.telefono && <span style={{ color: GC.info, marginLeft: 6 }}>📞 {u.telefono}</span>}
                           </div>
                           {u.rol === "cliente" && u.direccion && <div style={{ fontSize: 11, color: GC.ink3 }}>📍 {u.direccion}</div>}
@@ -5899,7 +5910,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                         {u.rol === "cliente" && u.monto && <div style={{ fontSize: 13, color: GC.info, fontWeight: 700 }}>{formatCOP(u.monto)}</div>}
                         <div style={{ display: "flex", gap: 6 }}>
                           {u.rol !== "superusuario" && <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>}
-                          <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                          {u.rol !== "superusuario" && <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>}
                           {u.rol !== "superusuario" && (u.rol !== "admin" || sesion.rol === "superusuario") && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                         </div>
                       </div>
