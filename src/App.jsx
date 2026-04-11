@@ -14,6 +14,10 @@ const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON || "eyJhbGciOiJIUzI1NiI
 // Lo encuentras en: supabase.com → tu proyecto → Settings → General
 const WISPRO_SYNC_URL = "https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/wispro-sync";
 
+// ── Wispro API — Corte y reconexión de servicios ───────────
+const WISPRO_API_URL   = "https://cloud.wispro.co/api/v1";
+const WISPRO_API_TOKEN = import.meta.env.VITE_WISPRO_TOKEN || "e1833499-b9b1-4a6c-8efd-f1d6be7dc1d8";
+
 // ── Logo de la empresa ─────────────────────────────────────
 // Pega aquí la URL de tu logo (imagen subida a internet)
 // Ejemplo: "https://i.imgur.com/tulogo.png"
@@ -47,7 +51,8 @@ const mapUsuario = r => r ? ({
   privilegios: (r.privilegios || []).filter(p => !p.startsWith("zona:")),
   zonasIds: (r.privilegios || []).filter(p => p.startsWith("zona:")).map(p => p.slice(5)),
   perfilPagoId: r.perfil_pago_id || null,
-  fechaPrimeraFactura: r.fecha_primera_factura || null
+  fechaPrimeraFactura: r.fecha_primera_factura || null,
+  wisproClientId: r.wispro_client_id || null,
 }) : null;
 const mapAviso = r => r ? ({ id: r.id, tipo: r.tipo, titulo: r.titulo, mensaje: r.mensaje, fecha: r.fecha, afecta: r.afecta, activo: r.activo }) : null;
 const mapTicket = (r, mensajes = []) => r ? ({
@@ -265,6 +270,79 @@ const db = {
     return { id: data.id, tipo: data.tipo, concepto: data.concepto, monto: Number(data.monto), fecha: data.fecha, registradoPor: data.registrado_por, observacion: data.observacion || "", creadoEn: data.created_at };
   },
   async deleteMovimientoCaja(id) { const { error } = await sb.from("caja_movimientos").delete().eq("id", id); if (error) throw error; },
+};
+
+// ══════════════════════════════════════════════════════════════
+// WISPRO API — Corte y reconexión de servicios
+// ══════════════════════════════════════════════════════════════
+const wisproHeaders = {
+  "Authorization": WISPRO_API_TOKEN,
+  "Accept": "application/json",
+  "Content-Type": "application/json",
+};
+
+const wispro = {
+  // Buscar cliente en Wispro por cédula → devuelve su UUID
+  async getClienteUUID(cedula) {
+    if (!cedula) throw new Error("Sin cédula para buscar en Wispro");
+    const res = await fetch(`${WISPRO_API_URL}/clients?q[national_identification_number_eq]=${cedula}`, { headers: wisproHeaders });
+    const json = await res.json();
+    if (json.status !== 200 || !json.data?.length) throw new Error(`Cliente con cédula ${cedula} no encontrado en Wispro`);
+    return json.data[0].id; // UUID del cliente
+  },
+
+  // Obtener contrato(s) de un cliente por su UUID
+  async getContratosCliente(clienteUUID) {
+    const res = await fetch(`${WISPRO_API_URL}/contracts?q[client_id_eq]=${clienteUUID}`, { headers: wisproHeaders });
+    const json = await res.json();
+    if (json.status !== 200) throw new Error("Error consultando contratos en Wispro");
+    return json.data || [];
+  },
+
+  // Cambiar estado de un contrato: "enabled" | "disabled"
+  async cambiarEstadoContrato(contratoUUID, estado) {
+    const res = await fetch(`${WISPRO_API_URL}/contracts/${contratoUUID}`, {
+      method: "PUT",
+      headers: wisproHeaders,
+      body: JSON.stringify({ state: estado }),
+    });
+    const json = await res.json();
+    if (json.status !== 200) throw new Error(`Error cambiando estado en Wispro: ${json.message}`);
+    return json.data;
+  },
+
+  // Flujo completo: busca por cédula → obtiene contratos → cambia estado de todos
+  async cortarServicio(cedula) {
+    const uuid = await wispro.getClienteUUID(cedula);
+    const contratos = await wispro.getContratosCliente(uuid);
+    const activos = contratos.filter(c => c.state === "enabled");
+    if (!activos.length) throw new Error("El cliente no tiene contratos activos en Wispro");
+    for (const c of activos) await wispro.cambiarEstadoContrato(c.id, "disabled");
+    return { cortados: activos.length, contratos: activos.map(c => c.id) };
+  },
+
+  async reconectarServicio(cedula) {
+    const uuid = await wispro.getClienteUUID(cedula);
+    const contratos = await wispro.getContratosCliente(uuid);
+    const cortados = contratos.filter(c => c.state === "disabled");
+    if (!cortados.length) throw new Error("El cliente no tiene contratos suspendidos en Wispro");
+    for (const c of cortados) await wispro.cambiarEstadoContrato(c.id, "enabled");
+    return { reconectados: cortados.length, contratos: cortados.map(c => c.id) };
+  },
+
+  // Registrar acción en wispro_sync_log de Supabase
+  async logAccion(clienteId, clienteNombre, accion, resultado, error = null) {
+    try {
+      await sb.from("wispro_sync_log").insert({
+        cliente_id: clienteId,
+        cliente_nombre: clienteNombre,
+        accion,
+        resultado: resultado ? JSON.stringify(resultado) : null,
+        error: error || null,
+        created_at: new Date().toISOString(),
+      });
+    } catch (e) { console.warn("No se pudo guardar en wispro_sync_log:", e); }
+  },
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -1374,6 +1452,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   const [busqCliente, setBusqCliente] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("todos");
   const [busqTicket, setBusqTicket] = useState("");
+  const [wisproLoading, setWisproLoading] = useState({}); // { clienteId: "cortando"|"reconectando" }
 
   // La zona del secretario
   const zonaSecretario = zonas.find(z => z.id === usuario.zonaId);
@@ -1390,11 +1469,40 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
     if (!u.nombre?.trim()) { alert("El nombre es obligatorio."); return; }
     if (!u.usuario?.trim()) { alert("El usuario (login) es obligatorio."); return; }
     if (!u.clave?.trim()) { alert("La clave de acceso es obligatoria."); return; }
+    const clienteAnterior = usuarios.find(x => x.id === u.id);
+    const estadoAnterior = clienteAnterior?.estado;
+    const estadoNuevo = u.estado;
     const clienteConZona = { ...u, zonaId: usuario.zonaId, secretarioId: usuario.id, rol: "cliente" };
     try {
       const guardado = await db.upsertUsuario(clienteConZona);
       setUsuarios(p => p.find(x => x.id === guardado.id) ? p.map(x => x.id === guardado.id ? guardado : x) : [...p, guardado]);
       setShowFormCliente(false); setEditCliente(null);
+
+      // ── Integración Wispro: corte o reconexión automática ──
+      const cedula = u.cedula?.trim();
+      if (cedula) {
+        const esCorte = estadoNuevo === "DPP" && estadoAnterior !== "DPP";
+        const esReconexion = (estadoNuevo === "Activo" || estadoNuevo === "Al día") && estadoAnterior === "DPP";
+        if (esCorte) {
+          try {
+            const resultado = await wispro.cortarServicio(cedula);
+            await wispro.logAccion(guardado.id, guardado.nombre, "CORTE_DPP", resultado);
+            alert(`✅ Servicio cortado en Wispro correctamente.\n${resultado.cortados} contrato(s) suspendido(s).`);
+          } catch (err) {
+            await wispro.logAccion(guardado.id, guardado.nombre, "CORTE_DPP", null, err.message);
+            alert(`⚠️ Estado guardado en el sistema, pero hubo un error al cortar en Wispro:\n${err.message}`);
+          }
+        } else if (esReconexion) {
+          try {
+            const resultado = await wispro.reconectarServicio(cedula);
+            await wispro.logAccion(guardado.id, guardado.nombre, "RECONEXION", resultado);
+            alert(`✅ Servicio reconectado en Wispro correctamente.\n${resultado.reconectados} contrato(s) habilitado(s).`);
+          } catch (err) {
+            await wispro.logAccion(guardado.id, guardado.nombre, "RECONEXION", null, err.message);
+            alert(`⚠️ Estado guardado en el sistema, pero hubo un error al reconectar en Wispro:\n${err.message}`);
+          }
+        }
+      }
     } catch (err) {
       const msg = err?.message || JSON.stringify(err);
       if (msg.includes("usuarios_rol_check")) {
@@ -1805,7 +1913,55 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   <div style={{ fontSize: 11, color: GC.ink3 }}>{c.plan}</div>
                 </div>
                 {c.estado && <Badge text={c.estado} color={ESTADO_COLOR[c.estado] || "#64748b"} />}
-                <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {/* Botón corte rápido DPP */}
+                  {c.cedula && c.estado !== "DPP" && c.estado !== "DPS" && (
+                    <button
+                      disabled={!!wisproLoading[c.id]}
+                      onClick={async () => {
+                        if (!confirm(`¿Cortar el servicio de ${c.nombre}?\nSe marcará como DPP y se suspenderá en Wispro.`)) return;
+                        setWisproLoading(p => ({ ...p, [c.id]: "cortando" }));
+                        try {
+                          const actualizado = { ...c, estado: "DPP" };
+                          await db.upsertUsuario(actualizado);
+                          setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "DPP" } : u));
+                          const res = await wispro.cortarServicio(c.cedula);
+                          await wispro.logAccion(c.id, c.nombre, "CORTE_DPP", res);
+                          alert(`✅ ${c.nombre} cortado.\n${res.cortados} contrato(s) suspendido(s) en Wispro.`);
+                        } catch (err) {
+                          await wispro.logAccion(c.id, c.nombre, "CORTE_DPP", null, err.message);
+                          alert(`⚠️ Estado cambiado a DPP, pero error en Wispro:\n${err.message}`);
+                        } finally { setWisproLoading(p => { const n={...p}; delete n[c.id]; return n; }); }
+                      }}
+                      style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, padding: "5px 10px", cursor: wisproLoading[c.id] ? "wait" : "pointer", fontSize: 12, fontWeight: 700, opacity: wisproLoading[c.id] ? 0.6 : 1 }}
+                    >
+                      {wisproLoading[c.id] === "cortando" ? "⏳ Cortando..." : "✂️ Cortar"}
+                    </button>
+                  )}
+                  {/* Botón reconexión rápida */}
+                  {c.cedula && c.estado === "DPP" && (
+                    <button
+                      disabled={!!wisproLoading[c.id]}
+                      onClick={async () => {
+                        if (!confirm(`¿Reconectar el servicio de ${c.nombre}?\nSe marcará como Activo y se habilitará en Wispro.`)) return;
+                        setWisproLoading(p => ({ ...p, [c.id]: "reconectando" }));
+                        try {
+                          const actualizado = { ...c, estado: "Activo" };
+                          await db.upsertUsuario(actualizado);
+                          setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "Activo" } : u));
+                          const res = await wispro.reconectarServicio(c.cedula);
+                          await wispro.logAccion(c.id, c.nombre, "RECONEXION", res);
+                          alert(`✅ ${c.nombre} reconectado.\n${res.reconectados} contrato(s) habilitado(s) en Wispro.`);
+                        } catch (err) {
+                          await wispro.logAccion(c.id, c.nombre, "RECONEXION", null, err.message);
+                          alert(`⚠️ Estado cambiado a Activo, pero error en Wispro:\n${err.message}`);
+                        } finally { setWisproLoading(p => { const n={...p}; delete n[c.id]; return n; }); }
+                      }}
+                      style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 8, padding: "5px 10px", cursor: wisproLoading[c.id] ? "wait" : "pointer", fontSize: 12, fontWeight: 700, opacity: wisproLoading[c.id] ? 0.6 : 1 }}
+                    >
+                      {wisproLoading[c.id] === "reconectando" ? "⏳ Reconectando..." : "⚡ Reconectar"}
+                    </button>
+                  )}
                   <button onClick={() => toggleCliente(c.id)} style={{ background: c.activo ? "#f0fdf4" : "#f1f5f9", color: c.activo ? "#16a34a" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{c.activo ? "Activo" : "Inactivo"}</button>
                   <button onClick={() => { setEditCliente(c); setShowFormCliente(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
                   <button title="Cambiar clave" onClick={async () => {
@@ -5349,9 +5505,38 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
   const saveU = async (u) => {
     try {
+      const usuarioAnterior = usuarios.find(x => x.id === u.id);
+      const estadoAnterior = usuarioAnterior?.estado;
+      const estadoNuevo = u.estado;
       const guardado = await db.upsertUsuario(u);
       setUsuarios(p => p.find(x => x.id === guardado.id) ? p.map(x => x.id === guardado.id ? guardado : x) : [...p, guardado]);
       setShowForm(false); setEditU(null); setFormTipo(null);
+
+      // ── Wispro: corte o reconexión si el cliente tiene cédula ──
+      if (u.rol === "cliente" && u.cedula?.trim()) {
+        const cedula = u.cedula.trim();
+        const esCorte = estadoNuevo === "DPP" && estadoAnterior !== "DPP";
+        const esReconexion = (estadoNuevo === "Activo" || estadoNuevo === "Al día") && estadoAnterior === "DPP";
+        if (esCorte) {
+          try {
+            const res = await wispro.cortarServicio(cedula);
+            await wispro.logAccion(guardado.id, guardado.nombre, "CORTE_DPP", res);
+            alert(`✅ Servicio cortado en Wispro.\n${res.cortados} contrato(s) suspendido(s).`);
+          } catch (err) {
+            await wispro.logAccion(guardado.id, guardado.nombre, "CORTE_DPP", null, err.message);
+            alert(`⚠️ Estado guardado, pero error al cortar en Wispro:\n${err.message}`);
+          }
+        } else if (esReconexion) {
+          try {
+            const res = await wispro.reconectarServicio(cedula);
+            await wispro.logAccion(guardado.id, guardado.nombre, "RECONEXION", res);
+            alert(`✅ Servicio reconectado en Wispro.\n${res.reconectados} contrato(s) habilitado(s).`);
+          } catch (err) {
+            await wispro.logAccion(guardado.id, guardado.nombre, "RECONEXION", null, err.message);
+            alert(`⚠️ Estado guardado, pero error al reconectar en Wispro:\n${err.message}`);
+          }
+        }
+      }
     } catch (err) { console.error("Error guardando usuario:", err); }
   };
   const deleteU = async (id) => {
