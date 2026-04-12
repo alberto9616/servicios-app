@@ -49,6 +49,7 @@ const mapUsuario = r => r ? ({
   perfilPagoId: r.perfil_pago_id || null,
   fechaPrimeraFactura: r.fecha_primera_factura || null,
   wisproClientId: r.wispro_client_id || null,
+  wisproUuid: r.wispro_uuid || null,
 }) : null;
 const mapAviso = r => r ? ({ id: r.id, tipo: r.tipo, titulo: r.titulo, mensaje: r.mensaje, fecha: r.fecha, afecta: r.afecta, activo: r.activo }) : null;
 const mapTicket = (r, mensajes = []) => r ? ({
@@ -147,7 +148,8 @@ const db = {
       nombre_empresa: u.nombreEmpresa || null,
       privilegios: [...privilegiosBase.filter(p => !p.startsWith("zona:")), ...zonasEntries],
       perfil_pago_id: u.perfilPagoId || null,
-      fecha_primera_factura: u.fechaPrimeraFactura || null
+      fecha_primera_factura: u.fechaPrimeraFactura || null,
+      wispro_uuid: u.wisproUuid || null,
     };
     // Remove undefined id so Supabase generates it automatically
     if (row.id === undefined) delete row.id;
@@ -275,28 +277,29 @@ const WISPRO_EDGE_URL  = "https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/
 const WISPRO_EDGE_AUTH = "Bearer " + SUPABASE_ANON;
 
 const wispro = {
-  // Llamar a la Edge Function de Supabase (proxy sin CORS)
-  async _llamar(cedula, accion) {
+  // Llamar a la Edge Function con el UUID de Wispro del cliente
+  async _llamar(wisproUuid, accion) {
+    if (!wisproUuid) throw new Error("Este cliente no tiene UUID de Wispro configurado. Edítalo y agrega su UUID de Wispro.");
     const res = await fetch(WISPRO_EDGE_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": WISPRO_EDGE_AUTH,
       },
-      body: JSON.stringify({ cedula, accion }),
+      body: JSON.stringify({ cliente_uuid: wisproUuid, accion }),
     });
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || "Error en Wispro");
     return json;
   },
 
-  async cortarServicio(cedula) {
-    const json = await wispro._llamar(cedula, "cortar");
+  async cortarServicio(wisproUuid) {
+    const json = await wispro._llamar(wisproUuid, "cortar");
     return { cortados: json.resultados?.length || 0, contratos: json.resultados?.map((r) => r.id) || [] };
   },
 
-  async reconectarServicio(cedula) {
-    const json = await wispro._llamar(cedula, "reconectar");
+  async reconectarServicio(wisproUuid) {
+    const json = await wispro._llamar(wisproUuid, "reconectar");
     return { reconectados: json.resultados?.length || 0, contratos: json.resultados?.map((r) => r.id) || [] };
   },
 
@@ -1449,13 +1452,13 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       setShowFormCliente(false); setEditCliente(null);
 
       // ── Integración Wispro: corte o reconexión automática ──
-      const cedula = u.cedula?.trim();
-      if (cedula) {
+      const wisproUuid = u.wisproUuid?.trim();
+      if (wisproUuid) {
         const esCorte = estadoNuevo === "DPP" && estadoAnterior !== "DPP";
         const esReconexion = (estadoNuevo === "Activo" || estadoNuevo === "Al día") && estadoAnterior === "DPP";
         if (esCorte) {
           try {
-            const resultado = await wispro.cortarServicio(cedula);
+            const resultado = await wispro.cortarServicio(wisproUuid);
             await wispro.logAccion(guardado.id, guardado.nombre, "CORTE_DPP", resultado);
             alert(`✅ Servicio cortado en Wispro correctamente.\n${resultado.cortados} contrato(s) suspendido(s).`);
           } catch (err) {
@@ -1464,7 +1467,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
           }
         } else if (esReconexion) {
           try {
-            const resultado = await wispro.reconectarServicio(cedula);
+            const resultado = await wispro.reconectarServicio(wisproUuid);
             await wispro.logAccion(guardado.id, guardado.nombre, "RECONEXION", resultado);
             alert(`✅ Servicio reconectado en Wispro correctamente.\n${resultado.reconectados} contrato(s) habilitado(s).`);
           } catch (err) {
@@ -1851,6 +1854,10 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   </Sel>
                 </Field>
                 <Field label="Clave WiFi"><Inp value={editCliente.claveWifi || ""} onChange={e => setEditCliente({ ...editCliente, claveWifi: e.target.value })} placeholder="Clave del router del cliente" /></Field>
+                <Field label="UUID Wispro (para corte/reconexión)">
+                  <Inp value={editCliente.wisproUuid || ""} onChange={e => setEditCliente({ ...editCliente, wisproUuid: e.target.value })} placeholder="UUID del cliente en Wispro (ej: d1541a84-...)" />
+                  <div style={{ fontSize: 11, color: GC.ink3, marginTop: 3 }}>📡 Lo encuentras en la URL del cliente en cloud.wispro.co/clients/UUID</div>
+                </Field>
                 <Field label="Primera factura desde">
                   <Inp type="month" value={editCliente.fechaPrimeraFactura ? editCliente.fechaPrimeraFactura.slice(0,7) : ""} onChange={e => setEditCliente({ ...editCliente, fechaPrimeraFactura: e.target.value ? e.target.value + "-01" : null })} />
                   <div style={{ fontSize: 11, color: GC.ink3, marginTop: 3 }}>📅 Mes desde el cual se generará factura automática</div>
@@ -1885,7 +1892,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 {c.estado && <Badge text={c.estado} color={ESTADO_COLOR[c.estado] || "#64748b"} />}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {/* Botón corte rápido DPP */}
-                  {c.cedula && c.estado !== "DPP" && c.estado !== "DPS" && (
+                  {c.wisproUuid && c.estado !== "DPP" && c.estado !== "DPS" && (
                     <button
                       disabled={!!wisproLoading[c.id]}
                       onClick={async () => {
@@ -1895,7 +1902,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                           const actualizado = { ...c, estado: "DPP" };
                           await db.upsertUsuario(actualizado);
                           setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "DPP" } : u));
-                          const res = await wispro.cortarServicio(c.cedula);
+                          const res = await wispro.cortarServicio(c.wisproUuid);
                           await wispro.logAccion(c.id, c.nombre, "CORTE_DPP", res);
                           alert(`✅ ${c.nombre} cortado.\n${res.cortados} contrato(s) suspendido(s) en Wispro.`);
                         } catch (err) {
@@ -1909,7 +1916,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                     </button>
                   )}
                   {/* Botón reconexión rápida */}
-                  {c.cedula && c.estado === "DPP" && (
+                  {c.wisproUuid && c.estado === "DPP" && (
                     <button
                       disabled={!!wisproLoading[c.id]}
                       onClick={async () => {
@@ -1919,7 +1926,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                           const actualizado = { ...c, estado: "Activo" };
                           await db.upsertUsuario(actualizado);
                           setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "Activo" } : u));
-                          const res = await wispro.reconectarServicio(c.cedula);
+                          const res = await wispro.reconectarServicio(c.wisproUuid);
                           await wispro.logAccion(c.id, c.nombre, "RECONEXION", res);
                           alert(`✅ ${c.nombre} reconectado.\n${res.reconectados} contrato(s) habilitado(s) en Wispro.`);
                         } catch (err) {
@@ -5482,14 +5489,14 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       setUsuarios(p => p.find(x => x.id === guardado.id) ? p.map(x => x.id === guardado.id ? guardado : x) : [...p, guardado]);
       setShowForm(false); setEditU(null); setFormTipo(null);
 
-      // ── Wispro: corte o reconexión si el cliente tiene cédula ──
-      if (u.rol === "cliente" && u.cedula?.trim()) {
-        const cedula = u.cedula.trim();
+      // ── Wispro: corte o reconexión si el cliente tiene wisproUuid ──
+      if (u.rol === "cliente" && u.wisproUuid?.trim()) {
+        const wisproUuid = u.wisproUuid.trim();
         const esCorte = estadoNuevo === "DPP" && estadoAnterior !== "DPP";
         const esReconexion = (estadoNuevo === "Activo" || estadoNuevo === "Al día") && estadoAnterior === "DPP";
         if (esCorte) {
           try {
-            const res = await wispro.cortarServicio(cedula);
+            const res = await wispro.cortarServicio(wisproUuid);
             await wispro.logAccion(guardado.id, guardado.nombre, "CORTE_DPP", res);
             alert(`✅ Servicio cortado en Wispro.\n${res.cortados} contrato(s) suspendido(s).`);
           } catch (err) {
@@ -5498,7 +5505,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           }
         } else if (esReconexion) {
           try {
-            const res = await wispro.reconectarServicio(cedula);
+            const res = await wispro.reconectarServicio(wisproUuid);
             await wispro.logAccion(guardado.id, guardado.nombre, "RECONEXION", res);
             alert(`✅ Servicio reconectado en Wispro.\n${res.reconectados} contrato(s) habilitado(s).`);
           } catch (err) {
@@ -6034,6 +6041,10 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       </Sel>
                     </Field>
                     <Field label="Clave WiFi"><Inp value={editU.claveWifi || ""} onChange={e => setEditU({ ...editU, claveWifi: e.target.value })} placeholder="Clave del router" /></Field>
+                    <Field label="UUID Wispro">
+                      <Inp value={editU.wisproUuid || ""} onChange={e => setEditU({ ...editU, wisproUuid: e.target.value })} placeholder="UUID del cliente en Wispro" />
+                      <div style={{ fontSize: 11, color: GC.ink3, marginTop: 3 }}>📡 URL: cloud.wispro.co/clients/UUID</div>
+                    </Field>
                     <Field label="Primera factura desde">
                       <Inp type="month" value={editU.fechaPrimeraFactura ? editU.fechaPrimeraFactura.slice(0,7) : ""} onChange={e => setEditU({ ...editU, fechaPrimeraFactura: e.target.value ? e.target.value + "-01" : null })} />
                       <div style={{ fontSize: 11, color: GC.ink3, marginTop: 3 }}>📅 Mes desde el que se generará factura automática</div>
