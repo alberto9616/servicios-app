@@ -35,7 +35,7 @@ const fechaLocal = (d = new Date()) => {
 // ──────────────────────────────────────────────────────────
 // HELPERS: convierten snake_case (BD) ↔ camelCase (app)
 // ──────────────────────────────────────────────────────────
-const mapZona = r => r ? ({ id: r.id, nombre: r.nombre, color: r.color, activa: r.activa, nombreEmpresa: r.nombre_empresa }) : null;
+const mapZona = r => r ? ({ id: r.id, nombre: r.nombre, color: r.color, activa: r.activa, nombreEmpresa: r.nombre_empresa, wisproActivo: r.wispro_activo !== false }) : null;
 const mapPlan = r => r ? ({ id: r.id, nombre: r.nombre, precio: r.precio, descripcion: r.descripcion, activo: r.activo }) : null;
 const mapPerfilPago = r => r ? ({ id: r.id, nombre: r.nombre, diaInicio: r.dia_inicio, diaFin: r.dia_fin, descripcion: r.descripcion || "", activo: r.activo }) : null;
 const mapUsuario = r => r ? ({
@@ -100,7 +100,8 @@ const mapAbono = r => r ? ({
 const db = {
   // ZONAS
   async getZonas() { const { data, error } = await sb.from("zonas").select("*").order("nombre"); if (error) throw error; return data.map(mapZona); },
-  async upsertZona(z) { const { data, error } = await sb.from("zonas").upsert({ id: z.id||undefined, nombre: z.nombre, color: z.color, activa: z.activa, nombre_empresa: z.nombreEmpresa||null }).select().single(); if (error) throw error; return mapZona(data); },
+  async upsertZona(z) { const { data, error } = await sb.from("zonas").upsert({ id: z.id||undefined, nombre: z.nombre, color: z.color, activa: z.activa, nombre_empresa: z.nombreEmpresa||null, wispro_activo: z.wisproActivo !== false }).select().single(); if (error) throw error; return mapZona(data); },
+  async toggleWisproZona(id, wisproActivo) { const { error } = await sb.from("zonas").update({ wispro_activo: wisproActivo }).eq("id", id); if (error) throw error; },
   async deleteZona(id) { const { error } = await sb.from("zonas").delete().eq("id", id); if (error) throw error; },
   async toggleZona(id, activa) { const { error } = await sb.from("zonas").update({ activa }).eq("id", id); if (error) throw error; },
   async patchZonaNombreEmpresa(id, nombreEmpresa) { const { error } = await sb.from("zonas").update({ nombre_empresa: nombreEmpresa }).eq("id", id); if (error) throw error; },
@@ -293,12 +294,20 @@ const wispro = {
     return json;
   },
 
-  async cortarServicio(wisproUuid) {
+  async cortarServicio(wisproUuid, zonaId, zonas) {
+    if (zonaId && zonas) {
+      const zona = zonas.find(z => z.id === zonaId);
+      if (zona && zona.wisproActivo === false) throw new Error(`La integración Wispro está desactivada para la zona ${zona.nombre}. Actívala desde el Panel Superusuario.`);
+    }
     const json = await wispro._llamar(wisproUuid, "cortar");
     return { cortados: json.resultados?.length || 0, contratos: json.resultados?.map((r) => r.id) || [] };
   },
 
-  async reconectarServicio(wisproUuid) {
+  async reconectarServicio(wisproUuid, zonaId, zonas) {
+    if (zonaId && zonas) {
+      const zona = zonas.find(z => z.id === zonaId);
+      if (zona && zona.wisproActivo === false) throw new Error(`La integración Wispro está desactivada para la zona ${zona.nombre}. Actívala desde el Panel Superusuario.`);
+    }
     const json = await wispro._llamar(wisproUuid, "reconectar");
     return { reconectados: json.resultados?.length || 0, contratos: json.resultados?.map((r) => r.id) || [] };
   },
@@ -1458,7 +1467,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
         const esReconexion = (estadoNuevo === "Activo" || estadoNuevo === "Al día") && estadoAnterior === "DPP";
         if (esCorte) {
           try {
-            const resultado = await wispro.cortarServicio(wisproUuid);
+            const resultado = await wispro.cortarServicio(wisproUuid, u.zonaId, zonas);
             await wispro.logAccion(guardado.id, guardado.nombre, "CORTE_DPP", resultado);
             alert(`✅ Servicio cortado en Wispro correctamente.\n${resultado.cortados} contrato(s) suspendido(s).`);
           } catch (err) {
@@ -1467,7 +1476,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
           }
         } else if (esReconexion) {
           try {
-            const resultado = await wispro.reconectarServicio(wisproUuid);
+            const resultado = await wispro.reconectarServicio(wisproUuid, u.zonaId, zonas);
             await wispro.logAccion(guardado.id, guardado.nombre, "RECONEXION", resultado);
             alert(`✅ Servicio reconectado en Wispro correctamente.\n${resultado.reconectados} contrato(s) habilitado(s).`);
           } catch (err) {
@@ -1902,7 +1911,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                           const actualizado = { ...c, estado: "DPP" };
                           await db.upsertUsuario(actualizado);
                           setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "DPP" } : u));
-                          const res = await wispro.cortarServicio(c.wisproUuid);
+                          const res = await wispro.cortarServicio(c.wisproUuid, c.zonaId, zonas);
                           await wispro.logAccion(c.id, c.nombre, "CORTE_DPP", res);
                           alert(`✅ ${c.nombre} cortado.\n${res.cortados} contrato(s) suspendido(s) en Wispro.`);
                         } catch (err) {
@@ -1926,7 +1935,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                           const actualizado = { ...c, estado: "Activo" };
                           await db.upsertUsuario(actualizado);
                           setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "Activo" } : u));
-                          const res = await wispro.reconectarServicio(c.wisproUuid);
+                          const res = await wispro.reconectarServicio(c.wisproUuid, c.zonaId, zonas);
                           await wispro.logAccion(c.id, c.nombre, "RECONEXION", res);
                           alert(`✅ ${c.nombre} reconectado.\n${res.reconectados} contrato(s) habilitado(s) en Wispro.`);
                         } catch (err) {
@@ -1959,7 +1968,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       )}
 
       {tab === "facturacion" && (
-        <ModuloFacturacion usuario={usuario} usuarios={usuarios} zonas={zonas} planes={planes} perfilesPago={perfilesPago} />
+        <ModuloFacturacion usuario={usuario} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} planes={planes} perfilesPago={perfilesPago} />
       )}
 
       {tab === "avisos" && (
@@ -2830,7 +2839,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
 // ══════════════════════════════════════════════════════════════
 // MÓDULO FACTURACIÓN — Admin y Secretario
 // ══════════════════════════════════════════════════════════════
-function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = [] }) {
+function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perfilesPago = [] }) {
   const [facturas, setFacturas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [subTab, setSubTab] = useState("emitidas");
@@ -2880,18 +2889,33 @@ function ModuloFacturacion({ usuario, usuarios, zonas, planes, perfilesPago = []
       const nuevoEstado = nuevoSaldo <= 0 ? "Pagado" : "Abono parcial";
       const nuevaFechaPago = nuevoSaldo <= 0 ? nuevoAbono.fecha : null;
       await db.actualizarFactura(modalAbono.id, { saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: nuevoAbono.metodoPago, fecha_pago: nuevaFechaPago });
-      // Actualizar estado local completo incluyendo fechaPago para que cobradoHoy y totalCaja se recalculen inmediatamente
       setFacturas(prev => prev.map(f => f.id === modalAbono.id
         ? { ...f, saldoPendiente: nuevoSaldo, estado: nuevoEstado, metodoPago: nuevoAbono.metodoPago, fechaPago: nuevaFechaPago }
         : f
       ));
       setAbonosModal(prev => [abono, ...prev]);
-      // Notificar a SeccionEmitidas para actualizar cobradoHoy inmediatamente
       if (abono.fecha === hoyStr && agregarAbonoHoyRef.current?.agregar) {
         agregarAbonoHoyRef.current.agregar(abono);
       }
       setModalAbono(prev => ({ ...prev, saldoPendiente: nuevoSaldo, estado: nuevoEstado }));
       setNuevoAbono({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: fechaLocal() });
+
+      // ── Reconexión automática si el cliente estaba en DPP (cualquier abono) ──
+      if (modalAbono.clienteId) {
+        const cliente = usuarios.find(u => u.id === modalAbono.clienteId);
+        if (cliente && cliente.estado === "DPP" && cliente.wisproUuid) {
+          try {
+            await db.upsertUsuario({ ...cliente, estado: "Al día" });
+            if (setUsuarios) setUsuarios(prev => prev.map(u => u.id === cliente.id ? { ...u, estado: "Al día" } : u));
+            const res = await wispro.reconectarServicio(cliente.wisproUuid, cliente.zonaId, zonas);
+            await wispro.logAccion(cliente.id, cliente.nombre, "RECONEXION_PAGO", res);
+            alert(`✅ Pago registrado.\n⚡ Servicio de ${cliente.nombre} reconectado automáticamente en Wispro.\n${res.reconectados} contrato(s) habilitado(s).`);
+          } catch (err) {
+            await wispro.logAccion(modalAbono.clienteId, modalAbono.clienteNombre, "RECONEXION_PAGO", null, err.message);
+            alert(`✅ Pago registrado correctamente.\n⚠️ No se pudo reconectar en Wispro: ${err.message}\nActualiza el estado del cliente manualmente.`);
+          }
+        }
+      }
     } catch (e) { setErrAbono("Error: " + e.message); }
   };
 
@@ -4992,10 +5016,11 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
 // ══════════════════════════════════════════════════════════════
 // TAB SUPERUSUARIO — gestión exclusiva del superusuario
 // ══════════════════════════════════════════════════════════════
-function TabSuperusuario({ usuarios, setUsuarios, sesion, zonas = [] }) {
+function TabSuperusuario({ usuarios, setUsuarios, sesion, zonas = [], setZonas }) {
   const [editU, setEditU] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [msg, setMsg] = useState(null);
+  const [wisproMsg, setWisproMsg] = useState(null);
 
   // Solo admins y el superusuario mismo son visibles aquí
   const admins = usuarios.filter(u => u.rol === "admin" || u.rol === "superusuario");
@@ -5028,6 +5053,16 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion, zonas = [] }) {
     } catch(e) { setMsg({ ok: false, texto: "Error: " + e.message }); }
   };
 
+  const toggleWispro = async (zona) => {
+    const nuevoEstado = !zona.wisproActivo;
+    try {
+      await db.toggleWisproZona(zona.id, nuevoEstado);
+      if (setZonas) setZonas(prev => prev.map(z => z.id === zona.id ? { ...z, wisproActivo: nuevoEstado } : z));
+      setWisproMsg({ ok: true, texto: `✅ Wispro ${nuevoEstado ? "activado" : "desactivado"} para zona ${zona.nombre}.` });
+      setTimeout(() => setWisproMsg(null), 3000);
+    } catch(e) { setWisproMsg({ ok: false, texto: "Error: " + e.message }); }
+  };
+
   return (
     <div>
       {/* Banner superusuario */}
@@ -5038,6 +5073,50 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion, zonas = [] }) {
           <div style={{ fontSize: 13, color: GC.ink3, marginTop: 2 }}>
             Desde aquí puedes gestionar los administradores del sistema. Solo existe un superusuario y no puede ser eliminado.
           </div>
+        </div>
+      </div>
+
+      {/* Panel Control Wispro por Zonas */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, marginBottom: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <span style={{ fontSize: 22 }}>📡</span>
+          <div>
+            <div style={{ fontWeight: 800, color: GC.ink, fontSize: 15 }}>Control de integración Wispro por zona</div>
+            <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>Activa o desactiva los cortes y reconexiones automáticas con Wispro para cada zona.</div>
+          </div>
+        </div>
+        {wisproMsg && (
+          <div style={{ background: wisproMsg.ok ? "#f0fdf4" : "#fef2f2", border: "1px solid " + (wisproMsg.ok ? "#bbf7d0" : "#fecaca"), borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13, color: wisproMsg.ok ? "#16a34a" : "#dc2626" }}>
+            {wisproMsg.texto}
+          </div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {zonas.length === 0 && <div style={{ color: GC.ink3, fontSize: 13 }}>No hay zonas configuradas.</div>}
+          {zonas.map(z => (
+            <div key={z.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", borderRadius: 12, border: "1px solid " + (z.wisproActivo ? z.color + "44" : "#e2e8f0"), background: z.wisproActivo ? z.color + "0a" : "#f8fafc" }}>
+              <span style={{ width: 12, height: 12, borderRadius: "50%", background: z.color, flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>📍 {z.nombre}</div>
+                <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>
+                  {z.wisproActivo
+                    ? "✅ Cortes y reconexiones activos — el sistema controla Wispro"
+                    : "🔒 Integración desactivada — los botones de corte/reconexión están bloqueados"}
+                </div>
+              </div>
+              <button
+                onClick={() => toggleWispro(z)}
+                style={{
+                  background: z.wisproActivo ? "#dcfce7" : "#fee2e2",
+                  color: z.wisproActivo ? "#16a34a" : "#dc2626",
+                  border: "1px solid " + (z.wisproActivo ? "#bbf7d0" : "#fecaca"),
+                  borderRadius: 10, padding: "8px 18px", cursor: "pointer",
+                  fontSize: 13, fontWeight: 800, whiteSpace: "nowrap"
+                }}
+              >
+                {z.wisproActivo ? "🟢 Activo" : "🔴 Inactivo"}
+              </button>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -5496,7 +5575,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
         const esReconexion = (estadoNuevo === "Activo" || estadoNuevo === "Al día") && estadoAnterior === "DPP";
         if (esCorte) {
           try {
-            const res = await wispro.cortarServicio(wisproUuid);
+            const res = await wispro.cortarServicio(wisproUuid, u.zonaId, zonas);
             await wispro.logAccion(guardado.id, guardado.nombre, "CORTE_DPP", res);
             alert(`✅ Servicio cortado en Wispro.\n${res.cortados} contrato(s) suspendido(s).`);
           } catch (err) {
@@ -5505,7 +5584,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           }
         } else if (esReconexion) {
           try {
-            const res = await wispro.reconectarServicio(wisproUuid);
+            const res = await wispro.reconectarServicio(wisproUuid, u.zonaId, zonas);
             await wispro.logAccion(guardado.id, guardado.nombre, "RECONEXION", res);
             alert(`✅ Servicio reconectado en Wispro.\n${res.reconectados} contrato(s) habilitado(s).`);
           } catch (err) {
@@ -5656,12 +5735,13 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           usuarios={usuarios} setUsuarios={setUsuarios}
           sesion={sesion}
           zonas={zonas}
+          setZonas={setZonas}
         />
       )}
 
       {/* ── TAB RESUMEN ── */}
       {tab === "facturacion" && (
-        <ModuloFacturacion usuario={sesion} usuarios={usuarios} zonas={zonas} planes={planes} perfilesPago={perfilesPago} />
+        <ModuloFacturacion usuario={sesion} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} planes={planes} perfilesPago={perfilesPago} />
       )}
 
       {tab === "resumen" && (
