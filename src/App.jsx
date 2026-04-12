@@ -14,10 +14,6 @@ const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON || "eyJhbGciOiJIUzI1NiI
 // Lo encuentras en: supabase.com → tu proyecto → Settings → General
 const WISPRO_SYNC_URL = "https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/wispro-sync";
 
-// ── Wispro API — Corte y reconexión de servicios ───────────
-const WISPRO_API_URL   = "https://cloud.wispro.co/api/v1";
-const WISPRO_API_TOKEN = import.meta.env.VITE_WISPRO_TOKEN || "e1833499-b9b1-4a6c-8efd-f1d6be7dc1d8";
-
 // ── Logo de la empresa ─────────────────────────────────────
 // Pega aquí la URL de tu logo (imagen subida a internet)
 // Ejemplo: "https://i.imgur.com/tulogo.png"
@@ -273,61 +269,35 @@ const db = {
 };
 
 // ══════════════════════════════════════════════════════════════
-// WISPRO API — Corte y reconexión de servicios
+// WISPRO API — Corte y reconexión vía Edge Function (proxy sin CORS)
 // ══════════════════════════════════════════════════════════════
-const wisproHeaders = {
-  "Authorization": WISPRO_API_TOKEN,
-  "Accept": "application/json",
-  "Content-Type": "application/json",
-};
+const WISPRO_EDGE_URL  = "https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/dynamic-responder";
+const WISPRO_EDGE_AUTH = "Bearer " + SUPABASE_ANON;
 
 const wispro = {
-  // Buscar cliente en Wispro por cédula → devuelve su UUID
-  async getClienteUUID(cedula) {
-    if (!cedula) throw new Error("Sin cédula para buscar en Wispro");
-    const res = await fetch(`${WISPRO_API_URL}/clients?q[national_identification_number_eq]=${cedula}`, { headers: wisproHeaders });
-    const json = await res.json();
-    if (json.status !== 200 || !json.data?.length) throw new Error(`Cliente con cédula ${cedula} no encontrado en Wispro`);
-    return json.data[0].id; // UUID del cliente
-  },
-
-  // Obtener contrato(s) de un cliente por su UUID
-  async getContratosCliente(clienteUUID) {
-    const res = await fetch(`${WISPRO_API_URL}/contracts?q[client_id_eq]=${clienteUUID}`, { headers: wisproHeaders });
-    const json = await res.json();
-    if (json.status !== 200) throw new Error("Error consultando contratos en Wispro");
-    return json.data || [];
-  },
-
-  // Cambiar estado de un contrato: "enabled" | "disabled"
-  async cambiarEstadoContrato(contratoUUID, estado) {
-    const res = await fetch(`${WISPRO_API_URL}/contracts/${contratoUUID}`, {
-      method: "PUT",
-      headers: wisproHeaders,
-      body: JSON.stringify({ state: estado }),
+  // Llamar a la Edge Function de Supabase (proxy sin CORS)
+  async _llamar(cedula, accion) {
+    const res = await fetch(WISPRO_EDGE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": WISPRO_EDGE_AUTH,
+      },
+      body: JSON.stringify({ cedula, accion }),
     });
     const json = await res.json();
-    if (json.status !== 200) throw new Error(`Error cambiando estado en Wispro: ${json.message}`);
-    return json.data;
+    if (!json.ok) throw new Error(json.error || "Error en Wispro");
+    return json;
   },
 
-  // Flujo completo: busca por cédula → obtiene contratos → cambia estado de todos
   async cortarServicio(cedula) {
-    const uuid = await wispro.getClienteUUID(cedula);
-    const contratos = await wispro.getContratosCliente(uuid);
-    const activos = contratos.filter(c => c.state === "enabled");
-    if (!activos.length) throw new Error("El cliente no tiene contratos activos en Wispro");
-    for (const c of activos) await wispro.cambiarEstadoContrato(c.id, "disabled");
-    return { cortados: activos.length, contratos: activos.map(c => c.id) };
+    const json = await wispro._llamar(cedula, "cortar");
+    return { cortados: json.resultados?.length || 0, contratos: json.resultados?.map((r) => r.id) || [] };
   },
 
   async reconectarServicio(cedula) {
-    const uuid = await wispro.getClienteUUID(cedula);
-    const contratos = await wispro.getContratosCliente(uuid);
-    const cortados = contratos.filter(c => c.state === "disabled");
-    if (!cortados.length) throw new Error("El cliente no tiene contratos suspendidos en Wispro");
-    for (const c of cortados) await wispro.cambiarEstadoContrato(c.id, "enabled");
-    return { reconectados: cortados.length, contratos: cortados.map(c => c.id) };
+    const json = await wispro._llamar(cedula, "reconectar");
+    return { reconectados: json.resultados?.length || 0, contratos: json.resultados?.map((r) => r.id) || [] };
   },
 
   // Registrar acción en wispro_sync_log de Supabase
