@@ -2783,63 +2783,51 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
         </div>
 
         {/* Preview */}
-        <div id="recibo-print" style={{ padding: "12px 16px", fontFamily: "'Courier New', monospace", fontSize: 13, color: "#000", maxWidth: 300, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", marginBottom: 8 }}>
+        <div id="recibo-print" style={{ padding: "10px 14px", fontFamily: "'Courier New', monospace", fontSize: 14, color: "#000", maxWidth: 280, margin: "0 auto" }}>
+
+          {/* Empresa */}
+          <div style={{ textAlign: "center", marginBottom: 6 }}>
             <div style={{ fontSize: 15, fontWeight: 700 }}>{(nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase()}</div>
-            <div style={{ fontSize: 13 }}>OFICINA VIJES</div>
             <div style={{ fontSize: 13 }}>Tel.: {telefono || "318-8255601"}</div>
           </div>
-          <div style={{ borderTop: "1px dashed #000", margin: "8px 0" }} />
-          {row("Recibo No.:", String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0"), true)}
-          {row("Fecha:", factura.fechaEmision || fechaLocal())}
-          {row("Cédula:", factura.clienteCedula || "—")}
-          <div style={{ borderTop: "1px dashed #000", margin: "8px 0" }} />
-          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 2 }}>{(factura.clienteNombre || "").toUpperCase()}</div>
-          <div style={{ fontSize: 13, marginBottom: 6 }}>{(factura.clienteDireccion || "").toUpperCase()}</div>
-          <div style={{ borderTop: "1px dashed #000", margin: "8px 0" }} />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#555", marginBottom: 6 }}>
-            <span>CONCEPTO</span><span>VALOR</span>
+
+          <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+
+          {/* Número de recibo */}
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2 }}>
+            <span>Recibo No.:</span>
+            <span style={{ fontWeight: 700 }}>#{String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0")}</span>
           </div>
-          {factura.items && factura.items.length > 0 ? (
-            <>
-              {factura.items.map((item, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 3, fontSize: 13 }}>
-                  <span>{(item.concepto || "").toUpperCase()}</span>
-                  <span>{formatCOP(item.monto)}</span>
-                </div>
-              ))}
-              <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
-              {row("SUBTOTAL", formatCOP(factura.items.reduce((s,i) => s + (Number(i.monto)||0), 0)))}
-            </>
-          ) : (
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 3 }}>
-              <span>{(factura.concepto || "").toUpperCase()}</span>
-              <span>{formatCOP(factura.monto)}</span>
-            </div>
-          )}
-          {mostrarAbonos && (
-            <>
-              <div style={{ borderTop: "1px dashed #000", margin: "8px 0" }} />
-              <div style={{ fontSize: 12, color: "#555", marginBottom: 4 }}>ABONOS REGISTRADOS</div>
-              {abonos.map((a, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                  <span>{a.fecha} · {a.metodoPago}</span>
-                  <span>- {formatCOP(a.monto)}</span>
-                </div>
-              ))}
-            </>
-          )}
-          <div style={{ borderTop: "1px dashed #000", margin: "8px 0" }} />
-          {row("Total factura:", formatCOP(factura.monto))}
-          {row("Total abonado:", formatCOP(totalAbonado))}
-          <div style={{ borderTop: "1px dashed #000", margin: "8px 0" }} />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700 }}>
-            <span>{pagado ? "CANCELADO:" : "SALDO PENDIENTE:"}</span>
-            <span style={{ color: pagado ? "#16a34a" : "#dc2626" }}>$ {Math.max(0, saldo).toLocaleString("es-CO")}</span>
+          <div style={{ fontSize: 12, color: "#555", marginBottom: 4 }}>Fecha: {factura.fechaEmision || fechaLocal()}</div>
+
+          <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+
+          {/* Quien paga */}
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>{(factura.clienteNombre || "").toUpperCase()}</div>
+
+          <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+
+          {/* Qué mes y cuánto */}
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, marginBottom: 4 }}>
+            <span>{(factura.concepto || `MES ${factura.mes || ""} ${factura.anio || ""}`).toUpperCase()}</span>
+            <span style={{ fontWeight: 700 }}>{formatCOP(factura.monto)}</span>
           </div>
-          <div style={{ borderTop: "1px dashed #000", margin: "12px 0 8px" }} />
-          <div style={{ textAlign: "center", fontSize: 13 }}>Firma: _______________________</div>
-          {factura.notas && <div style={{ marginTop: 8, fontSize: 12, color: "#555", textAlign: "center" }}>{factura.notas}</div>}
+
+          <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+
+          {/* Total */}
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 900 }}>
+            <span>VALOR PAGADO:</span>
+            <span>$ {factura.monto?.toLocaleString("es-CO")}</span>
+          </div>
+
+          <div style={{ borderTop: "1px dashed #000", margin: "10px 0 6px" }} />
+
+          {/* Firma secretario */}
+          <div style={{ textAlign: "center", fontSize: 13, marginTop: 16 }}>
+            ______________________________
+            <div style={{ fontSize: 12, marginTop: 3 }}>Firma secretario/a</div>
+          </div>
         </div>
       </div>
     </div>
