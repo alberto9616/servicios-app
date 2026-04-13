@@ -2751,22 +2751,21 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
 
   const imprimir = () => {
     const contenido = document.getElementById("recibo-print").innerHTML;
-    const ventana = window.open("", "_blank", "width=320,height=600");
+    const ventana = window.open("", "_blank", "width=320,height=700");
     ventana.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: monospace; font-size: 13px; color: #000; width: 80mm; padding: 4mm; }
-      .sep { border-top: 1px dashed #000; margin: 6px 0; }
-      .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
-      .center { text-align: center; }
-      .bold { font-weight: bold; }
-      .big { font-size: 15px; font-weight: bold; }
-      .red { color: #c00; }
-      .green { color: #080; }
-      @media print { @page { size: 80mm auto; margin: 2mm; } }
+      html, body { width: 80mm; }
+      body { font-family: 'Courier New', Courier, monospace; font-size: 13px; color: #000; padding: 4mm 3mm; }
+      .sep { border: none; border-top: 1px dashed #000; margin: 6px 0; display: block; }
+      @page { size: 80mm auto; margin: 0; }
+      @media print {
+        html, body { width: 80mm; }
+        button { display: none !important; }
+      }
     </style></head><body>${contenido}</body></html>`);
     ventana.document.close();
     ventana.focus();
-    setTimeout(() => { ventana.print(); ventana.close(); }, 400);
+    setTimeout(() => { ventana.print(); ventana.close(); }, 500);
   };
 
   const row = (label, valor, bold = false) => (
@@ -2784,7 +2783,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
         </div>
 
         {/* Preview */}
-        <div id="recibo-print" style={{ padding: "16px 20px", fontFamily: "monospace", fontSize: 13, color: "#000" }}>
+        <div id="recibo-print" style={{ padding: "12px 16px", fontFamily: "'Courier New', monospace", fontSize: 13, color: "#000", maxWidth: 300, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 8 }}>
             <div style={{ fontSize: 15, fontWeight: 700 }}>{(nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase()}</div>
             <div style={{ fontSize: 13 }}>OFICINA VIJES</div>
