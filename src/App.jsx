@@ -2619,10 +2619,14 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
           </div>
           {/* Teléfono del cliente */}
           {orden.telefonoCliente && (
-            <div style={{ fontSize: 12, color: GC.info, marginTop: 3, fontWeight: 600 }}>📞 {orden.telefonoCliente}</div>
+            <div style={{ fontSize: 12, marginTop: 3, fontWeight: 600 }}>
+              📞 <a href={`tel:${orden.telefonoCliente.replace(/\s/g,"")}`} style={{ color: GC.info, textDecoration: "none", borderBottom: "1px dashed " + GC.info }} onClick={e => e.stopPropagation()}>{orden.telefonoCliente}</a>
+            </div>
           )}
           {orden.datosInstalacion?.telefono && !orden.telefonoCliente && (
-            <div style={{ fontSize: 12, color: GC.info, marginTop: 3, fontWeight: 600 }}>📞 {orden.datosInstalacion.telefono}</div>
+            <div style={{ fontSize: 12, marginTop: 3, fontWeight: 600 }}>
+              📞 <a href={`tel:${orden.datosInstalacion.telefono.replace(/\s/g,"")}`} style={{ color: GC.info, textDecoration: "none", borderBottom: "1px dashed " + GC.info }} onClick={e => e.stopPropagation()}>{orden.datosInstalacion.telefono}</a>
+            </div>
           )}
           {/* Dirección: traslado muestra vieja y nueva, instalación solo la nueva, resto la actual */}
           {esTraslado ? (
@@ -2639,7 +2643,7 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
           {orden.datosInstalacion && (
             <div style={{ background: "#0ea5e911", border: "1px solid #0ea5e922", borderRadius: 8, padding: "7px 10px", marginTop: 5, fontSize: 12 }}>
               <div style={{ color: GC.info, fontWeight: 700, marginBottom: 2 }}>📋 Datos instalación nueva</div>
-              <div style={{ color: GC.ink2 }}>CC: {orden.datosInstalacion.cedula} · Tel: {orden.datosInstalacion.telefono}</div>
+              <div style={{ color: GC.ink2 }}>CC: {orden.datosInstalacion.cedula} · Tel: <a href={`tel:${(orden.datosInstalacion.telefono||"").replace(/\s/g,"")}`} style={{ color: GC.info, textDecoration: "none", borderBottom: "1px dashed " + GC.info }} onClick={e => e.stopPropagation()}>{orden.datosInstalacion.telefono}</a></div>
               {orden.datosInstalacion.correo && <div style={{ color: GC.ink2 }}>✉️ {orden.datosInstalacion.correo}</div>}
               {orden.datosInstalacion.direccion && <div style={{ color: GC.ink2 }}>📍 {orden.datosInstalacion.direccion}</div>}
             </div>
