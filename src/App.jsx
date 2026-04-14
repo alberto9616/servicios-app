@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
+import * as XLSX from "xlsx";
 
 // ══════════════════════════════════════════════════════════════
 //  holis SUPABASE — configuración
@@ -3546,16 +3547,49 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
   const exportarCSV = async (porMes) => {
     setExportando(true);
     try {
-      const lista = porMes ? facturas.filter(f => f.mes === filtroMes && f.anio === filtroAnio) : facturas.filter(f => f.anio === filtroAnio);
+      const lista = porMes
+        ? facturas.filter(f => f.mes === filtroMes && f.anio === filtroAnio)
+        : facturas.filter(f => f.anio === filtroAnio);
       const zonaMap = Object.fromEntries(zonas.map(z => [z.id, z.nombre]));
-      const cab = ["Recibo","Fecha","Cliente","Cédula","Mes","Total","Saldo","Estado","Zona"];
-      const filas = lista.map(f => [f.numeroRecibo||"",f.fechaEmision||"",f.clienteNombre||"",f.clienteCedula||"",`${MESES[(f.mes||1)-1]} ${f.anio}`,f.monto,f.saldoPendiente,f.estado,zonaMap[f.zonaId]||""]);
-      const csv = [cab,...filas].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob(["\uFEFF"+csv], { type: "text/csv;charset=utf-8;" }));
-      a.download = porMes ? `facturas_${MESES[filtroMes-1]}_${filtroAnio}.csv` : `facturas_${filtroAnio}.csv`;
-      a.click();
-    } catch(e) { alert("Error: " + e.message); }
+
+      // Filas de datos
+      const filas = lista.map(f => ({
+        "Recibo":     f.numeroRecibo || "",
+        "Fecha":      f.fechaEmision || "",
+        "Cliente":    f.clienteNombre || "",
+        "Cédula":     f.clienteCedula || "",
+        "Período":    `${MESES[(f.mes||1)-1]} ${f.anio}`,
+        "Total ($)":  Number(f.monto) || 0,
+        "Saldo ($)":  Number(f.saldoPendiente) || 0,
+        "Estado":     f.estado || "",
+        "Zona":       zonaMap[f.zonaId] || "",
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(filas);
+
+      // Ancho de columnas
+      ws["!cols"] = [
+        { wch: 10 }, // Recibo
+        { wch: 12 }, // Fecha
+        { wch: 28 }, // Cliente
+        { wch: 14 }, // Cédula
+        { wch: 14 }, // Período
+        { wch: 12 }, // Total
+        { wch: 12 }, // Saldo
+        { wch: 14 }, // Estado
+        { wch: 18 }, // Zona
+      ];
+
+      const wb = XLSX.utils.book_new();
+      const nombreHoja = porMes ? `${MESES[filtroMes-1]} ${filtroAnio}` : `Año ${filtroAnio}`;
+      XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
+
+      const nombreArchivo = porMes
+        ? `facturas_${MESES[filtroMes-1]}_${filtroAnio}.xlsx`
+        : `facturas_${filtroAnio}.xlsx`;
+
+      XLSX.writeFile(wb, nombreArchivo);
+    } catch(e) { alert("Error al exportar: " + e.message); }
     setExportando(false);
   };
 
@@ -3978,7 +4012,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
               )}
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={async () => { await exportarCSV(modalExport === "mes"); setModalExport(null); }} style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "none", background: modalExport === "mes" ? "#22c55e" : "#0ea5e9", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
-                  {exportando ? "Exportando..." : "⬇️ Descargar CSV"}
+                  {exportando ? "Exportando..." : "⬇️ Descargar Excel"}
                 </button>
                 <button onClick={() => setModalExport(null)} style={{ padding: "10px 16px", borderRadius: 9, border: "1px solid " + GC.border, background: GC.bg2, color: GC.ink3, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Cancelar</button>
               </div>
