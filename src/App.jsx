@@ -2864,40 +2864,115 @@ function OrdenServicio({ cliente, perfilesPago = [], numeroContrato, secretario,
   const perfil = perfilesPago.find(p => p.id === cliente.perfilPagoId);
   const diasPago = perfil ? `entre el día ${perfil.diaInicio} y ${perfil.diaFin} de cada mes` : "según perfil de pago asignado";
 
+  const buildCopia = (etiqueta) => `
+    <div class="copia">
+      <div class="header">
+        <div class="empresa-info">
+          <div class="empresa-nombre">GC HOGAR NET S.A.S</div>
+          <div class="empresa-sub">Oficina Vijes, Valle del Cauca &nbsp;·&nbsp; Tel.: 318-8255601</div>
+        </div>
+        <div class="titulo-doc">
+          <div class="doc-titulo">ORDEN DE SERVICIO</div>
+          <div class="doc-sub">N° ${String(numeroContrato || "0001").padStart(4,"0")} &nbsp;·&nbsp; ${hoy}</div>
+          <div class="copia-label">${etiqueta}</div>
+        </div>
+      </div>
+
+      <div class="seccion">
+        <div class="seccion-titulo">Datos del cliente</div>
+        <div class="grid2">
+          <div class="campo"><span class="lbl">Nombre completo</span><div class="val">${cliente.nombre || ""}</div></div>
+          <div class="campo"><span class="lbl">Cédula / NIT</span><div class="val">${cliente.cedula || ""}</div></div>
+          <div class="campo"><span class="lbl">Dirección</span><div class="val">${cliente.direccion || ""}</div></div>
+          <div class="campo"><span class="lbl">Teléfono</span><div class="val">${cliente.telefono || ""}</div></div>
+          <div class="campo"><span class="lbl">Servicio contratado</span><div class="val">${cliente.servicio || "Internet"}</div></div>
+          <div class="campo"><span class="lbl">Plan</span><div class="val">${cliente.plan || "—"}</div></div>
+          <div class="campo"><span class="lbl">Valor mensual</span><div class="val">${cliente.monto ? "$ " + Number(cliente.monto).toLocaleString("es-CO") : "—"}</div></div>
+          <div class="campo"><span class="lbl">Días de pago</span><div class="val">${diasPago}</div></div>
+        </div>
+      </div>
+
+      <div class="seccion">
+        <div class="seccion-titulo">Equipo entregado en préstamo</div>
+        <div class="grid3">
+          <div class="campo"><span class="lbl">Tipo de equipo</span><div class="val">&nbsp;</div></div>
+          <div class="campo"><span class="lbl">Marca / Modelo</span><div class="val">&nbsp;</div></div>
+          <div class="campo"><span class="lbl">Serial / MAC</span><div class="val">&nbsp;</div></div>
+        </div>
+        <div class="alerta">⚠️ El equipo (ONU / Router) es propiedad de GC HOGAR NET S.A.S y se entrega en calidad de PRÉSTAMO. En caso de pérdida, daño o robo, el cliente deberá asumir <strong>$300.000 COP</strong> por reposición.</div>
+      </div>
+
+      <div class="seccion">
+        <div class="seccion-titulo">Términos y condiciones</div>
+        <div class="terminos">
+          <span class="num">1.</span> Uso exclusivo residencial/empresarial. No reventa ni actividades ilícitas. &nbsp;
+          <span class="num">2.</span> Pago ${diasPago}; incumplimiento genera suspensión automática. &nbsp;
+          <span class="num">3.</span> Reactivación en máx. 24 h hábiles tras el pago. &nbsp;
+          <span class="num">4.</span> El equipo técnico instalado es propiedad de GC HOGAR NET S.A.S; el cliente responde por su custodia. &nbsp;
+          <span class="num">5.</span> Pérdida/daño del equipo: $300.000 COP. &nbsp;
+          <span class="num">6.</span> El cliente autoriza acceso del técnico a su domicilio previo aviso. &nbsp;
+          <span class="num">7.</span> Disponibilidad garantizada del 95% mensual; fuerza mayor no genera descuentos. &nbsp;
+          <span class="num">8.</span> Contrato de vigencia indefinida; terminación con aviso mínimo de 10 días y devolución de equipos. &nbsp;
+          <span class="num">9.</span> El cliente acepta notificaciones de cobro y comunicaciones por los datos suministrados. &nbsp;
+          <span class="num">10.</span> La firma constituye aceptación plena de estos términos.
+        </div>
+      </div>
+
+      <div class="firmas">
+        <div class="firma-box">
+          <div class="firma-linea"></div>
+          <div class="firma-nombre">${(cliente.nombre || "").toUpperCase()}</div>
+          <div class="firma-lbl">Firma del cliente · C.C. ${cliente.cedula || ""}</div>
+        </div>
+        <div class="firma-box">
+          <div class="firma-linea"></div>
+          <div class="firma-nombre">${(secretario || "").toUpperCase()}</div>
+          <div class="firma-lbl">Firma GC HOGAR NET S.A.S</div>
+        </div>
+      </div>
+    </div>
+  `;
+
   const imprimir = () => {
-    const contenido = document.getElementById("orden-servicio-print").innerHTML;
     const ventana = window.open("", "_blank", "width=794,height=1123");
-    ventana.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    ventana.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Orden de Servicio</title><style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { font-family: Arial, sans-serif; font-size: 11px; color: #000; padding: 20mm 20mm 15mm 20mm; }
-      .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; border-bottom: 3px solid #16a34a; padding-bottom: 12px; }
-      .logo { width: 90px; height: auto; }
-      .empresa { text-align: center; flex: 1; }
-      .empresa h1 { font-size: 16px; font-weight: 900; color: #111; letter-spacing: 1px; }
-      .empresa p { font-size: 10px; color: #555; }
+      body { font-family: Arial, sans-serif; font-size: 9px; color: #000; background: #fff; }
+      .pagina { width: 210mm; padding: 6mm 14mm; }
+      .copia { height: 136mm; padding: 5mm 0; border-bottom: 2px dashed #aaa; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+      .copia:last-child { border-bottom: none; }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2.5px solid #16a34a; padding-bottom: 5px; margin-bottom: 5px; }
+      .empresa-nombre { font-size: 13px; font-weight: 900; color: #111; letter-spacing: 0.5px; }
+      .empresa-sub { font-size: 8px; color: #555; margin-top: 1px; }
       .titulo-doc { text-align: right; }
-      .titulo-doc h2 { font-size: 13px; font-weight: 800; color: #16a34a; }
-      .titulo-doc p { font-size: 10px; color: #666; }
-      .seccion { margin-bottom: 12px; }
-      .seccion-titulo { background: #16a34a; color: #fff; font-weight: 700; font-size: 10px; padding: 3px 8px; border-radius: 4px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
-      .campo { margin-bottom: 4px; }
-      .campo label { font-size: 9px; color: #666; text-transform: uppercase; font-weight: 700; display: block; }
-      .campo .valor { font-size: 11px; color: #111; border-bottom: 1px solid #ccc; padding: 2px 0 1px; min-height: 16px; }
-      .terminos { font-size: 9.5px; line-height: 1.5; color: #222; }
-      .terminos p { margin-bottom: 5px; }
-      .terminos .num { font-weight: 700; color: #16a34a; }
-      .alerta { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 8px 10px; margin: 10px 0; font-size: 10px; font-weight: 700; color: #92400e; }
-      .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 20px; }
+      .doc-titulo { font-size: 11px; font-weight: 800; color: #16a34a; }
+      .doc-sub { font-size: 8px; color: #666; }
+      .copia-label { font-size: 7.5px; font-weight: 700; color: #fff; background: #16a34a; border-radius: 3px; padding: 1px 6px; display: inline-block; margin-top: 2px; }
+      .seccion { margin-bottom: 4px; }
+      .seccion-titulo { background: #16a34a; color: #fff; font-weight: 700; font-size: 8px; padding: 2px 6px; border-radius: 3px; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.4px; }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
+      .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px 10px; }
+      .campo { margin-bottom: 2px; }
+      .lbl { font-size: 7px; color: #666; text-transform: uppercase; font-weight: 700; display: block; }
+      .val { font-size: 9px; color: #111; border-bottom: 1px solid #bbb; padding: 1px 0; min-height: 13px; }
+      .alerta { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 4px; padding: 3px 7px; margin-top: 3px; font-size: 8px; font-weight: 600; color: #92400e; }
+      .terminos { font-size: 7.8px; line-height: 1.45; color: #222; }
+      .num { font-weight: 700; color: #16a34a; }
+      .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 6px; }
       .firma-box { text-align: center; }
-      .firma-linea { border-top: 1px solid #000; margin-bottom: 4px; margin-top: 30px; }
-      .firma-label { font-size: 9px; color: #555; }
-      .footer { margin-top: 16px; border-top: 1px solid #ccc; padding-top: 8px; text-align: center; font-size: 8px; color: #888; }
-      @media print { @page { size: A4; margin: 15mm 20mm; } }
-    </style></head><body>${contenido}</body></html>`);
+      .firma-linea { border-top: 1px solid #000; margin-top: 16px; margin-bottom: 2px; }
+      .firma-nombre { font-size: 8px; font-weight: 700; }
+      .firma-lbl { font-size: 7px; color: #555; }
+      @media print { @page { size: A4 portrait; margin: 0; } body { margin: 0; } }
+    </style></head><body>
+      <div class="pagina">
+        ${buildCopia("📋 COPIA EMPRESA")}
+        ${buildCopia("📄 COPIA CLIENTE")}
+      </div>
+    </body></html>`);
     ventana.document.close();
     ventana.focus();
-    setTimeout(() => { ventana.print(); ventana.close(); }, 400);
+    setTimeout(() => { ventana.print(); ventana.close(); }, 500);
   };
 
   return (
@@ -2909,108 +2984,77 @@ function OrdenServicio({ cliente, perfilesPago = [], numeroContrato, secretario,
           <button onClick={onClose} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: GC.ink3 }}>Cerrar</button>
         </div>
 
-        {/* Contenido imprimible */}
-        <div id="orden-servicio-print" style={{ padding: 28, fontFamily: "Arial, sans-serif", fontSize: 11, color: "#000" }}>
+        {/* Contenido preview — 2 copias */}
+        <div style={{ padding: "16px 28px 28px", fontFamily: "Arial, sans-serif", fontSize: 10, color: "#000" }}>
+          {[{ label: "📋 COPIA EMPRESA" }, { label: "📄 COPIA CLIENTE" }].map(({ label }, idx) => (
+            <div key={idx} style={{ borderBottom: idx === 0 ? "2px dashed #aaa" : "none", paddingBottom: idx === 0 ? 18 : 0, marginBottom: idx === 0 ? 18 : 0 }}>
 
-          {/* Encabezado */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, borderBottom: "3px solid #16a34a", paddingBottom: 12 }}>
-            <img src={LOGO_GC} alt="GC HOGAR NET" style={{ width: 80, height: "auto" }} />
-            <div style={{ textAlign: "center", flex: 1 }}>
-              <div style={{ fontSize: 16, fontWeight: 900, color: "#111", letterSpacing: 1 }}>GC HOGAR NET S.A.S</div>
-              <div style={{ fontSize: 10, color: "#555" }}>Oficina Vijes, Valle del Cauca</div>
-              <div style={{ fontSize: 10, color: "#555" }}>Tel.: 318-8255601</div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#16a34a" }}>ORDEN DE SERVICIO</div>
-              <div style={{ fontSize: 10, color: "#666" }}>N° {String(numeroContrato || "0001").padStart(4,"0")}</div>
-              <div style={{ fontSize: 10, color: "#666" }}>Fecha: {hoy}</div>
-            </div>
-          </div>
-
-          {/* Datos del cliente */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 10, padding: "3px 8px", borderRadius: 4, marginBottom: 8, textTransform: "uppercase" }}>Datos del cliente</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 16px" }}>
-              {[
-                ["Nombre completo", cliente.nombre],
-                ["Cédula / NIT", cliente.cedula],
-                ["Dirección", cliente.direccion],
-                ["Teléfono", cliente.telefono],
-                ["Servicio contratado", cliente.servicio || "Internet"],
-                ["Plan", cliente.plan || "—"],
-                ["Valor mensual", cliente.monto ? formatCOP(cliente.monto) : "—"],
-                ["Días de pago", diasPago],
-              ].map(([label, valor]) => (
-                <div key={label} style={{ marginBottom: 6 }}>
-                  <div style={{ fontSize: 9, color: "#666", textTransform: "uppercase", fontWeight: 700 }}>{label}</div>
-                  <div style={{ fontSize: 11, color: "#111", borderBottom: "1px solid #ccc", padding: "2px 0 1px", minHeight: 16 }}>{valor || <span style={{ color: "#ccc" }}>_______________</span>}</div>
+              {/* Encabezado */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "2.5px solid #16a34a", paddingBottom: 6, marginBottom: 6 }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 900, color: "#111" }}>GC HOGAR NET S.A.S</div>
+                  <div style={{ fontSize: 9, color: "#555" }}>Oficina Vijes, Valle del Cauca · Tel.: 318-8255601</div>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Equipo entregado */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 10, padding: "3px 8px", borderRadius: 4, marginBottom: 8, textTransform: "uppercase" }}>Equipo entregado en préstamo</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "4px 16px" }}>
-              {[
-                ["Tipo de equipo", ""],
-                ["Marca / Modelo", ""],
-                ["Serial / MAC", ""],
-              ].map(([label]) => (
-                <div key={label} style={{ marginBottom: 6 }}>
-                  <div style={{ fontSize: 9, color: "#666", textTransform: "uppercase", fontWeight: 700 }}>{label}</div>
-                  <div style={{ fontSize: 11, borderBottom: "1px solid #ccc", padding: "2px 0 1px", minHeight: 16 }} />
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: "#16a34a" }}>ORDEN DE SERVICIO</div>
+                  <div style={{ fontSize: 9, color: "#666" }}>N° {String(numeroContrato || "0001").padStart(4,"0")} · {hoy}</div>
+                  <span style={{ fontSize: 8, fontWeight: 700, color: "#fff", background: "#16a34a", borderRadius: 3, padding: "1px 7px", display: "inline-block", marginTop: 2 }}>{label}</span>
                 </div>
-              ))}
-            </div>
-            <div style={{ background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 6, padding: "8px 10px", marginTop: 6, fontSize: 10, fontWeight: 700, color: "#92400e" }}>
-              ⚠️ El equipo (ONU / Router) es propiedad de GC HOGAR NET S.A.S y se entrega en calidad de PRÉSTAMO. En caso de pérdida, daño o robo, el cliente deberá asumir un costo de <strong>$300.000 COP</strong> por reposición del equipo.
-            </div>
-          </div>
+              </div>
 
-          {/* Términos y condiciones */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 10, padding: "3px 8px", borderRadius: 4, marginBottom: 8, textTransform: "uppercase" }}>Términos y condiciones del servicio</div>
-            <div style={{ fontSize: 9.5, lineHeight: 1.6, color: "#222" }}>
-              {[
-                ["1.", "El servicio de internet contratado es de uso exclusivo residencial o empresarial del suscriptor y no podrá ser revendido, compartido comercialmente ni utilizado para actividades ilícitas."],
-                ["2.", `El pago del servicio deberá realizarse ${diasPago}. El incumplimiento en el pago generará la suspensión automática del servicio sin previo aviso adicional.`],
-                ["3.", "Una vez realizado el pago, el servicio será reactivado en un plazo no mayor a 24 horas hábiles. GC HOGAR NET S.A.S se reserva el derecho de aplicar cargos por reconexión en caso de mora reiterada."],
-                ["4.", "El equipo técnico (ONU, router, cableado) instalado en el domicilio del cliente es propiedad de GC HOGAR NET S.A.S y se entrega en préstamo para la prestación del servicio. El cliente es responsable de su custodia y buen uso."],
-                ["5.", "En caso de pérdida, hurto, daño por mal uso o retención del equipo al momento de la cancelación del servicio, el cliente deberá cancelar la suma de $300.000 COP por concepto de reposición del equipo."],
-                ["6.", "El cliente autoriza el acceso al personal técnico de GC HOGAR NET S.A.S a su domicilio para labores de instalación, mantenimiento y retiro de equipos, previa notificación."],
-                ["7.", "GC HOGAR NET S.A.S garantiza una disponibilidad del servicio del 95% mensual. Las interrupciones por mantenimiento programado serán notificadas con anticipación. Fallas de fuerza mayor no generan descuentos."],
-                ["8.", "El presente contrato tiene vigencia indefinida desde la fecha de instalación. Cualquiera de las partes podrá darlo por terminado con un aviso mínimo de 10 días calendario. El cliente deberá devolver los equipos en buen estado al momento de la cancelación."],
-                ["9.", "El cliente acepta recibir notificaciones de cobro, avisos de mantenimiento y comunicaciones del servicio a través de los datos de contacto suministrados."],
-                ["10.", "La firma del presente documento constituye la aceptación plena de todos los términos y condiciones aquí establecidos."],
-              ].map(([num, texto]) => (
-                <div key={num} style={{ display: "flex", gap: 6, marginBottom: 5 }}>
-                  <span style={{ fontWeight: 700, color: "#16a34a", flexShrink: 0 }}>{num}</span>
-                  <span>{texto}</span>
+              {/* Datos del cliente */}
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 8.5, padding: "2px 7px", borderRadius: 3, marginBottom: 4, textTransform: "uppercase" }}>Datos del cliente</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 14px" }}>
+                  {[["Nombre completo", cliente.nombre], ["Cédula / NIT", cliente.cedula], ["Dirección", cliente.direccion], ["Teléfono", cliente.telefono], ["Servicio contratado", cliente.servicio || "Internet"], ["Plan", cliente.plan || "—"], ["Valor mensual", cliente.monto ? "$ " + Number(cliente.monto).toLocaleString("es-CO") : "—"], ["Días de pago", diasPago]].map(([l, v]) => (
+                    <div key={l} style={{ marginBottom: 3 }}>
+                      <div style={{ fontSize: 7.5, color: "#666", textTransform: "uppercase", fontWeight: 700 }}>{l}</div>
+                      <div style={{ fontSize: 10, color: "#111", borderBottom: "1px solid #ccc", padding: "1px 0", minHeight: 14 }}>{v || <span style={{ color: "#ccc" }}>___</span>}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
 
-          {/* Firmas */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, marginTop: 20 }}>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ borderTop: "1px solid #000", marginBottom: 4, marginTop: 30 }} />
-              <div style={{ fontSize: 10, fontWeight: 700 }}>{(cliente.nombre || "").toUpperCase()}</div>
-              <div style={{ fontSize: 9, color: "#555" }}>Firma del cliente · C.C. {cliente.cedula}</div>
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ borderTop: "1px solid #000", marginBottom: 4, marginTop: 30 }} />
-              <div style={{ fontSize: 10, fontWeight: 700 }}>{(secretario || "").toUpperCase()}</div>
-              <div style={{ fontSize: 9, color: "#555" }}>Firma del secretario/a · GC HOGAR NET S.A.S</div>
-            </div>
-          </div>
+              {/* Equipo */}
+              <div style={{ marginBottom: 5 }}>
+                <div style={{ background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 8.5, padding: "2px 7px", borderRadius: 3, marginBottom: 4, textTransform: "uppercase" }}>Equipo entregado en préstamo</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "2px 10px", marginBottom: 4 }}>
+                  {["Tipo de equipo", "Marca / Modelo", "Serial / MAC"].map(l => (
+                    <div key={l}>
+                      <div style={{ fontSize: 7.5, color: "#666", textTransform: "uppercase", fontWeight: 700 }}>{l}</div>
+                      <div style={{ fontSize: 10, borderBottom: "1px solid #ccc", minHeight: 14 }} />
+                    </div>
+                  ))}
+                </div>
+                <div style={{ background: "#fef3c7", border: "1px solid #f59e0b", borderRadius: 4, padding: "4px 8px", fontSize: 8.5, fontWeight: 600, color: "#92400e" }}>
+                  ⚠️ El equipo (ONU/Router) es propiedad de GC HOGAR NET S.A.S — PRÉSTAMO. Pérdida/daño: <strong>$300.000 COP</strong>.
+                </div>
+              </div>
 
-          {/* Footer */}
-          <div style={{ marginTop: 16, borderTop: "1px solid #ccc", paddingTop: 8, textAlign: "center", fontSize: 8, color: "#888" }}>
-            GC HOGAR NET S.A.S · Oficina Vijes, Valle del Cauca · Tel. 318-8255601 · Documento generado el {hoy}
-          </div>
+              {/* Términos condensados */}
+              <div style={{ marginBottom: 6 }}>
+                <div style={{ background: "#16a34a", color: "#fff", fontWeight: 700, fontSize: 8.5, padding: "2px 7px", borderRadius: 3, marginBottom: 4, textTransform: "uppercase" }}>Términos y condiciones</div>
+                <div style={{ fontSize: 8, lineHeight: 1.45, color: "#222" }}>
+                  <span style={{ fontWeight: 700, color: "#16a34a" }}>1.</span> Uso exclusivo residencial/empresarial. <span style={{ fontWeight: 700, color: "#16a34a" }}>2.</span> Pago {diasPago}; incumplimiento genera suspensión. <span style={{ fontWeight: 700, color: "#16a34a" }}>3.</span> Reactivación en máx. 24 h hábiles. <span style={{ fontWeight: 700, color: "#16a34a" }}>4.</span> Equipo en préstamo; cliente responsable de su custodia. <span style={{ fontWeight: 700, color: "#16a34a" }}>5.</span> Pérdida/daño del equipo: $300.000 COP. <span style={{ fontWeight: 700, color: "#16a34a" }}>6.</span> Cliente autoriza acceso técnico previo aviso. <span style={{ fontWeight: 700, color: "#16a34a" }}>7.</span> Disponibilidad 95% mensual; fuerza mayor sin descuentos. <span style={{ fontWeight: 700, color: "#16a34a" }}>8.</span> Contrato indefinido; terminación con aviso mínimo 10 días y devolución de equipos. <span style={{ fontWeight: 700, color: "#16a34a" }}>9.</span> Cliente acepta notificaciones por datos suministrados. <span style={{ fontWeight: 700, color: "#16a34a" }}>10.</span> La firma constituye aceptación plena.
+                </div>
+              </div>
+
+              {/* Firmas */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 30, marginTop: 8 }}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ borderTop: "1px solid #000", marginTop: 18, marginBottom: 3 }} />
+                  <div style={{ fontSize: 8.5, fontWeight: 700 }}>{(cliente.nombre || "").toUpperCase()}</div>
+                  <div style={{ fontSize: 7.5, color: "#555" }}>Firma del cliente · C.C. {cliente.cedula}</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ borderTop: "1px solid #000", marginTop: 18, marginBottom: 3 }} />
+                  <div style={{ fontSize: 8.5, fontWeight: 700 }}>{(secretario || "").toUpperCase()}</div>
+                  <div style={{ fontSize: 7.5, color: "#555" }}>Firma GC HOGAR NET S.A.S</div>
+                </div>
+              </div>
+
+            </div>
+          ))}
         </div>
       </div>
     </div>
