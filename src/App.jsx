@@ -2565,7 +2565,10 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
 
   const zonaT = zonas.find(z => z.id === usuario.zonaId);
   const hoy = fechaLocal();
-  const misOrdenes = ordenes.filter(o => o.tecnicoId === usuario.id);
+  const misOrdenes = ordenes.filter(o =>
+    (Array.isArray(o.tecnicosIds) && o.tecnicosIds.includes(usuario.id))
+    || o.tecnicoId === usuario.id
+  );
   // El técnico solo ve órdenes de hoy o anteriores (las futuras son "programadas" y las maneja el secretario)
   const misOrdenesVisibles = misOrdenes.filter(o => !o.fecha || o.fecha <= hoy);
   const ordenesHoy = misOrdenesVisibles.filter(o => o.fecha === hoy && o.estado !== "Completada" && o.estado !== "Cancelada");
