@@ -1611,8 +1611,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       if (!ordenManual.nuevaCedula.trim()) errs.nuevaCedula = true;
       if (!ordenManual.nuevoTelefono.trim()) errs.nuevoTelefono = true;
       if (!ordenManual.nuevaDireccion.trim()) errs.nuevaDireccion = true;
-      if (!ordenManual.nuevoUsuario.trim()) errs.nuevoUsuario = true;
-      if (!ordenManual.nuevaClave.trim()) errs.nuevaClave = true;
+      // Usuario y clave son opcionales para clientes finales
     } else {
       if (!ordenManual.clienteExistente) errs.clienteExistente = true;
     }
@@ -1630,6 +1629,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
         tipo: ordenManual.nuevoTipo || "final",
         cedula: ordenManual.nuevaCedula.trim(),
         telefono: ordenManual.nuevoTelefono.trim(),
+        correo: ordenManual.nuevoCorreo.trim() || null,
         servicio: ordenManual.nuevoServicio || "Internet",
         plan: ordenManual.nuevoPlan || "",
         planId: ordenManual.nuevoPlanId || null,
@@ -2166,13 +2166,14 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                     <Inp value={ordenManual.nuevoTelefono} onChange={e => setOrdenManual({ ...ordenManual, nuevoTelefono: e.target.value })} placeholder="Ej: 3001234567" style={{ borderColor: erroresOrdenManual.nuevoTelefono ? "#ef4444" : undefined }} />
                     {erroresOrdenManual.nuevoTelefono && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
                   </Field>
-                  <Field label="Usuario (login) *">
-                    <Inp value={ordenManual.nuevoUsuario} onChange={e => setOrdenManual({ ...ordenManual, nuevoUsuario: e.target.value })} placeholder="Ej: juan123" style={{ borderColor: erroresOrdenManual.nuevoUsuario ? "#ef4444" : undefined }} />
-                    {erroresOrdenManual.nuevoUsuario && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
+                  <Field label="Usuario (login)">
+                    <Inp value={ordenManual.nuevoUsuario} onChange={e => setOrdenManual({ ...ordenManual, nuevoUsuario: e.target.value })} placeholder="Ej: juan123 (opcional)" />
                   </Field>
-                  <Field label="Clave *">
-                    <Inp type="text" value={ordenManual.nuevaClave} onChange={e => setOrdenManual({ ...ordenManual, nuevaClave: e.target.value })} placeholder="Clave de acceso" style={{ borderColor: erroresOrdenManual.nuevaClave ? "#ef4444" : undefined }} />
-                    {erroresOrdenManual.nuevaClave && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Campo obligatorio</div>}
+                  <Field label="Clave">
+                    <Inp type="text" value={ordenManual.nuevaClave} onChange={e => setOrdenManual({ ...ordenManual, nuevaClave: e.target.value })} placeholder="Clave de acceso (opcional)" />
+                  </Field>
+                  <Field label="Correo electrónico">
+                    <Inp type="email" value={ordenManual.nuevoCorreo} onChange={e => setOrdenManual({ ...ordenManual, nuevoCorreo: e.target.value })} placeholder="Ej: cliente@correo.com (opcional)" />
                   </Field>
                 </div>
 
