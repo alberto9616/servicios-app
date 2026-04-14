@@ -2787,7 +2787,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
 
           {/* Empresa */}
           <div style={{ textAlign: "center", marginBottom: 6 }}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{(nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase()}</div>
+            <div style={{ fontSize: 18 }}>{(nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase()}</div>
             <div style={{ fontSize: 15 }}>Tel.: {telefono || "318-8255601"}</div>
           </div>
 
@@ -2796,28 +2796,28 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
           {/* Número de recibo */}
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15 }}>
             <span>Recibo No.:</span>
-            <span style={{ fontWeight: 700 }}>#{String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0")}</span>
+            <span>#{String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0")}</span>
           </div>
           <div style={{ fontSize: 14, marginBottom: 4 }}>Fecha: {factura.fechaEmision || fechaLocal()}</div>
 
           <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
 
           {/* Quien paga */}
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 2 }}>{(factura.clienteNombre || "").toUpperCase()}</div>
+          <div style={{ fontSize: 18, marginBottom: 2 }}>{(factura.clienteNombre || "").toUpperCase()}</div>
 
           <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
 
           {/* Concepto */}
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 4 }}>
             <span>{(factura.concepto || `MES ${factura.mes || ""} ${factura.anio || ""}`).toUpperCase()}</span>
-            <span style={{ fontWeight: 700 }}>{formatCOP(factura.monto)}</span>
+            <span>{formatCOP(factura.monto)}</span>
           </div>
 
           <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
 
           {/* Pago completo o abono */}
           {pagado ? (
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18, fontWeight: 900 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18 }}>
               <span>VALOR PAGADO:</span>
               <span>$ {factura.monto?.toLocaleString("es-CO")}</span>
             </div>
@@ -2825,14 +2825,14 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
             <>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 4 }}>
                 <span>Total a pagar:</span>
-                <span style={{ fontWeight: 700 }}>{formatCOP(factura.monto)}</span>
+                <span>{formatCOP(factura.monto)}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 4 }}>
                 <span>Abono:</span>
-                <span style={{ fontWeight: 700 }}>- {formatCOP(totalAbonado)}</span>
+                <span>- {formatCOP(totalAbonado)}</span>
               </div>
-              <div style={{ borderTop: "2px solid #000", margin: "4px 0" }} />
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18, fontWeight: 900, color: "#c00" }}>
+              <div style={{ borderTop: "1px solid #000", margin: "4px 0" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18 }}>
                 <span>SALDO DEBE:</span>
                 <span>$ {Math.max(0, saldo).toLocaleString("es-CO")}</span>
               </div>
