@@ -47,6 +47,7 @@ const mapUsuario = r => r ? ({
   telefono: r.telefono, servicio: r.servicio, plan: r.plan, planId: r.plan_id,
   monto: r.monto ? Number(r.monto) : null, fechaPago: r.fecha_pago, estado: r.estado,
   direccion: r.direccion, claveWifi: r.clave_wifi, nombreEmpresa: r.nombre_empresa,
+  correo: r.correo || null,
   privilegios: (r.privilegios || []).filter(p => !p.startsWith("zona:")),
   zonasIds: (r.privilegios || []).filter(p => p.startsWith("zona:")).map(p => p.slice(5)),
   perfilPagoId: r.perfil_pago_id || null,
@@ -150,6 +151,7 @@ const db = {
       monto: u.monto || null, fecha_pago: u.fechaPago || null, estado: u.estado || null,
       direccion: u.direccion || null, clave_wifi: u.claveWifi || null,
       nombre_empresa: u.nombreEmpresa || null,
+      correo: u.correo || null,
       privilegios: [...privilegiosBase.filter(p => !p.startsWith("zona:")), ...zonasEntries],
       perfil_pago_id: u.perfilPagoId || null,
       fecha_primera_factura: u.fechaPrimeraFactura || null,
@@ -1830,6 +1832,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 <Field label="Clave de acceso"><Inp value={editCliente.clave} onChange={e => setEditCliente({ ...editCliente, clave: e.target.value })} placeholder="Clave de acceso" /></Field>
                 <Field label="Cédula / NIT"><Inp value={editCliente.cedula || ""} onChange={e => setEditCliente({ ...editCliente, cedula: e.target.value })} /></Field>
                 <Field label="Teléfono"><Inp value={editCliente.telefono || ""} onChange={e => setEditCliente({ ...editCliente, telefono: e.target.value })} placeholder="Ej: 3001234567" /></Field>
+                <Field label="Correo electrónico"><Inp type="email" value={editCliente.correo || ""} onChange={e => setEditCliente({ ...editCliente, correo: e.target.value })} placeholder="cliente@correo.com (opcional)" /></Field>
                 <Field label="Dirección de domicilio"><Inp value={editCliente.direccion || ""} onChange={e => setEditCliente({ ...editCliente, direccion: e.target.value })} placeholder="Calle / Carrera, barrio" /></Field>
                 <Field label="Servicio">
                   <Sel value={editCliente.servicio || "Internet"} onChange={e => setEditCliente({ ...editCliente, servicio: e.target.value })}>
