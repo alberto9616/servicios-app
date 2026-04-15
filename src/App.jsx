@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
-import * as XLSX from "xlsx";
 
 // ══════════════════════════════════════════════════════════════
 //  holis SUPABASE — configuración
@@ -3555,43 +3554,102 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
         : facturas.filter(f => f.anio === filtroAnio);
       const zonaMap = Object.fromEntries(zonas.map(z => [z.id, z.nombre]));
 
-      // Filas de datos
-      const filas = lista.map(f => ({
-        "Recibo":     f.numeroRecibo || "",
-        "Fecha":      f.fechaEmision || "",
-        "Cliente":    f.clienteNombre || "",
-        "Cédula":     f.clienteCedula || "",
-        "Período":    `${MESES[(f.mes||1)-1]} ${f.anio}`,
-        "Total ($)":  Number(f.monto) || 0,
-        "Saldo ($)":  Number(f.saldoPendiente) || 0,
-        "Estado":     f.estado || "",
-        "Zona":       zonaMap[f.zonaId] || "",
-      }));
+      const headers = ["Recibo","Fecha","Cliente","Cédula","Período","Total ($)","Saldo ($)","Estado","Zona"];
+      const rows = lista.map(f => [
+        f.numeroRecibo || "",
+        f.fechaEmision || "",
+        f.clienteNombre || "",
+        f.clienteCedula || "",
+        `${MESES[(f.mes||1)-1]} ${f.anio}`,
+        Number(f.monto) || 0,
+        Number(f.saldoPendiente) || 0,
+        f.estado || "",
+        zonaMap[f.zonaId] || "",
+      ]);
 
-      const ws = XLSX.utils.json_to_sheet(filas);
+      // Generar XML para .xlsx sin dependencias externas
+      const esc = v => String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+      const cellRef = (r, c) => String.fromCharCode(65 + c) + (r + 1);
+      const toXmlCell = (val, r, c) => {
+        const ref = cellRef(r, c);
+        if (typeof val === "number") return `<c r="${ref}" t="n"><v>${val}</v></c>`;
+        return `<c r="${ref}" t="inlineStr"><is><t>${esc(val)}</t></is></c>`;
+      };
 
-      // Ancho de columnas
-      ws["!cols"] = [
-        { wch: 10 }, // Recibo
-        { wch: 12 }, // Fecha
-        { wch: 28 }, // Cliente
-        { wch: 14 }, // Cédula
-        { wch: 14 }, // Período
-        { wch: 12 }, // Total
-        { wch: 12 }, // Saldo
-        { wch: 14 }, // Estado
-        { wch: 18 }, // Zona
-      ];
+      const allRows = [headers, ...rows];
+      const sheetData = allRows.map((row, r) =>
+        `<row r="${r+1}">${row.map((v, c) => toXmlCell(v, r, c)).join("")}</row>`
+      ).join("");
 
-      const wb = XLSX.utils.book_new();
-      const nombreHoja = porMes ? `${MESES[filtroMes-1]} ${filtroAnio}` : `Año ${filtroAnio}`;
-      XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
+      const colWidths = [10,12,28,14,14,12,12,14,18].map(w => `<col min="${0}" max="${0}" width="${w}" customWidth="1"/>`).join("");
 
-      const nombreArchivo = porMes
-        ? `facturas_${MESES[filtroMes-1]}_${filtroAnio}.xlsx`
-        : `facturas_${filtroAnio}.xlsx`;
+      const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetData>${sheetData}</sheetData>
+</worksheet>`;
 
-      XLSX.writeFile(wb, nombreArchivo);
+      const wbXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Facturas" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`;
+
+      const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`;
+
+      const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`;
+
+      const pkgRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+
+      // Ensamblar ZIP usando la API nativa (CompressionStream)
+      const enc = new TextEncoder();
+      const files = {
+        "[Content_Types].xml": enc.encode(contentTypesXml),
+        "_rels/.rels": enc.encode(pkgRelsXml),
+        "xl/workbook.xml": enc.encode(wbXml),
+        "xl/_rels/workbook.xml.rels": enc.encode(relsXml),
+        "xl/worksheets/sheet1.xml": enc.encode(sheetXml),
+      };
+
+      // ZIP manual (store, sin compresión) — funciona en todos los navegadores modernos
+      const u32 = n => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n, true); return b; };
+      const u16 = n => { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n, true); return b; };
+      const crc32 = data => {
+        let c = 0xFFFFFFFF;
+        const t = new Uint32Array(256).map((_, i) => { let v = i; for (let j=0;j<8;j++) v = v&1 ? 0xEDB88320^(v>>>1) : v>>>1; return v; });
+        for (const b of data) c = t[(c^b)&0xFF] ^ (c>>>8);
+        return (c^0xFFFFFFFF)>>>0;
+      };
+      const parts = []; const centralDir = []; let offset = 0;
+      const now = new Date(); const dosDate = ((now.getFullYear()-1980)<<9|(now.getMonth()+1)<<5|now.getDate())>>>0;
+      const dosTime = (now.getHours()<<11|now.getMinutes()<<5|(now.getSeconds()>>1))>>>0;
+      for (const [name, data] of Object.entries(files)) {
+        const nameBytes = enc.encode(name); const crc = crc32(data);
+        const local = new Uint8Array([0x50,0x4B,0x03,0x04,20,0,...u16(0),...u16(0),...u16(dosTime),...u16(dosDate),...u32(crc),...u32(data.length),...u32(data.length),...u16(nameBytes.length),...u16(0),...nameBytes,...data]);
+        const central = new Uint8Array([0x50,0x4B,0x01,0x02,20,0,20,0,...u16(0),...u16(0),...u16(dosTime),...u16(dosDate),...u32(crc),...u32(data.length),...u32(data.length),...u16(nameBytes.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(offset),...nameBytes]);
+        parts.push(local); centralDir.push(central); offset += local.length;
+      }
+      const cdSize = centralDir.reduce((s,c)=>s+c.length,0);
+      const eocd = new Uint8Array([0x50,0x4B,0x05,0x06,...u16(0),...u16(0),...u16(centralDir.length),...u16(centralDir.length),...u32(cdSize),...u32(offset),...u16(0)]);
+      const zip = new Uint8Array([...parts.flatMap(p=>[...p]),...centralDir.flatMap(c=>[...c]),...eocd]);
+
+      const blob = new Blob([zip], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = porMes ? `facturas_${MESES[filtroMes-1]}_${filtroAnio}.xlsx` : `facturas_${filtroAnio}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(a.href);
     } catch(e) { alert("Error al exportar: " + e.message); }
     setExportando(false);
   };
