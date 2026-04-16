@@ -3180,8 +3180,8 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       }} style={{ background: GC.brandLight, color: GC.brand, border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
         🖨️
       </button>
-      {/* Anular: admin y secretario pueden anular, superusuario también */}
-      {f.estado !== "Anulada" && (esAdmin || esSecretario) && (
+      {/* Anular: solo admin y superusuario */}
+      {f.estado !== "Anulada" && (esSuperusuario || esAdmin) && (
         <button onClick={() => setConfirmAnular({ id: f.id, nombre: f.clienteNombre })}
           style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
           title="Anular factura">🚫</button>
@@ -4444,7 +4444,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
                 <td style={{ padding: "8px 6px" }}>
                   <div style={{ display: "flex", gap: 4 }}>
                     <button onClick={verFact} style={{ background: GC.infoBg, color: GC.info, border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 12 }} title="Ver factura">🧾</button>
-                    {f.estado !== "Anulada" && (esAdmin || usuario.rol === "secretario") && (
+                    {f.estado !== "Anulada" && (esAdmin || esSuperusuario) && (
                       <button onClick={() => setConfirmAnular({ id: f.id, nombre: f.clienteNombre })}
                         style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 12 }} title="Anular">🚫</button>
                     )}
