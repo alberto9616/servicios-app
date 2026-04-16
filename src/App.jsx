@@ -53,6 +53,7 @@ const mapUsuario = r => r ? ({
   fechaPrimeraFactura: r.fecha_primera_factura || null,
   wisproClientId: r.wispro_client_id || null,
   wisproUuid: r.wispro_uuid || null,
+  ip: r.ip || null,
 }) : null;
 const mapAviso = r => r ? ({ id: r.id, tipo: r.tipo, titulo: r.titulo, mensaje: r.mensaje, fecha: r.fecha, afecta: r.afecta, activo: r.activo }) : null;
 const mapTicket = (r, mensajes = []) => r ? ({
@@ -155,6 +156,7 @@ const db = {
       perfil_pago_id: u.perfilPagoId || null,
       fecha_primera_factura: u.fechaPrimeraFactura || null,
       wispro_uuid: u.wisproUuid || null,
+      ip: u.ip || null,
     };
     // Remove undefined id so Supabase generates it automatically
     if (row.id === undefined) delete row.id;
@@ -1875,6 +1877,10 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 <Field label="UUID Wispro (para corte/reconexión)">
                   <Inp value={editCliente.wisproUuid || ""} onChange={e => setEditCliente({ ...editCliente, wisproUuid: e.target.value })} placeholder="UUID del cliente en Wispro (ej: d1541a84-...)" />
                   <div style={{ fontSize: 11, color: GC.ink3, marginTop: 3 }}>📡 Lo encuentras en la URL del cliente en cloud.wispro.co/clients/UUID</div>
+                </Field>
+                <Field label="IP del cliente">
+                  <Inp value={editCliente.ip || ""} onChange={e => setEditCliente({ ...editCliente, ip: e.target.value })} placeholder="Ej: 10.10.106.112 (opcional)" />
+                  <div style={{ fontSize: 11, color: GC.ink3, marginTop: 3 }}>🌐 IP asignada en Wispro — se vincula al sincronizar</div>
                 </Field>
                 <Field label="Primera factura desde">
                   <Inp type="month" value={editCliente.fechaPrimeraFactura ? editCliente.fechaPrimeraFactura.slice(0,7) : ""} onChange={e => setEditCliente({ ...editCliente, fechaPrimeraFactura: e.target.value ? e.target.value + "-01" : null })} />
@@ -6450,6 +6456,10 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                     <Field label="UUID Wispro">
                       <Inp value={editU.wisproUuid || ""} onChange={e => setEditU({ ...editU, wisproUuid: e.target.value })} placeholder="UUID del cliente en Wispro" />
                       <div style={{ fontSize: 11, color: GC.ink3, marginTop: 3 }}>📡 URL: cloud.wispro.co/clients/UUID</div>
+                    </Field>
+                    <Field label="IP del cliente">
+                      <Inp value={editU.ip || ""} onChange={e => setEditU({ ...editU, ip: e.target.value })} placeholder="Ej: 10.10.106.112" />
+                      <div style={{ fontSize: 11, color: GC.ink3, marginTop: 3 }}>🌐 IP del contrato en Wispro — se vincula al sincronizar</div>
                     </Field>
                     <Field label="Primera factura desde">
                       <Inp type="month" value={editU.fechaPrimeraFactura ? editU.fechaPrimeraFactura.slice(0,7) : ""} onChange={e => setEditU({ ...editU, fechaPrimeraFactura: e.target.value ? e.target.value + "-01" : null })} />
