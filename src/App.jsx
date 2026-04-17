@@ -284,37 +284,39 @@ const WISPRO_EDGE_URL  = "https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/
 const WISPRO_EDGE_AUTH = "Bearer " + SUPABASE_ANON;
 
 const wispro = {
-  // Llamar a la Edge Function con el UUID de Wispro del cliente
-  async _llamar(wisproUuid, accion) {
+  // Llamar a la Edge Function con el UUID y la IP específica del contrato
+  async _llamar(wisproUuid, accion, clienteIp = null) {
     if (!wisproUuid) throw new Error("Este cliente no tiene UUID de Wispro configurado. Edítalo y agrega su UUID de Wispro.");
+    const body = { cliente_uuid: wisproUuid, accion };
+    if (clienteIp) body.cliente_ip = clienteIp;
     const res = await fetch(WISPRO_EDGE_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": WISPRO_EDGE_AUTH,
       },
-      body: JSON.stringify({ cliente_uuid: wisproUuid, accion }),
+      body: JSON.stringify(body),
     });
     const json = await res.json();
     if (!json.ok) throw new Error(json.error || "Error en Wispro");
     return json;
   },
 
-  async cortarServicio(wisproUuid, zonaId, zonas) {
+  async cortarServicio(wisproUuid, zonaId, zonas, clienteIp = null) {
     if (zonaId && zonas) {
       const zona = zonas.find(z => z.id === zonaId);
       if (zona && zona.wisproActivo === false) throw new Error(`La integración Wispro está desactivada para la zona ${zona.nombre}. Actívala desde el Panel Superusuario.`);
     }
-    const json = await wispro._llamar(wisproUuid, "cortar");
+    const json = await wispro._llamar(wisproUuid, "cortar", clienteIp);
     return { cortados: json.resultados?.length || 0, contratos: json.resultados?.map((r) => r.id) || [] };
   },
 
-  async reconectarServicio(wisproUuid, zonaId, zonas) {
+  async reconectarServicio(wisproUuid, zonaId, zonas, clienteIp = null) {
     if (zonaId && zonas) {
       const zona = zonas.find(z => z.id === zonaId);
       if (zona && zona.wisproActivo === false) throw new Error(`La integración Wispro está desactivada para la zona ${zona.nombre}. Actívala desde el Panel Superusuario.`);
     }
-    const json = await wispro._llamar(wisproUuid, "reconectar");
+    const json = await wispro._llamar(wisproUuid, "reconectar", clienteIp);
     return { reconectados: json.resultados?.length || 0, contratos: json.resultados?.map((r) => r.id) || [] };
   },
 
@@ -1477,7 +1479,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
         const esReconexion = (estadoNuevo === "Activo" || estadoNuevo === "Al día") && estadoAnterior === "DPP";
         if (esCorte) {
           try {
-            const resultado = await wispro.cortarServicio(wisproUuid, u.zonaId, zonas);
+            const resultado = await wispro.cortarServicio(wisproUuid, u.zonaId, zonas, u.ip || null);
             await wispro.logAccion(guardado.id, guardado.nombre, "CORTE_DPP", resultado);
             alert(`✅ Servicio cortado en Wispro correctamente.\n${resultado.cortados} contrato(s) suspendido(s).`);
           } catch (err) {
@@ -1486,7 +1488,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
           }
         } else if (esReconexion) {
           try {
-            const resultado = await wispro.reconectarServicio(wisproUuid, u.zonaId, zonas);
+            const resultado = await wispro.reconectarServicio(wisproUuid, u.zonaId, zonas, u.ip || null);
             await wispro.logAccion(guardado.id, guardado.nombre, "RECONEXION", resultado);
             alert(`✅ Servicio reconectado en Wispro correctamente.\n${resultado.reconectados} contrato(s) habilitado(s).`);
           } catch (err) {
@@ -1926,7 +1928,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                           const actualizado = { ...c, estado: "DPP" };
                           await db.upsertUsuario(actualizado);
                           setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "DPP" } : u));
-                          const res = await wispro.cortarServicio(c.wisproUuid, c.zonaId, zonas);
+                          const res = await wispro.cortarServicio(c.wisproUuid, c.zonaId, zonas, c.ip || null);
                           await wispro.logAccion(c.id, c.nombre, "CORTE_DPP", res);
                           alert(`✅ ${c.nombre} cortado.\n${res.cortados} contrato(s) suspendido(s) en Wispro.`);
                         } catch (err) {
@@ -1950,7 +1952,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                           const actualizado = { ...c, estado: "Activo" };
                           await db.upsertUsuario(actualizado);
                           setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "Activo" } : u));
-                          const res = await wispro.reconectarServicio(c.wisproUuid, c.zonaId, zonas);
+                          const res = await wispro.reconectarServicio(c.wisproUuid, c.zonaId, zonas, c.ip || null);
                           await wispro.logAccion(c.id, c.nombre, "RECONEXION", res);
                           alert(`✅ ${c.nombre} reconectado.\n${res.reconectados} contrato(s) habilitado(s) en Wispro.`);
                         } catch (err) {
@@ -3147,7 +3149,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           try {
             await db.upsertUsuario({ ...cliente, estado: "Al día" });
             if (setUsuarios) setUsuarios(prev => prev.map(u => u.id === cliente.id ? { ...u, estado: "Al día" } : u));
-            const res = await wispro.reconectarServicio(cliente.wisproUuid, cliente.zonaId, zonas);
+            const res = await wispro.reconectarServicio(cliente.wisproUuid, cliente.zonaId, zonas, cliente.ip || null);
             await wispro.logAccion(cliente.id, cliente.nombre, "RECONEXION_PAGO", res);
             alert(`✅ Pago registrado.\n⚡ Servicio de ${cliente.nombre} reconectado automáticamente en Wispro.\n${res.reconectados} contrato(s) habilitado(s).`);
           } catch (err) {
@@ -5907,7 +5909,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
         const esReconexion = (estadoNuevo === "Activo" || estadoNuevo === "Al día") && estadoAnterior === "DPP";
         if (esCorte) {
           try {
-            const res = await wispro.cortarServicio(wisproUuid, u.zonaId, zonas);
+            const res = await wispro.cortarServicio(wisproUuid, u.zonaId, zonas, u.ip || null);
             await wispro.logAccion(guardado.id, guardado.nombre, "CORTE_DPP", res);
             alert(`✅ Servicio cortado en Wispro.\n${res.cortados} contrato(s) suspendido(s).`);
           } catch (err) {
@@ -5916,7 +5918,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           }
         } else if (esReconexion) {
           try {
-            const res = await wispro.reconectarServicio(wisproUuid, u.zonaId, zonas);
+            const res = await wispro.reconectarServicio(wisproUuid, u.zonaId, zonas, u.ip || null);
             await wispro.logAccion(guardado.id, guardado.nombre, "RECONEXION", res);
             alert(`✅ Servicio reconectado en Wispro.\n${res.reconectados} contrato(s) habilitado(s).`);
           } catch (err) {
