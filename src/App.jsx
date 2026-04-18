@@ -3513,9 +3513,37 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
       .map(f => f.clienteId)
   )].length;
 
+  const WHATSAPP_EDGE_URL = "https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/whatsapp-facturas";
+
+  const enviarWhatsAppFacturas = async (clientesConFactura) => {
+    const conTelefono = clientesConFactura.filter(c => c.telefono?.trim());
+    if (!conTelefono.length) { alert("⚠️ Ningún cliente tiene número de teléfono registrado."); return; }
+
+    const payload = conTelefono.map(c => {
+      const perfil = perfilesPago.find(p => p.id === c.perfilPagoId);
+      const diasPago = perfil ? `entre el día ${perfil.diaInicio} y ${perfil.diaFin} de cada mes` : "según tu perfil de pago";
+      return { id: c.id, nombre: c.nombre, telefono: c.telefono, monto: c.monto, mes: filtroMes, anio: filtroAnio, diasPago };
+    });
+
+    try {
+      const res = await fetch(WHATSAPP_EDGE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + SUPABASE_ANON },
+        body: JSON.stringify({ clientes: payload }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        alert(`📱 WhatsApp enviado:\n✅ ${data.enviados} mensajes enviados\n❌ ${data.errores} errores (sin teléfono o fallo Twilio)`);
+      } else {
+        alert(`⚠️ Error al enviar WhatsApp: ${data.error}`);
+      }
+    } catch (e) { alert("Error de conexión con WhatsApp: " + e.message); }
+  };
+
   const generarFacturasMasivas = async (perfilFiltro = null) => {
     setGenerandoMasivo(true);
     let creadas = 0;
+    const clientesCreados = [];
     try {
       const nextNum = await db.getSiguienteNumeroRecibo();
       const clientesTarget = clientesVisibles.filter(c => {
@@ -3554,10 +3582,25 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
           notas: fechaVencimiento ? `Vence: ${fechaVencimiento}` : "",
         });
         setFacturas(prev => [nueva, ...prev]);
+        clientesCreados.push(c);
         creadas++;
       }
-      alert(`✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.`);
-      if (creadas > 0) setShowGenerarMasivo(false);
+      if (creadas > 0) {
+        setShowGenerarMasivo(false);
+        // Preguntar si quiere enviar WhatsApp
+        const conTelefono = clientesCreados.filter(c => c.telefono?.trim()).length;
+        const sinTelefono = clientesCreados.length - conTelefono;
+        const enviar = confirm(
+          `✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.\n\n` +
+          `📱 ¿Deseas enviar recordatorio por WhatsApp?\n` +
+          `• ${conTelefono} clientes con teléfono registrado\n` +
+          (sinTelefono > 0 ? `• ${sinTelefono} clientes sin teléfono (se omitirán)\n` : "") +
+          `\n⚠️ Requiere Twilio configurado (disponible desde mayo)`
+        );
+        if (enviar) await enviarWhatsAppFacturas(clientesCreados);
+      } else {
+        alert(`✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.`);
+      }
     } catch (e) { alert("Error: " + e.message); }
     finally { setGenerandoMasivo(false); }
   };
