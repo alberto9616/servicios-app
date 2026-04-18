@@ -54,6 +54,7 @@ const mapUsuario = r => r ? ({
   wisproClientId: r.wispro_client_id || null,
   wisproUuid: r.wispro_uuid || null,
   ip: r.ip || null,
+  contratoNum: r.contrato_num || 1,
 }) : null;
 const mapAviso = r => r ? ({ id: r.id, tipo: r.tipo, titulo: r.titulo, mensaje: r.mensaje, fecha: r.fecha, afecta: r.afecta, activo: r.activo }) : null;
 const mapTicket = (r, mensajes = []) => r ? ({
@@ -157,6 +158,7 @@ const db = {
       fecha_primera_factura: u.fechaPrimeraFactura || null,
       wispro_uuid: u.wisproUuid || null,
       ip: u.ip || null,
+      contrato_num: u.contratoNum || 1,
     };
     // Remove undefined id so Supabase generates it automatically
     if (row.id === undefined) delete row.id;
@@ -1458,12 +1460,36 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
 
   const saveCliente = async (u) => {
     if (!u.nombre?.trim()) { alert("El nombre es obligatorio."); return; }
-    if (!u.usuario?.trim()) { alert("El usuario (login) es obligatorio."); return; }
-    if (!u.clave?.trim()) { alert("La clave de acceso es obligatoria."); return; }
+
+    // Validar IP única (solo si se ingresó)
+    if (u.ip?.trim()) {
+      const ipDuplicada = usuarios.find(x => x.id !== u.id && x.ip?.trim() === u.ip.trim());
+      if (ipDuplicada) {
+        alert(`⚠️ La IP "${u.ip.trim()}" ya está asignada a "${ipDuplicada.nombre}".\nCada contrato debe tener una IP diferente.`);
+        return;
+      }
+    }
+
+    // Auto-generar usuario si está vacío: cédula + número de contrato
+    let usuarioFinal = u.usuario?.trim();
+    if (!usuarioFinal) {
+      const cedula = u.cedula?.trim() || "";
+      const contratosExistentes = usuarios.filter(x => x.id !== u.id && x.cedula?.trim() === cedula && x.rol === "cliente");
+      usuarioFinal = contratosExistentes.length > 0 ? `${cedula}_${contratosExistentes.length + 1}` : cedula;
+    }
+
+    // Auto-generar clave si está vacía: igual al usuario
+    const claveFinal = u.clave?.trim() || usuarioFinal;
+
+    // Número de contrato automático para el mismo cliente
+    const cedula = u.cedula?.trim() || "";
+    const contratosAnteriores = usuarios.filter(x => x.id !== u.id && x.cedula?.trim() === cedula && x.rol === "cliente");
+    const contratoNum = u.id ? (u.contratoNum || 1) : (contratosAnteriores.length + 1);
+
     const clienteAnterior = usuarios.find(x => x.id === u.id);
     const estadoAnterior = clienteAnterior?.estado;
     const estadoNuevo = u.estado;
-    const clienteConZona = { ...u, zonaId: usuario.zonaId, secretarioId: usuario.id, rol: "cliente" };
+    const clienteConZona = { ...u, usuario: usuarioFinal, clave: claveFinal, contratoNum, zonaId: usuario.zonaId, secretarioId: usuario.id, rol: "cliente" };
     try {
       const guardado = await db.upsertUsuario(clienteConZona);
       setUsuarios(p => p.find(x => x.id === guardado.id) ? p.map(x => x.id === guardado.id ? guardado : x) : [...p, guardado]);
@@ -1501,8 +1527,10 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       const msg = err?.message || JSON.stringify(err);
       if (msg.includes("usuarios_rol_check")) {
         alert("⚠️ Error: El rol 'superusuario' no está permitido aún en la BD. Ejecuta el SQL del Paso 1 en Supabase para actualizar el constraint.");
-      } else if (msg.includes("duplicate") || msg.includes("unique")) {
-        alert("⚠️ Ya existe un usuario con ese nombre de usuario. Usa uno diferente.");
+      } else if (msg.includes("usuarios_ip_unique") || (msg.includes("unique") && msg.includes("ip"))) {
+        alert(`⚠️ Esa IP ya está asignada a otro contrato. Cada contrato debe tener una IP única.`);
+      } else if (msg.includes("duplicate") || msg.includes("unique") || msg.includes("23505")) {
+        alert(`⚠️ Error de datos duplicados. Verifica que la IP no esté repetida.`);
       } else {
         alert("Error guardando cliente: " + msg);
       }
@@ -1904,10 +1932,12 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14, display: "flex", alignItems: "center", gap: 6 }}>
                     {c.nombre}
                     {c.tipo === "empresa" && <Badge text="🏢 Empresa" color="#8b5cf6" />}
+                    {c.contratoNum > 1 && <Badge text={`Contrato #${c.contratoNum}`} color="#f59e0b" />}
                   </div>
                   <div style={{ fontSize: 12, color: GC.ink3 }}>@{c.usuario} · CC/NIT: {c.cedula}</div>
-                  {c.telefono && <div style={{ fontSize: 11, color: GC.info }}>📞 {c.telefono}</div>}
+                  {c.telefono && <div style={{ fontSize: 11, color: GC.info }}>📞 <a href={`tel:${c.telefono}`} style={{ color: GC.info, textDecoration: "none" }}>{c.telefono}</a></div>}
                   {c.direccion && <div style={{ fontSize: 11, color: GC.ink3 }}>📍 {c.direccion}</div>}
+                  {c.ip && <div style={{ fontSize: 11, color: GC.ink3 }}>🌐 IP: {c.ip}</div>}
                   {c.claveWifi && <div style={{ fontSize: 11, color: GC.info }}>🔑 WiFi: {c.claveWifi}</div>}
                   {c.perfilPagoId && (() => { const pf = perfilesPago.find(x => x.id === c.perfilPagoId); return pf ? <div style={{ fontSize: 11, color: GC.purple }}>📅 {pf.nombre} (días {pf.diaInicio}-{pf.diaFin})</div> : null; })()}
                 </div>
@@ -5894,6 +5924,14 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const emptyPropa = { id: "", categoria: "promocion", titulo: "", descripcion: "", activo: true, fecha: "", imagen: "🎁", color: GC.info };
 
   const saveU = async (u) => {
+    // Validar IP única (solo si se ingresó y es cliente)
+    if (u.rol === "cliente" && u.ip?.trim()) {
+      const ipDuplicada = usuarios.find(x => x.id !== u.id && x.ip?.trim() === u.ip.trim());
+      if (ipDuplicada) {
+        alert(`⚠️ La IP "${u.ip.trim()}" ya está asignada a "${ipDuplicada.nombre}".\nCada contrato debe tener una IP diferente.`);
+        return;
+      }
+    }
     try {
       const usuarioAnterior = usuarios.find(x => x.id === u.id);
       const estadoAnterior = usuarioAnterior?.estado;
@@ -5927,7 +5965,19 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           }
         }
       }
-    } catch (err) { console.error("Error guardando usuario:", err); }
+    } catch (err) {
+      const msg = err?.message || JSON.stringify(err);
+      if (msg.includes("usuarios_ip_unique") || (msg.includes("unique") && msg.includes("ip"))) {
+        alert(`⚠️ Esa IP ya está asignada a otro contrato.`);
+      } else if (msg.includes("usuarios_usuario_key") || msg.includes("duplicate") || msg.includes("unique")) {
+        alert(`⚠️ Error de datos duplicados. Verifica que la IP no esté repetida.`);
+      } else if (msg.includes("23505")) {
+        alert(`⚠️ Datos duplicados: ya existe un registro con esos datos.\nRevisa el campo Usuario (login) o Cédula.`);
+      } else {
+        alert("❌ Error guardando usuario: " + msg);
+      }
+      console.error("Error guardando usuario:", err);
+    }
   };
   const deleteU = async (id) => {
     try { await db.deleteUsuario(id); setUsuarios(p => p.filter(u => u.id !== id)); }
