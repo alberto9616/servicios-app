@@ -442,8 +442,10 @@ const GC = {
 const ROL_COLOR = { superusuario: GC.danger, admin: GC.brand, secretario: GC.purple, tecnico: GC.warning, cliente: GC.brand };
 const ROL_BG_MAP = { superusuario: GC.dangerBg, admin: GC.brandLight, secretario: GC.purpleBg, tecnico: GC.warningBg, cliente: GC.brandLight };
 const ROL_TEXT_MAP = { superusuario: "#991b1b", admin: GC.brandText, secretario: "#6b21a8", tecnico: "#92400e", cliente: GC.brandText };
-const ESTADO_COLOR = { "Activo": GC.brand, "Al día": GC.brand, "DPP": GC.danger, "DPS": GC.info, "Cortesía": GC.purple, Pendiente: GC.warning, Vencido: GC.danger };
-const ESTADO_LABEL = { "Activo": "Activo", "Al día": "Al día", "DPP": "DPP · Desc. x Pago", "DPS": "DPS · Desc. x Solicitud", "Cortesía": "Cortesía", "Pendiente": "Pendiente", "Vencido": "Vencido" };
+const ESTADO_COLOR = { "Al día": GC.brand, "Activo": GC.brand, "DPP": GC.danger, "DPS": GC.info, "Cortesía": GC.purple, "Pendiente": GC.warning, "Vencido": GC.danger };
+const ESTADO_LABEL = { "Al día": "✅ Al día", "Activo": "✅ Al día", "DPP": "🔴 DPP · Desc. por Pago", "DPS": "🔵 DPS · Desc. por Solicitud", "Cortesía": "💜 Cortesía", "Pendiente": "⚠️ Pendiente", "Vencido": "🔴 Vencido" };
+// Estados que NO generan factura mensual
+const ESTADOS_SIN_FACTURA = new Set(["DPP", "DPS", "Cortesía"]);
 const TICKET_COLOR = { Abierto: GC.warning, "En proceso": GC.info, Resuelto: GC.brand };
 const ORDEN_COLOR = { Pendiente: GC.warning, "En camino": GC.info, Completada: GC.brand, Cancelada: GC.danger };
 const TIPO_COLOR = { Mantenimiento: GC.info, Falla: GC.danger, Información: GC.purple };
@@ -1435,7 +1437,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   const [modalOrden, setModalOrden] = useState(null);
   const [nuevaOrden, setNuevaOrden] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "" });
   const [showModalOrdenManual, setShowModalOrdenManual] = useState(false);
-  const [ordenManual, setOrdenManual] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevoUsuario: "", nuevaClave: "", nuevoServicio: "Internet", nuevoPlan: "", nuevoPlanId: "", nuevoMonto: "", nuevoEstado: "Activo", nuevoClaveWifi: "", nuevoTipo: "final", nuevoPerfilPagoId: "", nuevoFechaPrimeraFactura: "" });
+  const [ordenManual, setOrdenManual] = useState({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevoUsuario: "", nuevaClave: "", nuevoServicio: "Internet", nuevoPlan: "", nuevoPlanId: "", nuevoMonto: "", nuevoEstado: "Al día", nuevoClaveWifi: "", nuevoTipo: "final", nuevoPerfilPagoId: "", nuevoFechaPrimeraFactura: "" });
   const [erroresOrdenManual, setErroresOrdenManual] = useState({});
   const [editCliente, setEditCliente] = useState(null);
   const [showFormCliente, setShowFormCliente] = useState(false);
@@ -1715,7 +1717,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       const guardada = await db.crearOrden(orden);
       setOrdenes(p => [...p, guardada]);
       setShowModalOrdenManual(false);
-      setOrdenManual({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevoUsuario: "", nuevaClave: "", nuevoServicio: "Internet", nuevoPlan: "", nuevoPlanId: "", nuevoMonto: "", nuevoEstado: "Activo", nuevoClaveWifi: "", nuevoTipo: "final", nuevoPerfilPagoId: "", nuevoFechaPrimeraFactura: "" });
+      setOrdenManual({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevoUsuario: "", nuevaClave: "", nuevoServicio: "Internet", nuevoPlan: "", nuevoPlanId: "", nuevoMonto: "", nuevoEstado: "Al día", nuevoClaveWifi: "", nuevoTipo: "final", nuevoPerfilPagoId: "", nuevoFechaPrimeraFactura: "" });
     } catch (err) { console.error("Error creando orden manual:", err); }
   };
 
@@ -1893,14 +1895,13 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   })()}
                 </Field>
                 <Field label="Estado de cuenta">
-                  <Sel value={editCliente.estado || "Activo"} onChange={e => setEditCliente({ ...editCliente, estado: e.target.value })}>
-                    <option value="Activo">✅ Activo</option>
-                    <option value="Al día">✅ Al día</option>
-                    <option value="DPP">🔴 DPP · Desconectado por Pago</option>
-                    <option value="DPS">🔵 DPS · Desconectado por Solicitud</option>
-                    <option value="Cortesía">💜 Cortesía (sin factura)</option>
-                    <option value="Pendiente">⚠️ Pendiente</option>
-                    <option value="Vencido">🔴 Vencido</option>
+                  <Sel value={editCliente.estado || "Al día"} onChange={e => setEditCliente({ ...editCliente, estado: e.target.value })}>
+                    <option value="Al día">✅ Al día — sin deudas</option>
+                    <option value="DPP">🔴 DPP · Desconectado por Pago (sin factura)</option>
+                    <option value="DPS">🔵 DPS · Desconectado por Solicitud (sin factura)</option>
+                    <option value="Cortesía">💜 Cortesía — exento de factura</option>
+                    <option value="Pendiente">⚠️ Pendiente — debe revisar</option>
+                    <option value="Vencido">🔴 Vencido — factura sin pagar</option>
                   </Sel>
                 </Field>
                 <Field label="Clave WiFi"><Inp value={editCliente.claveWifi || ""} onChange={e => setEditCliente({ ...editCliente, claveWifi: e.target.value })} placeholder="Clave del router del cliente" /></Field>
@@ -1979,9 +1980,9 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                         if (!confirm(`¿Reconectar el servicio de ${c.nombre}?\nSe marcará como Activo y se habilitará en Wispro.`)) return;
                         setWisproLoading(p => ({ ...p, [c.id]: "reconectando" }));
                         try {
-                          const actualizado = { ...c, estado: "Activo" };
+                          const actualizado = { ...c, estado: "Al día" };
                           await db.upsertUsuario(actualizado);
-                          setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "Activo" } : u));
+                          setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "Al día" } : u));
                           const res = await wispro.reconectarServicio(c.wisproUuid, c.zonaId, zonas, c.ip || null);
                           await wispro.logAccion(c.id, c.nombre, "RECONEXION", res);
                           alert(`✅ ${c.nombre} reconectado.\n${res.reconectados} contrato(s) habilitado(s) en Wispro.`);
@@ -2244,8 +2245,8 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                     </Sel>
                   </Field>
                   <Field label="Estado de cuenta">
-                    <Sel value={ordenManual.nuevoEstado || "Activo"} onChange={e => setOrdenManual({ ...ordenManual, nuevoEstado: e.target.value })}>
-                      <option value="Activo">✅ Activo</option>
+                    <Sel value={ordenManual.nuevoEstado || "Al día"} onChange={e => setOrdenManual({ ...ordenManual, nuevoEstado: e.target.value })}>
+                      <option value="Al día">✅ Al día</option>
                       <option value="Pendiente">⚠️ Pendiente</option>
                       <option value="Cortesía">💜 Cortesía</option>
                     </Sel>
@@ -3519,8 +3520,8 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
       const nextNum = await db.getSiguienteNumeroRecibo();
       const clientesTarget = clientesVisibles.filter(c => {
         if (!c.monto) return false;
-        // Clientes en Cortesía NO generan factura
-        if (c.estado === "Cortesía") return false;
+        // DPP, DPS y Cortesía NO generan factura
+        if (ESTADOS_SIN_FACTURA.has(c.estado)) return false;
         // Respetar fechaPrimeraFactura si existe
         if (c.fechaPrimeraFactura) {
           const [anioInicio, mesInicio] = c.fechaPrimeraFactura.split("-").map(Number);
@@ -6494,14 +6495,13 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       })()}
                     </Field>
                     <Field label="Estado de cuenta">
-                      <Sel value={editU.estado || "Activo"} onChange={e => setEditU({ ...editU, estado: e.target.value })}>
-                        <option value="Activo">✅ Activo</option>
-                        <option value="Al día">✅ Al día</option>
-                        <option value="DPP">🔴 DPP · Desconectado por Pago</option>
-                        <option value="DPS">🔵 DPS · Desconectado por Solicitud</option>
-                        <option value="Cortesía">💜 Cortesía (sin factura)</option>
-                        <option value="Pendiente">⚠️ Pendiente</option>
-                        <option value="Vencido">🔴 Vencido</option>
+                      <Sel value={editU.estado || "Al día"} onChange={e => setEditU({ ...editU, estado: e.target.value })}>
+                        <option value="Al día">✅ Al día — sin deudas</option>
+                        <option value="DPP">🔴 DPP · Desconectado por Pago (sin factura)</option>
+                        <option value="DPS">🔵 DPS · Desconectado por Solicitud (sin factura)</option>
+                        <option value="Cortesía">💜 Cortesía — exento de factura</option>
+                        <option value="Pendiente">⚠️ Pendiente — debe revisar</option>
+                        <option value="Vencido">🔴 Vencido — factura sin pagar</option>
                       </Sel>
                     </Field>
                     <Field label="Clave WiFi"><Inp value={editU.claveWifi || ""} onChange={e => setEditU({ ...editU, claveWifi: e.target.value })} placeholder="Clave del router" /></Field>
@@ -6552,7 +6552,6 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
               </Sel>
               <Sel value={filtroAdminEstado} onChange={e => setFiltroAdminEstado(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
                 <option value="">🚦 Todos los estados</option>
-                <option value="Activo">✅ Activo</option>
                 <option value="Al día">✅ Al día</option>
                 <option value="DPP">🔴 DPP</option>
                 <option value="DPS">🔵 DPS</option>
