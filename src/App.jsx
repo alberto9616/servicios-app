@@ -3957,6 +3957,8 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
         const hoy = new Date(); const diaHoy = hoy.getDate();
         const sinFactura = clientesVisibles.filter(c => {
           if (!c.monto) return false;
+          // DPP, DPS y Cortesía no generan factura
+          if (ESTADOS_SIN_FACTURA.has(c.estado)) return false;
           if (c.fechaPrimeraFactura) {
             const [anioI, mesI] = c.fechaPrimeraFactura.split("-").map(Number);
             if (filtroAnio < anioI || (filtroAnio === anioI && filtroMes < mesI)) return false;
