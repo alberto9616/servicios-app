@@ -110,6 +110,9 @@ const db = {
   async deleteZona(id) { const { error } = await sb.from("zonas").delete().eq("id", id); if (error) throw error; },
   async toggleZona(id, activa) { const { error } = await sb.from("zonas").update({ activa }).eq("id", id); if (error) throw error; },
   async patchZonaNombreEmpresa(id, nombreEmpresa) { const { error } = await sb.from("zonas").update({ nombre_empresa: nombreEmpresa }).eq("id", id); if (error) throw error; },
+  async getProntoPago() { const { data, error } = await sb.from("pronto_pago").select("*").order("zona_id"); if (error) throw error; return data || []; },
+  async upsertProntoPago(p) { const { data, error } = await sb.from("pronto_pago").upsert({ id: p.id || undefined, zona_id: p.zonaId, plan_id: p.planId || null, plan_nombre: p.planNombre || null, descuento: Number(p.descuento) || 0, dia_limite: Number(p.diaLimite) || 10, activo: p.activo !== false }).select().single(); if (error) throw error; return data; },
+  async deleteProntoPago(id) { const { error } = await sb.from("pronto_pago").delete().eq("id", id); if (error) throw error; },
 
   // PERFILES DE PAGO
   async getPerfilesPago() { const { data, error } = await sb.from("perfiles_pago").select("*").order("dia_inicio"); if (error) throw error; return data.map(mapPerfilPago); },
@@ -2017,7 +2020,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       )}
 
       {tab === "facturacion" && (
-        <ModuloFacturacion usuario={usuario} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} planes={planes} perfilesPago={perfilesPago} />
+        <ModuloFacturacion usuario={usuario} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} planes={planes} perfilesPago={perfilesPago} prontoPagos={[]} />
       )}
 
       {tab === "avisos" && (
@@ -3112,7 +3115,7 @@ function OrdenServicio({ cliente, perfilesPago = [], numeroContrato, secretario,
 // ══════════════════════════════════════════════════════════════
 // MÓDULO FACTURACIÓN — Admin y Secretario
 // ══════════════════════════════════════════════════════════════
-function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perfilesPago = [] }) {
+function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perfilesPago = [], prontoPagos = [] }) {
   const [facturas, setFacturas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [subTab, setSubTab] = useState("emitidas");
@@ -3157,11 +3160,31 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
     if (!monto || monto <= 0) { setErrAbono("Ingresa un monto válido."); return; }
     if (monto > modalAbono.saldoPendiente) { setErrAbono(`Máximo: ${formatCOP(modalAbono.saldoPendiente)}`); return; }
     try {
-      const abono = await db.registrarAbono({ ...nuevoAbono, monto, facturaId: modalAbono.id, registradoPor: usuario.id });
-      const nuevoSaldo = modalAbono.saldoPendiente - monto;
+      // Verificar si aplica pronto pago
+      const cliente = usuarios.find(u => u.id === modalAbono.clienteId);
+      const diaHoy = new Date().getDate();
+      let descuentoPP = 0;
+      if (cliente) {
+        const pp = prontoPagos.find(p =>
+          p.activo &&
+          p.zona_id === cliente.zonaId &&
+          diaHoy <= (p.dia_limite || 10) &&
+          (!p.plan_id || p.plan_id === cliente.planId)
+        );
+        if (pp) descuentoPP = Number(pp.descuento) || 0;
+      }
+
+      // Si hay descuento y el pago cubre la factura completa, aplicarlo
+      let montoFinal = monto;
+      if (descuentoPP > 0 && nuevoSaldo - descuentoPP <= 0) {
+        montoFinal = monto; // El cliente paga lo que debe menos el descuento
+      }
+
+      const abono = await db.registrarAbono({ ...nuevoAbono, monto: montoFinal, facturaId: modalAbono.id, registradoPor: usuario.id });
+      const nuevoSaldo = Math.max(0, modalAbono.saldoPendiente - montoFinal - descuentoPP);
       const nuevoEstado = nuevoSaldo <= 0 ? "Pagado" : "Abono parcial";
       const nuevaFechaPago = nuevoSaldo <= 0 ? nuevoAbono.fecha : null;
-      await db.actualizarFactura(modalAbono.id, { saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: nuevoAbono.metodoPago, fecha_pago: nuevaFechaPago });
+      await db.actualizarFactura(modalAbono.id, { saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: nuevoAbono.metodoPago, fecha_pago: nuevaFechaPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 });
       setFacturas(prev => prev.map(f => f.id === modalAbono.id
         ? { ...f, saldoPendiente: nuevoSaldo, estado: nuevoEstado, metodoPago: nuevoAbono.metodoPago, fechaPago: nuevaFechaPago }
         : f
@@ -3172,17 +3195,20 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       }
       setModalAbono(prev => ({ ...prev, saldoPendiente: nuevoSaldo, estado: nuevoEstado }));
       setNuevoAbono({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: fechaLocal() });
+      if (descuentoPP > 0 && nuevoSaldo <= 0) {
+        alert(`✅ Pago registrado con descuento de pronto pago.\n🏷️ Descuento aplicado: ${formatCOP(descuentoPP)}`);
+      }
 
       // ── Reconexión automática si el cliente estaba en DPP (cualquier abono) ──
       if (modalAbono.clienteId) {
-        const cliente = usuarios.find(u => u.id === modalAbono.clienteId);
-        if (cliente && cliente.estado === "DPP" && cliente.wisproUuid) {
+        const clienteActual = usuarios.find(u => u.id === modalAbono.clienteId);
+        if (clienteActual && clienteActual.estado === "DPP" && clienteActual.wisproUuid) {
           try {
-            await db.upsertUsuario({ ...cliente, estado: "Al día" });
-            if (setUsuarios) setUsuarios(prev => prev.map(u => u.id === cliente.id ? { ...u, estado: "Al día" } : u));
-            const res = await wispro.reconectarServicio(cliente.wisproUuid, cliente.zonaId, zonas, cliente.ip || null);
-            await wispro.logAccion(cliente.id, cliente.nombre, "RECONEXION_PAGO", res);
-            alert(`✅ Pago registrado.\n⚡ Servicio de ${cliente.nombre} reconectado automáticamente en Wispro.\n${res.reconectados} contrato(s) habilitado(s).`);
+            await db.upsertUsuario({ ...clienteActual, estado: "Al día" });
+            if (setUsuarios) setUsuarios(prev => prev.map(u => u.id === clienteActual.id ? { ...u, estado: "Al día" } : u));
+            const res = await wispro.reconectarServicio(clienteActual.wisproUuid, clienteActual.zonaId, zonas, clienteActual.ip || null);
+            await wispro.logAccion(clienteActual.id, clienteActual.nombre, "RECONEXION_PAGO", res);
+            alert(`✅ Pago registrado.\n⚡ Servicio de ${clienteActual.nombre} reconectado automáticamente en Wispro.\n${res.reconectados} contrato(s) habilitado(s).`);
           } catch (err) {
             await wispro.logAccion(modalAbono.clienteId, modalAbono.clienteNombre, "RECONEXION_PAGO", null, err.message);
             alert(`✅ Pago registrado correctamente.\n⚠️ No se pudo reconectar en Wispro: ${err.message}\nActualiza el estado del cliente manualmente.`);
@@ -3327,6 +3353,37 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
             {modalAbono.saldoPendiente > 0 && (
               <div>
                 <div style={{ fontSize: 11, color: GC.ink3, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>Registrar pago / abono</div>
+                {/* Indicador de pronto pago */}
+                {(() => {
+                  const cliente = usuarios.find(u => u.id === modalAbono.clienteId);
+                  const diaHoy = new Date().getDate();
+                  const pp = cliente ? prontoPagos.find(p =>
+                    p.activo &&
+                    p.zona_id === cliente.zonaId &&
+                    diaHoy <= (p.dia_limite || 10) &&
+                    (!p.plan_id || p.plan_id === cliente.planId)
+                  ) : null;
+                  if (!pp) return null;
+                  return (
+                    <div style={{ background: "#fef3c7", border: "2px solid #f59e0b", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+                      <div style={{ fontWeight: 700, color: "#d97706", fontSize: 13, marginBottom: 2 }}>
+                        🏷️ ¡Pronto pago disponible hoy!
+                      </div>
+                      <div style={{ fontSize: 12, color: "#92400e" }}>
+                        Si paga hoy (día {diaHoy}, antes del día {pp.dia_limite}) aplica descuento de{" "}
+                        <strong>{formatCOP(Number(pp.descuento))}</strong>.
+                      </div>
+                      <div style={{ fontSize: 12, color: "#92400e", marginTop: 4 }}>
+                        Valor con descuento:{" "}
+                        <strong style={{ fontSize: 14 }}>{formatCOP(Math.max(0, modalAbono.saldoPendiente - Number(pp.descuento)))}</strong>
+                      </div>
+                      <button onClick={() => setNuevoAbono({ ...nuevoAbono, monto: String(Math.max(0, modalAbono.saldoPendiente - Number(pp.descuento))) })}
+                        style={{ marginTop: 8, background: "#f59e0b", color: "#fff", border: "none", borderRadius: 7, padding: "6px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
+                        Aplicar descuento pronto pago
+                      </button>
+                    </div>
+                  );
+                })()}
                 <Field label="Monto (COP)">
                   <Inp type="number" value={nuevoAbono.monto} onChange={e => setNuevoAbono({ ...nuevoAbono, monto: e.target.value })} placeholder={`Máx: ${formatCOP(modalAbono.saldoPendiente)}`} />
                   <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
@@ -3377,6 +3434,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           esAdmin={esAdmin} esSuperusuario={esSuperusuario}
           COLOR_ESTADO={COLOR_ESTADO} AccionesFact={AccionesFact}
           agregarAbonoHoyRef={agregarAbonoHoyRef}
+          prontoPagos={prontoPagos} setUsuarios={setUsuarios}
         />
       )}
 
@@ -3416,7 +3474,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
 }
 
 // ── Sección 1: Emitidas ───────────────────────────────────────
-function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, zonas, planes, perfilesPago, clientesVisibles, nombreEmpresa, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, agregarAbonoHoyRef }) {
+function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, zonas, planes, perfilesPago, clientesVisibles, nombreEmpresa, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, agregarAbonoHoyRef, prontoPagos = [], setUsuarios }) {
   const [filtroMes, setFiltroMes] = useState(new Date().getMonth() + 1);
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
   const [busq, setBusq] = useState("");
@@ -5942,10 +6000,15 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const [filtroAdminPerfil, setFiltroAdminPerfil] = useState("");
   const [filtroAdminEstado, setFiltroAdminEstado] = useState("");
   const [formTipo, setFormTipo] = useState(null);
-  const [confirmEliminar, setConfirmEliminar] = useState(null); // { accion, titulo, mensaje }
+  const [confirmEliminar, setConfirmEliminar] = useState(null);
   // Mi cuenta
   const [miCuenta, setMiCuenta] = useState({ usuario: sesion?.usuario || "", clave: "", claveNueva: "", claveConfirm: "" });
   const [miCuentaMsg, setMiCuentaMsg] = useState(null);
+  // Pronto pago
+  const [prontoPagos, setProntoPagos] = useState([]);
+  const [showFormPP, setShowFormPP] = useState(null); // zonaId del panel abierto
+  const [editPP, setEditPP] = useState({ zonaId: "", planId: "", planNombre: "", descuento: "", diaLimite: 10, activo: true });
+  useEffect(() => { db.getProntoPago().then(setProntoPagos).catch(console.error); }, []);
 
   const usuariosFiltradosAdmin = (() => {
     const q = busqAdmin.toLowerCase().trim();
@@ -6171,7 +6234,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
       {/* ── TAB RESUMEN ── */}
       {tab === "facturacion" && (
-        <ModuloFacturacion usuario={sesion} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} planes={planes} perfilesPago={perfilesPago} />
+        <ModuloFacturacion usuario={sesion} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} planes={planes} perfilesPago={perfilesPago} prontoPagos={prontoPagos} />
       )}
 
       {tab === "resumen" && (
@@ -6382,9 +6445,70 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => toggleZona(z.id)} style={{ background: z.activa ? "#22c55e22" : "#e2e8f0", color: z.activa ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{z.activa ? "Activa" : "Inactiva"}</button>
+                      <button onClick={() => setShowFormPP(showFormPP === z.id ? null : z.id)} style={{ background: "#fef3c7", color: "#d97706", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>🏷️ Pronto pago</button>
                       <button onClick={() => { setEditZona(z); setFormTipo("zona"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
                       <button onClick={() => setConfirmEliminar({ accion: () => deleteZona(z.id), titulo: "¿Eliminar zona?", mensaje: `Se eliminará la zona "${z.nombre}". Esta acción no se puede deshacer.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
                     </div>
+                  </div>
+                  {/* Panel Pronto Pago */}
+                  {showFormPP === z.id && (() => {
+                    const ppZona = prontoPagos.filter(p => p.zona_id === z.id);
+                    return (
+                      <div style={{ marginTop: 14, borderTop: "1px dashed #f59e0b", paddingTop: 14 }}>
+                        <div style={{ fontWeight: 700, color: "#d97706", fontSize: 13, marginBottom: 10 }}>🏷️ Pronto pago — {z.nombre}</div>
+                        {/* Lista de descuentos configurados */}
+                        {ppZona.length > 0 && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+                            {ppZona.map(pp => (
+                              <div key={pp.id} style={{ display: "flex", alignItems: "center", gap: 10, background: pp.activo ? "#fef3c7" : "#f1f5f9", borderRadius: 8, padding: "8px 12px", flexWrap: "wrap" }}>
+                                <div style={{ flex: 1 }}>
+                                  <span style={{ fontWeight: 700, color: GC.ink, fontSize: 13 }}>
+                                    {pp.plan_nombre ? `📦 ${pp.plan_nombre}` : "📦 Todos los planes"}
+                                  </span>
+                                  <span style={{ fontSize: 12, color: GC.ink3, marginLeft: 8 }}>
+                                    Descuento: <strong style={{ color: "#d97706" }}>${Number(pp.descuento).toLocaleString("es-CO")}</strong> si paga antes del día <strong>{pp.dia_limite}</strong>
+                                  </span>
+                                </div>
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  <button onClick={async () => { await db.upsertProntoPago({ id: pp.id, zonaId: pp.zona_id, planId: pp.plan_id, planNombre: pp.plan_nombre, descuento: pp.descuento, diaLimite: pp.dia_limite, activo: !pp.activo }); setProntoPagos(await db.getProntoPago()); }} style={{ background: pp.activo ? "#22c55e22" : "#e2e8f0", color: pp.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>{pp.activo ? "Activo" : "Inactivo"}</button>
+                                  <button onClick={async () => { await db.deleteProntoPago(pp.id); setProntoPagos(await db.getProntoPago()); }} style={{ background: "#fef2f2", color: GC.danger, border: "none", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>🗑️</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {/* Formulario agregar nuevo descuento */}
+                        <div style={{ background: "#fff", border: "1px solid #f59e0b55", borderRadius: 10, padding: 14 }}>
+                          <div style={{ fontSize: 12, color: GC.ink3, marginBottom: 10, fontWeight: 600 }}>➕ Agregar descuento de pronto pago</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                            <Field label="Plan (opcional)">
+                              <Sel value={editPP.planId || ""} onChange={e => { const plan = planes.find(p => p.id === e.target.value); setEditPP({ ...editPP, planId: e.target.value, planNombre: plan?.nombre || "" }); }}>
+                                <option value="">— Todos los planes —</option>
+                                {planes.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                              </Sel>
+                            </Field>
+                            <Field label="Descuento fijo ($)">
+                              <Inp type="number" value={editPP.descuento} onChange={e => setEditPP({ ...editPP, descuento: e.target.value })} placeholder="Ej: 2000" />
+                            </Field>
+                            <Field label="Aplica si paga antes del día">
+                              <Inp type="number" min="1" max="31" value={editPP.diaLimite} onChange={e => setEditPP({ ...editPP, diaLimite: e.target.value })} placeholder="Ej: 10" />
+                            </Field>
+                          </div>
+                          <div style={{ fontSize: 11, color: GC.ink3, margin: "8px 0 10px" }}>
+                            {editPP.descuento && editPP.diaLimite ? `Si paga antes del día ${editPP.diaLimite} → descuento de $${Number(editPP.descuento).toLocaleString("es-CO")}` : "Configura el descuento y el día límite"}
+                          </div>
+                          <Btn onClick={async () => {
+                            if (!editPP.descuento || !editPP.diaLimite) { alert("Ingresa el descuento y el día límite."); return; }
+                            try {
+                              await db.upsertProntoPago({ zonaId: z.id, planId: editPP.planId || null, planNombre: editPP.planNombre || null, descuento: editPP.descuento, diaLimite: editPP.diaLimite, activo: true });
+                              setProntoPagos(await db.getProntoPago());
+                              setEditPP({ zonaId: "", planId: "", planNombre: "", descuento: "", diaLimite: 10, activo: true });
+                            } catch(e) { alert("Error: " + e.message); }
+                          }} style={{ fontSize: 13 }}>💾 Guardar descuento</Btn>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   </div>
                 </div>
               );
