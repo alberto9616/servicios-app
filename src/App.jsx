@@ -90,6 +90,8 @@ const mapFactura = r => r ? ({
   fechaEmision: r.fecha_emision, fechaPago: r.fecha_pago,
   notas: r.notas || "", creadoPor: r.creado_por,
   numeroRecibo: r.numero_recibo,
+  descuento_pronto_pago: r.descuento_pronto_pago ? Number(r.descuento_pronto_pago) : 0,
+  pronto_pago_aplicado: r.pronto_pago_aplicado || false,
 }) : null;
 
 const mapAbono = r => r ? ({
@@ -2798,7 +2800,8 @@ function ModalConfirm({ titulo, mensaje, icono, onConfirm, onCancel }) {
 
 function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose }) {
   const totalAbonado = abonos.reduce((s, a) => s + a.monto, 0);
-  const saldo = factura.monto - totalAbonado;
+  const descuentoPP  = Number(factura.descuento_pronto_pago || 0);
+  const saldo = Math.max(0, factura.monto - totalAbonado - descuentoPP);
   const pagado = saldo <= 0;
   const mostrarAbonos = abonos.length > 0 && !pagado;
 
@@ -2870,24 +2873,50 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
 
           {/* Pago completo o abono */}
           {pagado ? (
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18 }}>
-              <span>VALOR PAGADO:</span>
-              <span>$ {factura.monto?.toLocaleString("es-CO")}</span>
-            </div>
+            <>
+              {descuentoPP > 0 && (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, marginBottom: 3 }}>
+                    <span>Valor factura:</span>
+                    <span>{formatCOP(factura.monto)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, marginBottom: 3 }}>
+                    <span>Desc. pronto pago:</span>
+                    <span>- {formatCOP(descuentoPP)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, marginBottom: 3 }}>
+                    <span>Valor cancelado:</span>
+                    <span>{formatCOP(totalAbonado)}</span>
+                  </div>
+                  <div style={{ borderTop: "1px solid #000", margin: "4px 0" }} />
+                </>
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18 }}>
+                <span>VALOR PAGADO:</span>
+                <span>$ {totalAbonado.toLocaleString("es-CO")}</span>
+              </div>
+              <div style={{ textAlign: "center", fontSize: 14, marginTop: 4 }}>*** CANCELADO ***</div>
+            </>
           ) : (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 4 }}>
                 <span>Total a pagar:</span>
                 <span>{formatCOP(factura.monto)}</span>
               </div>
+              {descuentoPP > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, marginBottom: 4 }}>
+                  <span>Desc. pronto pago:</span>
+                  <span>- {formatCOP(descuentoPP)}</span>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 4 }}>
                 <span>Abono:</span>
                 <span>- {formatCOP(totalAbonado)}</span>
               </div>
               <div style={{ borderTop: "1px solid #000", margin: "4px 0" }} />
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18 }}>
-                <span>SALDO DEBE:</span>
-                <span>$ {Math.max(0, saldo).toLocaleString("es-CO")}</span>
+                <span>SALDO PENDIENTE:</span>
+                <span>$ {saldo.toLocaleString("es-CO")}</span>
               </div>
             </>
           )}
@@ -3115,6 +3144,80 @@ function OrdenServicio({ cliente, perfilesPago = [], numeroContrato, secretario,
 // ══════════════════════════════════════════════════════════════
 // MÓDULO FACTURACIÓN — Admin y Secretario
 // ══════════════════════════════════════════════════════════════
+function SeccionProntoPagoReporte({ facturas, usuarios, zonas }) {
+  const [filtroMes, setFiltroMes] = useState(new Date().getMonth() + 1);
+  const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
+
+  const conDescuento = facturas.filter(f =>
+    f.pronto_pago_aplicado &&
+    Number(f.descuento_pronto_pago) > 0 &&
+    f.mes === filtroMes &&
+    f.anio === filtroAnio &&
+    f.estado !== "Anulada"
+  );
+
+  const totalDescuentos = conDescuento.reduce((s, f) => s + Number(f.descuento_pronto_pago || 0), 0);
+  const totalCobrado    = conDescuento.reduce((s, f) => s + (f.monto - Number(f.descuento_pronto_pago || 0)), 0);
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
+        <span style={{ fontWeight: 700, color: "#d97706", fontSize: 16 }}>🏷️ Reporte pronto pago</span>
+        <Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))} style={{ width: 130 }}>
+          {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+        </Sel>
+        <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))} style={{ width: 100 }}>
+          {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
+        </Sel>
+      </div>
+
+      {/* Resumen */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 16 }}>
+        {[
+          { label: "Clientes con descuento", val: conDescuento.length, color: "#d97706" },
+          { label: "Total descuentos aplicados", val: formatCOP(totalDescuentos), color: "#ef4444" },
+          { label: "Total cobrado (con desc.)", val: formatCOP(totalCobrado), color: "#16a34a" },
+        ].map(({ label, val, color }) => (
+          <div key={label} style={{ background: "#fff", border: "1px solid #e2e8f0", borderTop: "3px solid " + color, borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>{label}</div>
+            <div style={{ fontWeight: 800, fontSize: 18, color }}>{val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Lista */}
+      {conDescuento.length === 0 ? (
+        <div style={{ textAlign: "center", color: "#94a3b8", padding: 40 }}>
+          No hay facturas con descuento de pronto pago en {MESES[filtroMes-1]} {filtroAnio}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {conDescuento.map(f => {
+            const desc = Number(f.descuento_pronto_pago || 0);
+            const pagado = f.monto - desc;
+            return (
+              <div key={f.id} style={{ background: "#fff", border: "1px solid #fcd34d", borderLeft: "4px solid #f59e0b", borderRadius: 10, padding: "12px 16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 700, color: "#111", fontSize: 14 }}>{f.clienteNombre}</div>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Recibo #{f.numeroRecibo} · {f.concepto}</div>
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>Fecha pago: {f.fechaPago || "—"}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Valor factura: {formatCOP(f.monto)}</div>
+                    <div style={{ fontSize: 12, color: "#ef4444" }}>Descuento: - {formatCOP(desc)}</div>
+                    <div style={{ fontWeight: 700, color: "#16a34a", fontSize: 15 }}>Cobrado: {formatCOP(pagado)}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perfilesPago = [], prontoPagos = [] }) {
   const [facturas, setFacturas] = useState([]);
   const [cargando, setCargando] = useState(true);
@@ -3266,6 +3369,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
     { key: "emitidas", icon: "🧾", label: "Emitidas" },
     { key: "cierre",   icon: "💼", label: "Cierre de caja" },
     { key: "historial",icon: "🔍", label: "Historial" },
+    { key: "prontopago", icon: "🏷️", label: "Pronto pago" },
     { key: "caja",     icon: "💰", label: "Caja" },
   ];
 
@@ -3468,6 +3572,10 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           nombreEmpresa={nombreEmpresa}
           setConfirmDelete={setConfirmDelete} setConfirmAnular={setConfirmAnular}
         />
+      )}
+
+      {subTab === "prontopago" && (
+        <SeccionProntoPagoReporte facturas={facturas} usuarios={usuarios} zonas={zonas} />
       )}
 
       {/* ════════════════════════════════════════════════════ */}
