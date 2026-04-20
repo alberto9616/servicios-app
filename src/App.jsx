@@ -3165,23 +3165,25 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       const diaHoy = new Date().getDate();
       let descuentoPP = 0;
       if (cliente) {
-        const pp = prontoPagos.find(p =>
+        // Buscar descuento específico para el plan del cliente, o el genérico de la zona
+        const ppEspecifico = prontoPagos.find(p =>
           p.activo &&
           p.zona_id === cliente.zonaId &&
           diaHoy <= (p.dia_limite || 10) &&
-          (!p.plan_id || p.plan_id === cliente.planId)
+          p.plan_id === cliente.planId
         );
+        const ppGenerico = prontoPagos.find(p =>
+          p.activo &&
+          p.zona_id === cliente.zonaId &&
+          diaHoy <= (p.dia_limite || 10) &&
+          !p.plan_id
+        );
+        const pp = ppEspecifico || ppGenerico;
         if (pp) descuentoPP = Number(pp.descuento) || 0;
       }
 
-      // Si hay descuento y el pago cubre la factura completa, aplicarlo
-      let montoFinal = monto;
-      if (descuentoPP > 0 && nuevoSaldo - descuentoPP <= 0) {
-        montoFinal = monto; // El cliente paga lo que debe menos el descuento
-      }
-
-      const abono = await db.registrarAbono({ ...nuevoAbono, monto: montoFinal, facturaId: modalAbono.id, registradoPor: usuario.id });
-      const nuevoSaldo = Math.max(0, modalAbono.saldoPendiente - montoFinal - descuentoPP);
+      const abono = await db.registrarAbono({ ...nuevoAbono, monto, facturaId: modalAbono.id, registradoPor: usuario.id });
+      const nuevoSaldo = Math.max(0, modalAbono.saldoPendiente - monto - descuentoPP);
       const nuevoEstado = nuevoSaldo <= 0 ? "Pagado" : "Abono parcial";
       const nuevaFechaPago = nuevoSaldo <= 0 ? nuevoAbono.fecha : null;
       await db.actualizarFactura(modalAbono.id, { saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: nuevoAbono.metodoPago, fecha_pago: nuevaFechaPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 });
@@ -3196,10 +3198,10 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       setModalAbono(prev => ({ ...prev, saldoPendiente: nuevoSaldo, estado: nuevoEstado }));
       setNuevoAbono({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: fechaLocal() });
       if (descuentoPP > 0 && nuevoSaldo <= 0) {
-        alert(`✅ Pago registrado con descuento de pronto pago.\n🏷️ Descuento aplicado: ${formatCOP(descuentoPP)}`);
+        alert(`Pago registrado con descuento de pronto pago.\nDescuento aplicado: ${formatCOP(descuentoPP)}`);
       }
 
-      // ── Reconexión automática si el cliente estaba en DPP (cualquier abono) ──
+      // Reconexion automatica si el cliente estaba en DPP
       if (modalAbono.clienteId) {
         const clienteActual = usuarios.find(u => u.id === modalAbono.clienteId);
         if (clienteActual && clienteActual.estado === "DPP" && clienteActual.wisproUuid) {
@@ -3208,10 +3210,10 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
             if (setUsuarios) setUsuarios(prev => prev.map(u => u.id === clienteActual.id ? { ...u, estado: "Al día" } : u));
             const res = await wispro.reconectarServicio(clienteActual.wisproUuid, clienteActual.zonaId, zonas, clienteActual.ip || null);
             await wispro.logAccion(clienteActual.id, clienteActual.nombre, "RECONEXION_PAGO", res);
-            alert(`✅ Pago registrado.\n⚡ Servicio de ${clienteActual.nombre} reconectado automáticamente en Wispro.\n${res.reconectados} contrato(s) habilitado(s).`);
+            alert(`Pago registrado.\nServicio de ${clienteActual.nombre} reconectado en Wispro.`);
           } catch (err) {
             await wispro.logAccion(modalAbono.clienteId, modalAbono.clienteNombre, "RECONEXION_PAGO", null, err.message);
-            alert(`✅ Pago registrado correctamente.\n⚠️ No se pudo reconectar en Wispro: ${err.message}\nActualiza el estado del cliente manualmente.`);
+            alert(`Pago registrado.\nNo se pudo reconectar en Wispro: ${err.message}`);
           }
         }
       }
@@ -3357,29 +3359,34 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
                 {(() => {
                   const cliente = usuarios.find(u => u.id === modalAbono.clienteId);
                   const diaHoy = new Date().getDate();
-                  const pp = cliente ? prontoPagos.find(p =>
-                    p.activo &&
-                    p.zona_id === cliente.zonaId &&
-                    diaHoy <= (p.dia_limite || 10) &&
-                    (!p.plan_id || p.plan_id === cliente.planId)
-                  ) : null;
+                  if (!cliente) return null;
+                  const ppEspecifico = prontoPagos.find(p =>
+                    p.activo && p.zona_id === cliente.zonaId &&
+                    diaHoy <= (p.dia_limite || 10) && p.plan_id === cliente.planId
+                  );
+                  const ppGenerico = prontoPagos.find(p =>
+                    p.activo && p.zona_id === cliente.zonaId &&
+                    diaHoy <= (p.dia_limite || 10) && !p.plan_id
+                  );
+                  const pp = ppEspecifico || ppGenerico;
                   if (!pp) return null;
+                  const descuento = Number(pp.descuento);
+                  const valorConDescuento = Math.max(0, modalAbono.saldoPendiente - descuento);
                   return (
                     <div style={{ background: "#fef3c7", border: "2px solid #f59e0b", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
-                      <div style={{ fontWeight: 700, color: "#d97706", fontSize: 13, marginBottom: 2 }}>
-                        🏷️ ¡Pronto pago disponible hoy!
+                      <div style={{ fontWeight: 700, color: "#d97706", fontSize: 13, marginBottom: 4 }}>
+                        🏷️ Pronto pago disponible hoy
                       </div>
                       <div style={{ fontSize: 12, color: "#92400e" }}>
-                        Si paga hoy (día {diaHoy}, antes del día {pp.dia_limite}) aplica descuento de{" "}
-                        <strong>{formatCOP(Number(pp.descuento))}</strong>.
+                        Si paga hoy (dia {diaHoy}, antes del dia {pp.dia_limite}) aplica descuento de <strong>{formatCOP(descuento)}</strong>
+                        {ppEspecifico ? ` (plan ${cliente.plan})` : " (descuento general)"}
                       </div>
-                      <div style={{ fontSize: 12, color: "#92400e", marginTop: 4 }}>
-                        Valor con descuento:{" "}
-                        <strong style={{ fontSize: 14 }}>{formatCOP(Math.max(0, modalAbono.saldoPendiente - Number(pp.descuento)))}</strong>
+                      <div style={{ fontSize: 13, color: "#92400e", marginTop: 4, fontWeight: 700 }}>
+                        Valor con descuento: {formatCOP(valorConDescuento)}
                       </div>
-                      <button onClick={() => setNuevoAbono({ ...nuevoAbono, monto: String(Math.max(0, modalAbono.saldoPendiente - Number(pp.descuento))) })}
+                      <button onClick={() => setNuevoAbono({ ...nuevoAbono, monto: String(valorConDescuento) })}
                         style={{ marginTop: 8, background: "#f59e0b", color: "#fff", border: "none", borderRadius: 7, padding: "6px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
-                        Aplicar descuento pronto pago
+                        Aplicar descuento
                       </button>
                     </div>
                   );
