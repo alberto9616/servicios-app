@@ -39,7 +39,7 @@ const fechaLocal = (d = new Date()) => {
 // ──────────────────────────────────────────────────────────
 const mapZona = r => r ? ({ id: r.id, nombre: r.nombre, color: r.color, activa: r.activa, nombreEmpresa: r.nombre_empresa, wisproActivo: r.wispro_activo !== false }) : null;
 const mapPlan = r => r ? ({ id: r.id, nombre: r.nombre, precio: r.precio, descripcion: r.descripcion, activo: r.activo }) : null;
-const mapPerfilPago = r => r ? ({ id: r.id, nombre: r.nombre, diaInicio: r.dia_inicio, diaFin: r.dia_fin, descripcion: r.descripcion || "", activo: r.activo }) : null;
+const mapPerfilPago = r => r ? ({ id: r.id, nombre: r.nombre, diaInicio: r.dia_inicio, diaFin: r.dia_fin, diaCorte: r.dia_corte || 20, descripcion: r.descripcion || "", activo: r.activo }) : null;
 const mapUsuario = r => r ? ({
   id: r.id, usuario: r.usuario, clave: r.clave, rol: r.rol, nombre: r.nombre, activo: r.activo,
   zonaId: r.zona_id, secretarioId: r.secretario_id, tipo: r.tipo, cedula: r.cedula,
@@ -116,9 +116,23 @@ const db = {
   async upsertProntoPago(p) { const { data, error } = await sb.from("pronto_pago").upsert({ id: p.id || undefined, zona_id: p.zonaId, plan_id: p.planId || null, plan_nombre: p.planNombre || null, descuento: Number(p.descuento) || 0, dia_limite: Number(p.diaLimite) || 10, activo: p.activo !== false }).select().single(); if (error) throw error; return data; },
   async deleteProntoPago(id) { const { error } = await sb.from("pronto_pago").delete().eq("id", id); if (error) throw error; },
 
+  // CORTES CONFIG
+  async getCortesConfig() { const { data } = await sb.from("cortes_config").select("*").eq("id", "global").single(); return data || { hora_corte: 0, minuto_corte: 5, dias_gracia: 0, activo: true }; },
+  async saveCortesConfig(cfg) { const { error } = await sb.from("cortes_config").upsert({ id: "global", ...cfg, updated_at: new Date().toISOString() }); if (error) throw error; },
+
+  // EXCEPCIONES DE CORTE
+  async getExcepciones() { const { data, error } = await sb.from("cortes_excepciones").select("*").order("fecha"); if (error) throw error; return data || []; },
+  async upsertExcepcion(e) { const { data, error } = await sb.from("cortes_excepciones").upsert({ id: e.id || undefined, fecha: e.fecha, motivo: e.motivo, nueva_fecha: e.nuevaFecha || null, created_by: e.createdBy }).select().single(); if (error) throw error; return data; },
+  async deleteExcepcion(id) { const { error } = await sb.from("cortes_excepciones").delete().eq("id", id); if (error) throw error; },
+
+  // PROMESAS DE PAGO
+  async getPromesas(clienteId) { const q = sb.from("promesas_pago").select("*").order("fecha_promesa"); if (clienteId) q.eq("cliente_id", clienteId); const { data, error } = await q; if (error) throw error; return data || []; },
+  async upsertPromesa(p) { const { data, error } = await sb.from("promesas_pago").upsert({ id: p.id || undefined, cliente_id: p.clienteId, cliente_nombre: p.clienteNombre, fecha_promesa: p.fechaPromesa, monto_prometido: p.montoPrometer || null, notas: p.notas || null, estado: p.estado || "Pendiente", created_by: p.createdBy, updated_at: new Date().toISOString() }).select().single(); if (error) throw error; return data; },
+  async deletePromesa(id) { const { error } = await sb.from("promesas_pago").delete().eq("id", id); if (error) throw error; },
+
   // PERFILES DE PAGO
   async getPerfilesPago() { const { data, error } = await sb.from("perfiles_pago").select("*").order("dia_inicio"); if (error) throw error; return data.map(mapPerfilPago); },
-  async upsertPerfilPago(p) { const { data, error } = await sb.from("perfiles_pago").upsert({ id: p.id||undefined, nombre: p.nombre, dia_inicio: p.diaInicio, dia_fin: p.diaFin, descripcion: p.descripcion||null, activo: p.activo }).select().single(); if (error) throw error; return mapPerfilPago(data); },
+  async upsertPerfilPago(p) { const { data, error } = await sb.from("perfiles_pago").upsert({ id: p.id||undefined, nombre: p.nombre, dia_inicio: p.diaInicio, dia_fin: p.diaFin, dia_corte: p.diaCorte || 20, descripcion: p.descripcion||null, activo: p.activo }).select().single(); if (error) throw error; return mapPerfilPago(data); },
   async deletePerfilPago(id) { const { error } = await sb.from("perfiles_pago").delete().eq("id", id); if (error) throw error; },
   async togglePerfilPago(id, activo) { const { error } = await sb.from("perfiles_pago").update({ activo }).eq("id", id); if (error) throw error; },
 
@@ -5372,7 +5386,7 @@ function TabPerfiles({ perfilesPago, setPerfilesPago, usuarios }) {
   const [editPerfil, setEditPerfil] = useState(null);
   const [showFormPerfil, setShowFormPerfil] = useState(false);
   const [confirmPerfil, setConfirmPerfil] = useState(null);
-  const emptyPerfil = { id: "", nombre: "", diaInicio: 1, diaFin: 5, descripcion: "", activo: true };
+  const emptyPerfil = { id: "", nombre: "", diaInicio: 1, diaFin: 5, diaCorte: 20, descripcion: "", activo: true };
   const savePerfil = async (p) => {
     try {
       const guardado = await db.upsertPerfilPago(p);
@@ -5404,9 +5418,13 @@ function TabPerfiles({ perfilesPago, setPerfilesPago, usuarios }) {
         <div style={{ background: "#ffffff", border: "1px solid " + GC.border, borderRadius: 14, padding: 20, marginBottom: 16, boxShadow: "0 2px 8px #00000010" }}>
           <h3 style={{ color: GC.ink, marginTop: 0, marginBottom: 16, fontSize: 15 }}>{editPerfil.id ? "✏️ Editar perfil" : "📅 Nuevo perfil de pago"}</h3>
           <Field label="Nombre del perfil"><Inp value={editPerfil.nombre} onChange={e => setEditPerfil({ ...editPerfil, nombre: e.target.value })} placeholder="Ej: Quincena 1, Fin de mes..." /></Field>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
-            <Field label="Día inicio"><Inp type="number" min="1" max="28" value={editPerfil.diaInicio} onChange={e => setEditPerfil({ ...editPerfil, diaInicio: Number(e.target.value) })} /></Field>
-            <Field label="Día límite"><Inp type="number" min="1" max="28" value={editPerfil.diaFin} onChange={e => setEditPerfil({ ...editPerfil, diaFin: Number(e.target.value) })} /></Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 16px" }}>
+            <Field label="Día inicio pago"><Inp type="number" min="1" max="28" value={editPerfil.diaInicio} onChange={e => setEditPerfil({ ...editPerfil, diaInicio: Number(e.target.value) })} /></Field>
+            <Field label="Día límite pago"><Inp type="number" min="1" max="28" value={editPerfil.diaFin} onChange={e => setEditPerfil({ ...editPerfil, diaFin: Number(e.target.value) })} /></Field>
+            <Field label="Día de corte">
+              <Inp type="number" min="1" max="31" value={editPerfil.diaCorte || 20} onChange={e => setEditPerfil({ ...editPerfil, diaCorte: Number(e.target.value) })} />
+              <div style={{ fontSize: 10, color: GC.ink3, marginTop: 3 }}>Dia en que se corta si no pagó</div>
+            </Field>
           </div>
           <Field label="Descripción (opcional)"><Inp value={editPerfil.descripcion} onChange={e => setEditPerfil({ ...editPerfil, descripcion: e.target.value })} placeholder="Ej: Clientes zona norte" /></Field>
           <div style={{ display: "flex", gap: 8 }}>
@@ -5426,7 +5444,7 @@ function TabPerfiles({ perfilesPago, setPerfilesPago, usuarios }) {
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, color: GC.ink, fontSize: 15 }}>📅 {p.nombre}</div>
-                <div style={{ fontSize: 13, color: GC.info, fontWeight: 600, marginTop: 2 }}>Días {p.diaInicio} al {p.diaFin} de cada mes</div>
+                <div style={{ fontSize: 13, color: GC.info, fontWeight: 600, marginTop: 2 }}>Pago: días {p.diaInicio} al {p.diaFin} · Corte: día {p.diaCorte || 20}</div>
                 {p.descripcion && <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>{p.descripcion}</div>}
                 <div style={{ fontSize: 11, color: GC.ink4, marginTop: 4 }}>👥 {clientesPorPerfil(p.id)} clientes asignados</div>
               </div>
@@ -6101,6 +6119,235 @@ function AsignacionMasiva({ usuarios, setUsuarios, zonas, planes, perfilesPago }
   );
 }
 
+function PanelCortes({ usuarios, perfilesPago, sesion, db }) {
+  const [subTab, setSubTab] = useState("config");
+  const [cfg, setCfg]       = useState({ hora_corte: 0, minuto_corte: 5, dias_gracia: 0, activo: true });
+  const [excepciones, setExcepciones] = useState([]);
+  const [promesas, setPromesas]       = useState([]);
+  const [newExc, setNewExc] = useState({ fecha: "", motivo: "", nuevaFecha: "" });
+  const [newProm, setNewProm] = useState({ clienteId: "", fechaPromesa: "", montoPrometer: "", notas: "" });
+  const [guardando, setGuardando] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    db.getCortesConfig().then(setCfg).catch(console.error);
+    db.getExcepciones().then(setExcepciones).catch(console.error);
+    db.getPromesas().then(setPromesas).catch(console.error);
+  }, []);
+
+  const saveCfg = async () => {
+    setGuardando(true);
+    try {
+      await db.saveCortesConfig({ ...cfg, updated_by: sesion?.usuario });
+      // Actualizar cron con nueva hora
+      setMsg({ ok: true, txt: "Configuracion guardada. El cron se ejecutará a las " + String(cfg.hora_corte).padStart(2,"0") + ":" + String(cfg.minuto_corte).padStart(2,"0") + " UTC" });
+    } catch(e) { setMsg({ ok: false, txt: "Error: " + e.message }); }
+    setGuardando(false);
+    setTimeout(() => setMsg(null), 4000);
+  };
+
+  const saveExc = async () => {
+    if (!newExc.fecha || !newExc.motivo) { alert("Ingresa fecha y motivo"); return; }
+    try {
+      const r = await db.upsertExcepcion({ ...newExc, createdBy: sesion?.usuario });
+      setExcepciones(prev => [...prev.filter(e => e.fecha !== r.fecha), r].sort((a,b) => a.fecha.localeCompare(b.fecha)));
+      setNewExc({ fecha: "", motivo: "", nuevaFecha: "" });
+    } catch(e) { alert("Error: " + e.message); }
+  };
+
+  const saveProm = async () => {
+    if (!newProm.clienteId || !newProm.fechaPromesa) { alert("Selecciona cliente y fecha"); return; }
+    const cliente = usuarios.find(u => u.id === newProm.clienteId);
+    try {
+      const r = await db.upsertPromesa({ ...newProm, clienteNombre: cliente?.nombre, createdBy: sesion?.usuario });
+      setPromesas(prev => [r, ...prev]);
+      setNewProm({ clienteId: "", fechaPromesa: "", montoPrometer: "", notas: "" });
+    } catch(e) { alert("Error: " + e.message); }
+  };
+
+  const HORAS = Array.from({length:24}, (_,i) => i);
+  const clientes = usuarios.filter(u => u.rol === "cliente" && u.activo);
+  const hoy = new Date().toISOString().split("T")[0];
+
+  return (
+    <div>
+      {/* Sub-tabs */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: GC.bg3, borderRadius: 12, padding: 4 }}>
+        {[["config","⚙️ Configuración"],["excepciones","📆 Excepciones"],["promesas","🤝 Promesas de pago"]].map(([k,l]) => (
+          <button key={k} onClick={() => setSubTab(k)} style={{ flex: 1, padding: "9px 6px", borderRadius: 9, border: "none", cursor: "pointer", background: subTab === k ? GC.ink : "transparent", color: subTab === k ? "#fff" : GC.ink3, fontWeight: subTab === k ? 700 : 500, fontSize: 13, fontFamily: "inherit" }}>{l}</button>
+        ))}
+      </div>
+
+      {/* ── CONFIG ── */}
+      {subTab === "config" && (
+        <div>
+          <div style={{ background: "#fff", border: "1px solid " + GC.border, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16, color: GC.ink }}>⚙️ Configuracion de cortes automaticos</div>
+
+            {/* ON/OFF */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, background: cfg.activo ? "#f0fdf4" : "#fef2f2", border: "1px solid " + (cfg.activo ? "#bbf7d0" : "#fecaca"), borderRadius: 10, padding: "12px 16px" }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, color: cfg.activo ? "#16a34a" : "#ef4444" }}>{cfg.activo ? "Corte automatico ACTIVO" : "Corte automatico INACTIVO"}</div>
+                <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>Cuando esta inactivo ningun cliente sera cortado automaticamente</div>
+              </div>
+              <button onClick={() => setCfg(c => ({ ...c, activo: !c.activo }))}
+                style={{ background: cfg.activo ? "#16a34a" : "#94a3b8", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
+                {cfg.activo ? "Desactivar" : "Activar"}
+              </button>
+            </div>
+
+            {/* Hora */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0 16px" }}>
+              <Field label="Hora del corte (UTC)">
+                <Sel value={cfg.hora_corte} onChange={e => setCfg(c => ({ ...c, hora_corte: Number(e.target.value) }))}>
+                  {HORAS.map(h => <option key={h} value={h}>{String(h).padStart(2,"0")}:00 UTC ({String((h - 5 + 24) % 24).padStart(2,"0")}:00 Colombia)</option>)}
+                </Sel>
+              </Field>
+              <Field label="Minuto">
+                <Sel value={cfg.minuto_corte} onChange={e => setCfg(c => ({ ...c, minuto_corte: Number(e.target.value) }))}>
+                  {[0,5,10,15,20,30,45].map(m => <option key={m} value={m}>{String(m).padStart(2,"0")}</option>)}
+                </Sel>
+              </Field>
+              <Field label="Dias de gracia despues del vencimiento">
+                <Inp type="number" min="0" max="30" value={cfg.dias_gracia} onChange={e => setCfg(c => ({ ...c, dias_gracia: Number(e.target.value) }))} />
+              </Field>
+            </div>
+
+            <div style={{ background: "#eff6ff", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#1e40af" }}>
+              El cron corre a las <strong>{String(cfg.hora_corte).padStart(2,"0")}:{String(cfg.minuto_corte).padStart(2,"0")} UTC</strong> = <strong>{String((cfg.hora_corte - 5 + 24) % 24).padStart(2,"0")}:{String(cfg.minuto_corte).padStart(2,"0")} hora Colombia</strong> cada dia. Con {cfg.dias_gracia} dia(s) de gracia adicional.
+            </div>
+
+            {msg && <div style={{ background: msg.ok ? "#f0fdf4" : "#fef2f2", border: "1px solid " + (msg.ok ? "#bbf7d0" : "#fecaca"), borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: msg.ok ? "#16a34a" : "#ef4444" }}>{msg.txt}</div>}
+            <Btn onClick={saveCfg} disabled={guardando}>{guardando ? "Guardando..." : "Guardar configuracion"}</Btn>
+          </div>
+
+          {/* Info perfiles */}
+          <div style={{ background: "#fff", border: "1px solid " + GC.border, borderRadius: 14, padding: 20 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, color: GC.ink }}>📅 Dia de corte por perfil de pago</div>
+            <div style={{ fontSize: 12, color: GC.ink3, marginBottom: 12 }}>Para cambiar el dia de corte de cada perfil, ve a la seccion Perfiles pago y edita el campo "Dia de corte".</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {perfilesPago.map(p => (
+                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", background: GC.bg3, borderRadius: 8, padding: "10px 14px" }}>
+                  <span style={{ fontWeight: 600, color: GC.ink }}>{p.nombre}</span>
+                  <span style={{ fontSize: 13, color: GC.ink3 }}>Pago: dias {p.diaInicio}-{p.diaFin} · <strong style={{ color: "#ef4444" }}>Corte: dia {p.diaCorte || 20}</strong></span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── EXCEPCIONES ── */}
+      {subTab === "excepciones" && (
+        <div>
+          <div style={{ background: "#fff", border: "1px solid " + GC.border, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, color: GC.ink }}>📆 Agregar excepcion de corte</div>
+            <div style={{ fontSize: 12, color: GC.ink3, marginBottom: 14 }}>Si cae un festivo o necesitas suspender el corte un dia especifico, agrega una excepcion aqui.</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+              <Field label="Fecha a exceptuar">
+                <Inp type="date" value={newExc.fecha} min={hoy} onChange={e => setNewExc(x => ({ ...x, fecha: e.target.value }))} />
+              </Field>
+              <Field label="Fecha alternativa de corte (opcional)">
+                <Inp type="date" value={newExc.nuevaFecha} min={hoy} onChange={e => setNewExc(x => ({ ...x, nuevaFecha: e.target.value }))} />
+                <div style={{ fontSize: 10, color: GC.ink3, marginTop: 2 }}>Dejar vacío = no cortar ese dia</div>
+              </Field>
+            </div>
+            <Field label="Motivo (festivo, emergencia, etc.)">
+              <Inp value={newExc.motivo} onChange={e => setNewExc(x => ({ ...x, motivo: e.target.value }))} placeholder="Ej: Festivo nacional, Semana Santa..." />
+            </Field>
+            <Btn onClick={saveExc}>Agregar excepcion</Btn>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {excepciones.length === 0 ? (
+              <div style={{ textAlign: "center", color: GC.ink3, padding: 30 }}>No hay excepciones configuradas</div>
+            ) : excepciones.map(e => (
+              <div key={e.id} style={{ background: "#fff", border: "1px solid #fcd34d", borderLeft: "4px solid #f59e0b", borderRadius: 10, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontWeight: 700, color: GC.ink }}>{e.fecha} — {e.motivo}</div>
+                  <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>
+                    {e.nueva_fecha ? "Corte pospuesto al " + e.nueva_fecha : "No se corta ese dia"}
+                  </div>
+                </div>
+                <button onClick={async () => { await db.deleteExcepcion(e.id); setExcepciones(p => p.filter(x => x.id !== e.id)); }}
+                  style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12 }}>Eliminar</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── PROMESAS DE PAGO ── */}
+      {subTab === "promesas" && (
+        <div>
+          <div style={{ background: "#fff", border: "1px solid " + GC.border, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, color: GC.ink }}>🤝 Nueva promesa de pago</div>
+            <div style={{ fontSize: 12, color: GC.ink3, marginBottom: 14 }}>El cliente se compromete a pagar antes de la fecha indicada. El corte automatico lo respetara.</div>
+            <Field label="Cliente">
+              <Sel value={newProm.clienteId} onChange={e => setNewProm(x => ({ ...x, clienteId: e.target.value }))}>
+                <option value="">Seleccionar cliente...</option>
+                {clientes.sort((a,b) => a.nombre.localeCompare(b.nombre)).map(c => (
+                  <option key={c.id} value={c.id}>{c.nombre} {c.estado === "DPP" ? "(DPP)" : ""}</option>
+                ))}
+              </Sel>
+            </Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+              <Field label="Se compromete a pagar antes del">
+                <Inp type="date" value={newProm.fechaPromesa} min={hoy} onChange={e => setNewProm(x => ({ ...x, fechaPromesa: e.target.value }))} />
+              </Field>
+              <Field label="Monto prometido (opcional)">
+                <Inp type="number" value={newProm.montoPrometer} onChange={e => setNewProm(x => ({ ...x, montoPrometer: e.target.value }))} placeholder="Ej: 37000" />
+              </Field>
+            </div>
+            <Field label="Notas (opcional)">
+              <Inp value={newProm.notas} onChange={e => setNewProm(x => ({ ...x, notas: e.target.value }))} placeholder="Acuerdo, motivo, etc." />
+            </Field>
+            <Btn onClick={saveProm}>Registrar promesa</Btn>
+          </div>
+
+          {/* Lista promesas */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {promesas.length === 0 ? (
+              <div style={{ textAlign: "center", color: GC.ink3, padding: 30 }}>No hay promesas de pago registradas</div>
+            ) : promesas.map(p => {
+              const vencida = p.fecha_promesa < hoy && p.estado === "Pendiente";
+              const estadoColor = { Pendiente: "#f59e0b", Cumplida: "#16a34a", Incumplida: "#ef4444", Cancelada: "#94a3b8" }[p.estado] || "#94a3b8";
+              return (
+                <div key={p.id} style={{ background: "#fff", border: "1px solid " + (vencida ? "#fecaca" : "#e2e8f0"), borderLeft: "4px solid " + estadoColor, borderRadius: 10, padding: "12px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: GC.ink }}>{p.cliente_nombre}</div>
+                      <div style={{ fontSize: 13, color: GC.ink3, marginTop: 2 }}>
+                        Promete pagar antes del <strong>{p.fecha_promesa}</strong>
+                        {p.monto_prometido ? ` · ${formatCOP(Number(p.monto_prometido))}` : ""}
+                      </div>
+                      {p.notas && <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>{p.notas}</div>}
+                      {vencida && <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4, fontWeight: 700 }}>Promesa vencida sin marcar</div>}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {p.estado === "Pendiente" && (
+                        <>
+                          <button onClick={async () => { await db.upsertPromesa({ id: p.id, clienteId: p.cliente_id, clienteNombre: p.cliente_nombre, fechaPromesa: p.fecha_promesa, estado: "Cumplida" }); setPromesas(prev => prev.map(x => x.id === p.id ? { ...x, estado: "Cumplida" } : x)); }}
+                            style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Cumplida</button>
+                          <button onClick={async () => { await db.upsertPromesa({ id: p.id, clienteId: p.cliente_id, clienteNombre: p.cliente_nombre, fechaPromesa: p.fecha_promesa, estado: "Incumplida" }); setPromesas(prev => prev.map(x => x.id === p.id ? { ...x, estado: "Incumplida" } : x)); }}
+                            style={{ background: "#fef2f2", color: "#ef4444", border: "1px solid #fecaca", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Incumplida</button>
+                        </>
+                      )}
+                      {p.estado !== "Pendiente" && <span style={{ fontSize: 12, fontWeight: 700, color: estadoColor, padding: "5px 10px" }}>{p.estado}</span>}
+                      <button onClick={async () => { await db.deletePromesa(p.id); setPromesas(prev => prev.filter(x => x.id !== p.id)); }}
+                        style={{ background: GC.bg3, color: GC.ink3, border: "none", borderRadius: 7, padding: "5px 8px", cursor: "pointer", fontSize: 12 }}>🗑️</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProntoPagoPanel({ z, prontoPagos, setProntoPagos, planes, editPP, setEditPP, db }) {
   const ppZona = prontoPagos.filter(p => p.zona_id === z.id);
   return (
@@ -6359,7 +6606,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     zonas: zonas.length,
   };
 
-  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["masivo", "⚡ Asignación masiva"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación y Caja"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
+  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["cortes", "✂️ Cortes"], ["masivo", "⚡ Asignación masiva"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación y Caja"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
 
   const getNombreZona = (zonaId) => zonas.find(z => z.id === zonaId)?.nombre || "Sin zona";
 
@@ -6552,6 +6799,15 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
       {/* ── TAB PERFILES DE PAGO ── */}
       {tab === "perfiles" && <TabPerfiles perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} usuarios={usuarios} />}
+
+      {tab === "cortes" && (
+        <PanelCortes
+          usuarios={usuarios}
+          perfilesPago={perfilesPago}
+          sesion={sesion}
+          db={db}
+        />
+      )}
 
       {/* ── TAB ASIGNACIÓN MASIVA ── */}
       {tab === "masivo" && (
