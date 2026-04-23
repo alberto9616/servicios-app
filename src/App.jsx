@@ -1449,6 +1449,150 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
 // ══════════════════════════════════════════════════════════════
 // PORTAL SECRETARIO
 // ══════════════════════════════════════════════════════════════
+function ClienteAcciones({ c, wisproLoading, setWisproLoading, setUsuarios, setEditCliente, setShowFormCliente, setModalOrdenServicio, setConfirmElimSecretario, deleteCliente, toggleCliente, zonas, db }) {
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const [modalPromesa, setModalPromesa] = useState(false);
+  const [promesa, setPromesa] = useState({ fechaPromesa: "", montoPrometer: "", notas: "" });
+
+  const cortarServicio = async () => {
+    if (!confirm(`Cortar el servicio de ${c.nombre}?`)) return;
+    setWisproLoading(p => ({ ...p, [c.id]: "cortando" }));
+    try {
+      await db.upsertUsuario({ ...c, estado: "DPP" });
+      setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "DPP" } : u));
+      const res = await wispro.cortarServicio(c.wisproUuid, c.zonaId, zonas, c.ip || null);
+      await wispro.logAccion(c.id, c.nombre, "CORTE_DPP", res);
+      alert(`${c.nombre} cortado. ${res.cortados} contrato(s) suspendido(s).`);
+    } catch (err) {
+      await wispro.logAccion(c.id, c.nombre, "CORTE_DPP", null, err.message);
+      alert(`Estado cambiado a DPP. Error en Wispro: ${err.message}`);
+    } finally { setWisproLoading(p => { const n={...p}; delete n[c.id]; return n; }); }
+  };
+
+  const reconectarServicio = async () => {
+    if (!confirm(`Reconectar el servicio de ${c.nombre}?`)) return;
+    setWisproLoading(p => ({ ...p, [c.id]: "reconectando" }));
+    try {
+      await db.upsertUsuario({ ...c, estado: "Al día" });
+      setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "Al día" } : u));
+      const res = await wispro.reconectarServicio(c.wisproUuid, c.zonaId, zonas, c.ip || null);
+      await wispro.logAccion(c.id, c.nombre, "RECONEXION", res);
+      alert(`${c.nombre} reconectado. ${res.reconectados} contrato(s) habilitado(s).`);
+    } catch (err) {
+      await wispro.logAccion(c.id, c.nombre, "RECONEXION", null, err.message);
+      alert(`Estado cambiado. Error en Wispro: ${err.message}`);
+    } finally { setWisproLoading(p => { const n={...p}; delete n[c.id]; return n; }); }
+  };
+
+  const guardarPromesa = async () => {
+    if (!promesa.fechaPromesa) { alert("Selecciona la fecha de la promesa."); return; }
+    try {
+      await db.upsertPromesa({ clienteId: c.id, clienteNombre: c.nombre, fechaPromesa: promesa.fechaPromesa, montoPrometer: promesa.montoPrometer || null, notas: promesa.notas || null, estado: "Pendiente" });
+      setModalPromesa(false);
+      setPromesa({ fechaPromesa: "", montoPrometer: "", notas: "" });
+      alert(`Promesa de pago registrada para ${c.nombre.split(" ")[0]} hasta el ${promesa.fechaPromesa}.`);
+    } catch (err) { alert("Error: " + err.message); }
+  };
+
+  const cargando = !!wisproLoading[c.id];
+  const hoy = new Date().toISOString().split("T")[0];
+
+  return (
+    <div style={{ display: "flex", gap: 5, alignItems: "center", position: "relative" }}>
+
+      {/* Botón 1: Editar */}
+      <button onClick={() => { setEditCliente(c); setShowFormCliente(true); }}
+        style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 11px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+        ✏️ Editar
+      </button>
+
+      {/* Botón 2: Promesa de pago 💲 */}
+      <button onClick={() => setModalPromesa(true)}
+        title="Registrar promesa de pago"
+        style={{ background: "#fefce8", color: "#ca8a04", border: "1px solid #fde047", borderRadius: 7, padding: "6px 11px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+        💲
+      </button>
+
+      {/* Botón 3: ••• menú desplegable */}
+      <div style={{ position: "relative" }}>
+        <button onClick={() => setMenuAbierto(m => !m)}
+          style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 11px", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>
+          •••
+        </button>
+        {menuAbierto && (
+          <div style={{ position: "absolute", right: 0, top: "110%", background: "#fff", border: "1px solid " + GC.border, borderRadius: 10, boxShadow: "0 8px 24px #00000022", zIndex: 100, minWidth: 180, overflow: "hidden" }}
+            onMouseLeave={() => setMenuAbierto(false)}>
+            {[
+              // Cortar o Reconectar según estado (ahora en el menú)
+              ...(c.wisproUuid && c.estado !== "DPP" && c.estado !== "DPS" ? [{
+                label: cargando && wisproLoading[c.id] === "cortando" ? "Cortando..." : "Cortar servicio",
+                icon: "✂️",
+                color: "#dc2626",
+                onClick: () => { setMenuAbierto(false); cortarServicio(); }
+              }] : []),
+              ...(c.wisproUuid && c.estado === "DPP" ? [{
+                label: cargando && wisproLoading[c.id] === "reconectando" ? "Reconectando..." : "Activar servicio",
+                icon: "⚡",
+                color: "#16a34a",
+                onClick: () => { setMenuAbierto(false); reconectarServicio(); }
+              }] : []),
+              { label: c.activo ? "Desactivar cliente" : "Activar cliente", icon: c.activo ? "🔴" : "🟢", onClick: () => { toggleCliente(c.id); setMenuAbierto(false); } },
+              { label: "Ver orden servicio", icon: "📄", onClick: () => { setModalOrdenServicio(c); setMenuAbierto(false); } },
+              { label: "Cambiar clave acceso", icon: "🔑", onClick: async () => {
+                setMenuAbierto(false);
+                const nuevaClave = prompt(`Nueva clave para ${c.nombre}:`);
+                if (!nuevaClave || nuevaClave.length < 4) { alert("Minimo 4 caracteres."); return; }
+                try { await db.upsertUsuario({ ...c, clave: nuevaClave.trim() }); setUsuarios(p => p.map(u => u.id === c.id ? { ...u, clave: nuevaClave.trim() } : u)); alert(`Clave actualizada.`); }
+                catch (err) { alert("Error: " + err.message); }
+              }},
+              { label: "Eliminar cliente", icon: "🗑️", color: "#ef4444", onClick: () => { setMenuAbierto(false); setConfirmElimSecretario({ accion: () => deleteCliente(c.id), titulo: "Eliminar cliente?", mensaje: `Se eliminara a "${c.nombre}" del sistema.` }); } },
+            ].map(item => (
+              <button key={item.label} onClick={item.onClick}
+                style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", fontSize: 13, color: item.color || GC.ink, textAlign: "left", fontFamily: "inherit" }}
+                onMouseEnter={e => e.currentTarget.style.background = GC.bg3}
+                onMouseLeave={e => e.currentTarget.style.background = "none"}>
+                <span>{item.icon}</span> {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Modal promesa de pago */}
+      {modalPromesa && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+          onClick={e => e.target === e.currentTarget && setModalPromesa(false)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 400, padding: 24, boxShadow: "0 20px 60px #00000033" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16, color: GC.ink }}>💲 Promesa de pago</div>
+                <div style={{ fontSize: 13, color: GC.ink3, marginTop: 2 }}>{c.nombre}</div>
+              </div>
+              <button onClick={() => setModalPromesa(false)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+            </div>
+            <div style={{ fontSize: 12, color: "#ca8a04", background: "#fefce8", border: "1px solid #fde047", borderRadius: 8, padding: "8px 12px", marginBottom: 16 }}>
+              Mientras la promesa este vigente el cliente NO sera cortado automaticamente.
+            </div>
+            <Field label="Fecha limite de pago">
+              <Inp type="date" value={promesa.fechaPromesa} min={hoy} onChange={e => setPromesa(p => ({ ...p, fechaPromesa: e.target.value }))} />
+            </Field>
+            <Field label="Monto prometido (opcional)">
+              <Inp type="number" value={promesa.montoPrometer} onChange={e => setPromesa(p => ({ ...p, montoPrometer: e.target.value }))} placeholder="Ej: 37000" />
+            </Field>
+            <Field label="Notas (opcional)">
+              <Inp value={promesa.notas} onChange={e => setPromesa(p => ({ ...p, notas: e.target.value }))} placeholder="Acuerdo, motivo del atraso..." />
+            </Field>
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <Btn onClick={guardarPromesa} style={{ flex: 1 }}>Registrar promesa</Btn>
+              <Btn variant="ghost" onClick={() => setModalPromesa(false)}>Cancelar</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, usuarios, setUsuarios, avisos, setAvisos, planes, perfilesPago = [], zonas, propaganda, tabExterno, setTabExterno }) {
   const [tabLocal, setTabLocal] = useState("tickets"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const [ticketAbierto, setTicketAbierto] = useState(null);
@@ -1966,69 +2110,20 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   <div style={{ fontSize: 11, color: GC.ink3 }}>{c.plan}</div>
                 </div>
                 {c.estado && <Badge text={c.estado} color={ESTADO_COLOR[c.estado] || "#64748b"} />}
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {/* Botón corte rápido DPP */}
-                  {c.wisproUuid && c.estado !== "DPP" && c.estado !== "DPS" && (
-                    <button
-                      disabled={!!wisproLoading[c.id]}
-                      onClick={async () => {
-                        if (!confirm(`¿Cortar el servicio de ${c.nombre}?\nSe marcará como DPP y se suspenderá en Wispro.`)) return;
-                        setWisproLoading(p => ({ ...p, [c.id]: "cortando" }));
-                        try {
-                          const actualizado = { ...c, estado: "DPP" };
-                          await db.upsertUsuario(actualizado);
-                          setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "DPP" } : u));
-                          const res = await wispro.cortarServicio(c.wisproUuid, c.zonaId, zonas, c.ip || null);
-                          await wispro.logAccion(c.id, c.nombre, "CORTE_DPP", res);
-                          alert(`✅ ${c.nombre} cortado.\n${res.cortados} contrato(s) suspendido(s) en Wispro.`);
-                        } catch (err) {
-                          await wispro.logAccion(c.id, c.nombre, "CORTE_DPP", null, err.message);
-                          alert(`⚠️ Estado cambiado a DPP, pero error en Wispro:\n${err.message}`);
-                        } finally { setWisproLoading(p => { const n={...p}; delete n[c.id]; return n; }); }
-                      }}
-                      style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, padding: "5px 10px", cursor: wisproLoading[c.id] ? "wait" : "pointer", fontSize: 12, fontWeight: 700, opacity: wisproLoading[c.id] ? 0.6 : 1 }}
-                    >
-                      {wisproLoading[c.id] === "cortando" ? "⏳ Cortando..." : "✂️ Cortar"}
-                    </button>
-                  )}
-                  {/* Botón reconexión rápida */}
-                  {c.wisproUuid && c.estado === "DPP" && (
-                    <button
-                      disabled={!!wisproLoading[c.id]}
-                      onClick={async () => {
-                        if (!confirm(`¿Reconectar el servicio de ${c.nombre}?\nSe marcará como Activo y se habilitará en Wispro.`)) return;
-                        setWisproLoading(p => ({ ...p, [c.id]: "reconectando" }));
-                        try {
-                          const actualizado = { ...c, estado: "Al día" };
-                          await db.upsertUsuario(actualizado);
-                          setUsuarios(p => p.map(u => u.id === c.id ? { ...u, estado: "Al día" } : u));
-                          const res = await wispro.reconectarServicio(c.wisproUuid, c.zonaId, zonas, c.ip || null);
-                          await wispro.logAccion(c.id, c.nombre, "RECONEXION", res);
-                          alert(`✅ ${c.nombre} reconectado.\n${res.reconectados} contrato(s) habilitado(s) en Wispro.`);
-                        } catch (err) {
-                          await wispro.logAccion(c.id, c.nombre, "RECONEXION", null, err.message);
-                          alert(`⚠️ Estado cambiado a Activo, pero error en Wispro:\n${err.message}`);
-                        } finally { setWisproLoading(p => { const n={...p}; delete n[c.id]; return n; }); }
-                      }}
-                      style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 8, padding: "5px 10px", cursor: wisproLoading[c.id] ? "wait" : "pointer", fontSize: 12, fontWeight: 700, opacity: wisproLoading[c.id] ? 0.6 : 1 }}
-                    >
-                      {wisproLoading[c.id] === "reconectando" ? "⏳ Reconectando..." : "⚡ Reconectar"}
-                    </button>
-                  )}
-                  <button onClick={() => toggleCliente(c.id)} style={{ background: c.activo ? "#f0fdf4" : "#f1f5f9", color: c.activo ? "#16a34a" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{c.activo ? "Activo" : "Inactivo"}</button>
-                  <button onClick={() => { setEditCliente(c); setShowFormCliente(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
-                  <button title="Ver orden de servicio" onClick={() => setModalOrdenServicio(c)} style={{ background: "#f0fdf4", color: "#16a34a", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>📄</button>
-                  <button title="Cambiar clave" onClick={async () => {
-                    const nuevaClave = prompt(`Nueva clave para ${c.nombre}:`);
-                    if (!nuevaClave || nuevaClave.length < 4) { alert("La clave debe tener al menos 4 caracteres."); return; }
-                    try {
-                      await db.upsertUsuario({ ...c, clave: nuevaClave.trim() });
-                      setUsuarios(p => p.map(u => u.id === c.id ? { ...u, clave: nuevaClave.trim() } : u));
-                      alert(`✅ Clave actualizada para ${c.nombre}`);
-                    } catch (err) { alert("Error al cambiar clave: " + err.message); }
-                  }} style={{ background: GC.bg3, color: GC.info, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🔑</button>
-                  <button onClick={() => setConfirmElimSecretario({ accion: () => deleteCliente(c.id), titulo: "¿Eliminar cliente?", mensaje: `Se eliminará a "${c.nombre}" del sistema.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
-                </div>
+                <ClienteAcciones
+                  c={c}
+                  wisproLoading={wisproLoading}
+                  setWisproLoading={setWisproLoading}
+                  setUsuarios={setUsuarios}
+                  setEditCliente={setEditCliente}
+                  setShowFormCliente={setShowFormCliente}
+                  setModalOrdenServicio={setModalOrdenServicio}
+                  setConfirmElimSecretario={setConfirmElimSecretario}
+                  deleteCliente={deleteCliente}
+                  toggleCliente={toggleCliente}
+                  zonas={zonas}
+                  db={db}
+                />
               </div>
             ))}
           </div>
@@ -2821,21 +2916,21 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
 
   const imprimir = () => {
     const contenido = document.getElementById("recibo-print").innerHTML;
-    const ventana = window.open("", "_blank", "width=320,height=700");
+    const ventana = window.open("", "_blank", "width=380,height=750");
     ventana.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      html, body { width: 80mm; }
-      body { font-family: 'Courier New', Courier, monospace; font-size: 13px; color: #000; padding: 4mm 3mm; }
-      .sep { border: none; border-top: 1px dashed #000; margin: 6px 0; display: block; }
-      @page { size: 80mm auto; margin: 0; }
+      html, body { width: 76mm; }
+      body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; color: #000; padding: 2mm 3mm; line-height: 1.4; }
+      div { word-break: break-word; }
+      @page { size: 76mm auto; margin: 2mm 3mm; }
       @media print {
-        html, body { width: 80mm; }
+        html, body { width: 76mm; font-size: 10pt; }
         button { display: none !important; }
       }
     </style></head><body>${contenido}</body></html>`);
     ventana.document.close();
     ventana.focus();
-    setTimeout(() => { ventana.print(); ventana.close(); }, 500);
+    setTimeout(() => { ventana.print(); ventana.close(); }, 600);
   };
 
   const row = (label, valor, bold = false) => (
@@ -2853,89 +2948,89 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
         </div>
 
         {/* Preview */}
-        <div id="recibo-print" style={{ padding: "10px 14px", fontFamily: "'Courier New', monospace", fontSize: 16, color: "#000", maxWidth: 280, margin: "0 auto" }}>
+        <div id="recibo-print" style={{ padding: "8px 12px", fontFamily: "'Courier New', monospace", fontSize: 13, color: "#000", maxWidth: 290, margin: "0 auto", lineHeight: 1.4 }}>
 
           {/* Empresa */}
-          <div style={{ textAlign: "center", marginBottom: 6 }}>
-            <div style={{ fontSize: 18 }}>{(nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase()}</div>
-            <div style={{ fontSize: 15 }}>Tel.: {telefono || "318-8255601"}</div>
+          <div style={{ textAlign: "center", marginBottom: 4 }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{(nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase()}</div>
+            <div style={{ fontSize: 11 }}>Tel.: {telefono || "318-8255601"}</div>
           </div>
 
-          <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+          <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
 
           {/* Número de recibo */}
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
             <span>Recibo No.:</span>
             <span>#{String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0")}</span>
           </div>
-          <div style={{ fontSize: 14, marginBottom: 4 }}>Fecha: {factura.fechaEmision || fechaLocal()}</div>
+          <div style={{ fontSize: 11, marginBottom: 3 }}>Fecha: {factura.fechaEmision || fechaLocal()}</div>
 
-          <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+          <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
 
           {/* Quien paga */}
-          <div style={{ fontSize: 18, marginBottom: 2 }}>{(factura.clienteNombre || "").toUpperCase()}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 2 }}>{(factura.clienteNombre || "").toUpperCase()}</div>
 
-          <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+          <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
 
           {/* Concepto */}
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 4 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
             <span>{(factura.concepto || `MES ${factura.mes || ""} ${factura.anio || ""}`).toUpperCase()}</span>
             <span>{formatCOP(factura.monto)}</span>
           </div>
 
-          <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+          <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
 
           {/* Pago completo o abono */}
           {pagado ? (
             <>
               {descuentoPP > 0 && (
                 <>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, marginBottom: 3 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
                     <span>Valor factura:</span>
                     <span>{formatCOP(factura.monto)}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, marginBottom: 3 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
                     <span>Desc. pronto pago:</span>
                     <span>- {formatCOP(descuentoPP)}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, marginBottom: 3 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
                     <span>Valor cancelado:</span>
                     <span>{formatCOP(totalAbonado)}</span>
                   </div>
-                  <div style={{ borderTop: "1px solid #000", margin: "4px 0" }} />
+                  <div style={{ borderTop: "1px solid #000", margin: "3px 0" }} />
                 </>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700 }}>
                 <span>VALOR PAGADO:</span>
                 <span>$ {totalAbonado.toLocaleString("es-CO")}</span>
               </div>
-              <div style={{ textAlign: "center", fontSize: 14, marginTop: 4 }}>*** CANCELADO ***</div>
+              <div style={{ textAlign: "center", fontSize: 12, marginTop: 3, fontWeight: 700 }}>*** CANCELADO ***</div>
             </>
           ) : (
             <>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
                 <span>Total a pagar:</span>
                 <span>{formatCOP(factura.monto)}</span>
               </div>
               {descuentoPP > 0 && (
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, marginBottom: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
                   <span>Desc. pronto pago:</span>
                   <span>- {formatCOP(descuentoPP)}</span>
                 </div>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, marginBottom: 4 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
                 <span>Abono:</span>
                 <span>- {formatCOP(totalAbonado)}</span>
               </div>
-              <div style={{ borderTop: "1px solid #000", margin: "4px 0" }} />
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 18 }}>
+              <div style={{ borderTop: "1px solid #000", margin: "3px 0" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700 }}>
                 <span>SALDO PENDIENTE:</span>
                 <span>$ {saldo.toLocaleString("es-CO")}</span>
               </div>
             </>
           )}
 
-          <div style={{ borderTop: "1px dashed #000", margin: "10px 0 6px" }} />
+          <div style={{ borderTop: "1px dashed #000", margin: "6px 0 4px" }} />
 
           {/* Firma secretario */}
           <div style={{ textAlign: "center", fontSize: 15, marginTop: 18 }}>
