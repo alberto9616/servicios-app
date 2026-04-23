@@ -3030,6 +3030,14 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
             </>
           )}
 
+          {/* Método de pago — siempre visible si existe */}
+          {factura.metodoPago && (
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginTop: 4 }}>
+              <span>Metodo de pago:</span>
+              <span style={{ fontWeight: 700 }}>{factura.metodoPago}</span>
+            </div>
+          )}
+
           <div style={{ borderTop: "1px dashed #000", margin: "6px 0 4px" }} />
 
           {/* Firma secretario */}
