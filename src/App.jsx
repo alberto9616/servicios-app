@@ -3785,8 +3785,12 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
   const totalCaja = cobradoHoyFacturas + ingresosHoy - egresosHoy;
 
   // 🌐 TOTAL GLOBAL (acumulado histórico): suma de TODOS los abonos registrados + ingresos caja - egresos caja
+  // Para facturas con pronto pago: lo cobrado = monto - saldoPendiente - descuento_pronto_pago
   const totalGlobal =
-    facturas.filter(f => f.estado !== "Anulada").reduce((s, f) => s + (f.monto - f.saldoPendiente), 0) +
+    facturas.filter(f => f.estado !== "Anulada").reduce((s, f) => {
+      const cobrado = f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0);
+      return s + Math.max(0, cobrado);
+    }, 0) +
     movimientosCaja.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0) -
     movimientosCaja.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
 
@@ -3823,7 +3827,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
       });
       const data = await res.json();
       if (data.ok) {
-        alert(`📱 WhatsApp enviado:\n✅ ${data.enviados} mensajes enviados\n❌ ${data.errores} errores (sin teléfono o fallo Twilio)`);
+        alert(`📱 WhatsApp enviado:\n✅ ${data.enviados} mensajes enviados\n❌ ${data.errores} errores (sin teléfono registrado)`);
       } else {
         alert(`⚠️ Error al enviar WhatsApp: ${data.error}`);
       }
@@ -4374,7 +4378,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
             <h3 style={{ margin: "0 0 16px", color: GC.ink }}>🧾 Nueva factura manual</h3>
             <Field label="Buscar cliente">
               <Inp placeholder="🔍 Nombre o cédula..." value={facturaManual.busqCliente || ""} onChange={e => setFacturaManual({ ...facturaManual, busqCliente: e.target.value, clienteId: "" })} />
-              {facturaManual.busqCliente && facturaManual.busqCliente.length >= 2 && (() => {
+              {facturaManual.busqCliente && facturaManual.busqCliente.length >= 2 && !facturaManual.clienteId && (() => {
                 const q = facturaManual.busqCliente.toLowerCase();
                 const res = clientesVisibles.filter(c => c.nombre.toLowerCase().includes(q) || (c.cedula||"").toLowerCase().includes(q)).slice(0,8);
                 return res.length > 0 ? (
@@ -4393,7 +4397,13 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
                   </div>
                 ) : <div style={{ fontSize: 12, color: GC.ink4, marginTop: 4 }}>Sin resultados</div>;
               })()}
-              {facturaManual.clienteId && <div style={{ fontSize: 12, color: GC.brand, marginTop: 4 }}>✅ Cliente seleccionado</div>}
+              {facturaManual.clienteId && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: GC.brand }}>✅ Cliente seleccionado</div>
+                  <button onClick={() => setFacturaManual({ ...facturaManual, clienteId: "", busqCliente: "" })}
+                    style={{ fontSize: 11, color: GC.ink3, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>Cambiar</button>
+                </div>
+              )}
             </Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
               <Field label="Mes"><Sel value={facturaManual.mes} onChange={e => setFacturaManual({ ...facturaManual, mes: Number(e.target.value) })}>{MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}</Sel></Field>
