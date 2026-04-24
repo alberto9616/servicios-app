@@ -2913,8 +2913,137 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
   const saldo = Math.max(0, factura.monto - totalAbonado - descuentoPP);
   const pagado = saldo <= 0;
   const mostrarAbonos = abonos.length > 0 && !pagado;
+  const [qzEstado, setQzEstado] = useState("idle"); // idle | conectando | ok | error
 
-  const imprimir = () => {
+  // ── Helpers ESC/POS ─────────────────────────────────────────────
+  const ESC = "\x1B", GS = "\x1D";
+  const INIT        = ESC + "@";
+  const ALIGN_CTR   = ESC + "a\x01";
+  const ALIGN_LFT   = ESC + "a\x00";
+  const BOLD_ON     = ESC + "E\x01";
+  const BOLD_OFF    = ESC + "E\x00";
+  const DOUBLE_ON   = GS  + "!\x11";  // doble ancho + doble alto
+  const DOUBLE_OFF  = GS  + "!\x00";
+  const LF          = "\n";
+  const CUT         = GS  + "V\x41\x03"; // corte parcial con avance
+  const SEP_DASH    = "-".repeat(42) + LF;
+  const SEP_DOT     = ".".repeat(42) + LF;
+
+  // Centrar texto manualmente en 42 cols
+  const center = txt => {
+    const t = String(txt).slice(0, 42);
+    const pad = Math.max(0, Math.floor((42 - t.length) / 2));
+    return " ".repeat(pad) + t + LF;
+  };
+
+  // Dos columnas izq/der en 42 chars
+  const cols = (izq, der) => {
+    const l = String(izq), r = String(der);
+    const espacio = Math.max(1, 42 - l.length - r.length);
+    return l + " ".repeat(espacio) + r + LF;
+  };
+
+  const fCOP = n => "$" + Number(n).toLocaleString("es-CO");
+
+  // ── Construir buffer ESC/POS ─────────────────────────────────────
+  const buildEscPos = () => {
+    const empresa = (nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase();
+    const tel     = telefono || "318-8255601";
+    const recibo  = "#" + String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0");
+    const fecha   = factura.fechaEmision || new Date().toISOString().split("T")[0];
+    const cliente = (factura.clienteNombre || "").toUpperCase();
+    const concepto= (factura.concepto || `MES ${factura.mes||""} ${factura.anio||""}`).toUpperCase();
+
+    let d = "";
+    d += INIT;
+    d += LF;
+
+    // Encabezado centrado
+    d += ALIGN_CTR;
+    d += BOLD_ON + center(empresa) + BOLD_OFF;
+    d += center("Tel.: " + tel);
+    d += SEP_DASH;
+
+    // Número de recibo y fecha
+    d += ALIGN_LFT;
+    d += cols("Recibo No.:", recibo);
+    d += cols("Fecha:", fecha);
+    d += SEP_DASH;
+
+    // Nombre cliente en grande
+    d += ALIGN_CTR;
+    d += BOLD_ON + center(cliente) + BOLD_OFF;
+    d += ALIGN_LFT;
+    d += SEP_DASH;
+
+    // Concepto y monto
+    d += cols(concepto.slice(0,28), fCOP(factura.monto));
+    d += SEP_DASH;
+
+    // Pago / saldo
+    if (pagado) {
+      if (descuentoPP > 0) {
+        d += cols("Valor factura:", fCOP(factura.monto));
+        d += cols("Desc. pronto pago:", "- " + fCOP(descuentoPP));
+        d += cols("Valor cancelado:", fCOP(totalAbonado));
+        d += SEP_DASH;
+      }
+      d += ALIGN_CTR;
+      d += BOLD_ON + cols("VALOR PAGADO:", fCOP(totalAbonado)) + BOLD_OFF;
+      d += ALIGN_CTR + BOLD_ON + center("*** CANCELADO ***") + BOLD_OFF;
+    } else {
+      d += cols("Total a pagar:", fCOP(factura.monto));
+      if (descuentoPP > 0) d += cols("Desc. pronto pago:", "- " + fCOP(descuentoPP));
+      d += cols("Abono:", "- " + fCOP(totalAbonado));
+      d += SEP_DASH;
+      d += BOLD_ON + cols("SALDO PENDIENTE:", fCOP(saldo)) + BOLD_OFF;
+    }
+
+    // Método de pago
+    if (factura.metodoPago) {
+      d += ALIGN_LFT + SEP_DOT;
+      d += cols("Metodo de pago:", factura.metodoPago);
+    }
+
+    // Firma
+    d += LF + SEP_DOT;
+    d += ALIGN_CTR;
+    d += center("______________________________");
+    d += center("Firma secretario/a");
+    d += LF + LF + LF;
+    d += CUT;
+
+    return d;
+  };
+
+  // ── Imprimir con QZ Tray ─────────────────────────────────────────
+  const imprimirQZ = async () => {
+    if (!window.qz) {
+      alert("QZ Tray no está instalado.\nDescárgalo en qz.io e instálalo en este computador.\nLuego recarga la página y vuelve a intentar.");
+      return;
+    }
+    setQzEstado("conectando");
+    try {
+      if (!qz.websocket.isActive()) await qz.websocket.connect();
+      const impresoras = await qz.printers.find("TM-U220");
+      const impresora  = impresoras[0] || (await qz.printers.getDefault());
+      if (!impresora) throw new Error("No se encontró la impresora TM-U220");
+
+      const config = qz.configs.create(impresora, { encoding: "ISO-8859-1", copies: 1 });
+      const data   = [{ type: "raw", format: "plain", data: buildEscPos() }];
+      await qz.print(config, data);
+      setQzEstado("ok");
+      setTimeout(() => setQzEstado("idle"), 2500);
+    } catch (e) {
+      console.error("QZ Error:", e);
+      setQzEstado("error");
+      setTimeout(() => setQzEstado("idle"), 3000);
+      alert("Error QZ Tray: " + e.message + "\n\nUsa el botón 'Imprimir (navegador)' como alternativa.");
+    }
+  };
+
+  // ── Fallback: imprimir desde navegador ───────────────────────────
+  const imprimirNavegador = () => {
     const contenido = document.getElementById("recibo-print").innerHTML;
     const ventana = window.open("", "_blank", "width=380,height=750");
     ventana.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
@@ -2923,10 +3052,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
       body { font-family: 'Courier New', Courier, monospace; font-size: 10pt; color: #000; padding: 2mm 3mm; line-height: 1.4; }
       div { word-break: break-word; }
       @page { size: 76mm auto; margin: 2mm 3mm; }
-      @media print {
-        html, body { width: 76mm; font-size: 10pt; }
-        button { display: none !important; }
-      }
+      @media print { html, body { width: 76mm; font-size: 10pt; } button { display: none !important; } }
     </style></head><body>${contenido}</body></html>`);
     ventana.document.close();
     ventana.focus();
@@ -2939,13 +3065,32 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
     </div>
   );
 
+  const qzLabel = { idle: "🖨️ Imprimir ESC/POS", conectando: "⏳ Conectando...", ok: "✅ Impreso!", error: "❌ Error QZ" }[qzEstado];
+  const qzColor = { idle: GC.brand, conectando: "#f59e0b", ok: "#16a34a", error: "#ef4444" }[qzEstado];
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "#00000077", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 380, maxHeight: "95vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
-        <div style={{ display: "flex", gap: 8, padding: "14px 16px", borderBottom: "1px solid #e2e8f0" }}>
-          <Btn onClick={imprimir} style={{ flex: 1, fontSize: 13 }}>🖨️ Imprimir tirilla</Btn>
+        <div style={{ display: "flex", gap: 8, padding: "14px 16px", borderBottom: "1px solid #e2e8f0", flexWrap: "wrap" }}>
+          {/* Botón principal ESC/POS */}
+          <button onClick={imprimirQZ} disabled={qzEstado === "conectando"}
+            style={{ flex: 2, background: qzColor, color: "#fff", border: "none", borderRadius: 9, padding: "10px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, fontFamily: "inherit", opacity: qzEstado === "conectando" ? 0.7 : 1 }}>
+            {qzLabel}
+          </button>
+          {/* Fallback navegador */}
+          <button onClick={imprimirNavegador}
+            style={{ flex: 1, background: GC.bg3, color: GC.ink3, border: "none", borderRadius: 9, padding: "10px 10px", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+            🌐 Navegador
+          </button>
           <button onClick={onClose} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: GC.ink3 }}>Cerrar</button>
         </div>
+
+        {/* Banner QZ Tray */}
+        {!window.qz && (
+          <div style={{ background: "#fef3c7", borderBottom: "1px solid #fde047", padding: "8px 14px", fontSize: 11, color: "#92400e" }}>
+            💡 Para impresión nítida ESC/POS instala <a href="https://qz.io" target="_blank" rel="noreferrer" style={{ color: "#d97706", fontWeight: 700 }}>QZ Tray</a> en este computador y recarga la página.
+          </div>
+        )}
 
         {/* Preview */}
         <div id="recibo-print" style={{ padding: "8px 12px", fontFamily: "'Courier New', monospace", fontSize: 13, color: "#000", maxWidth: 290, margin: "0 auto", lineHeight: 1.4 }}>
