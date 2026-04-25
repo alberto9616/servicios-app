@@ -3016,53 +3016,73 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
     return d;
   };
 
+  // ── Cargar QZ Tray dinámicamente si no está listo ────────────────
+  const cargarQZ = () => new Promise((resolve, reject) => {
+    // Ya está cargado
+    if (window.qz) { resolve(window.qz); return; }
+
+    // Intentar cargar el script dinámicamente
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/gh/qzind/tray@2.2/qz-tray.js";
+    script.onload = () => {
+      // Configurar sin certificado
+      if (window.qz) {
+        qz.security.setCertificatePromise((resolve) => resolve(""));
+        qz.security.setSignatureAlgorithm("SHA512");
+        qz.security.setSignaturePromise((toSign) => (resolve) => resolve(null));
+        resolve(window.qz);
+      } else {
+        reject(new Error("QZ Tray no se pudo inicializar"));
+      }
+    };
+    script.onerror = () => reject(new Error("No se pudo cargar QZ Tray desde CDN"));
+    document.head.appendChild(script);
+  });
+
   // ── Imprimir con QZ Tray ─────────────────────────────────────────
   const imprimirQZ = async () => {
-    if (!window.qz) {
-      alert("QZ Tray no está instalado o no cargó.\nDescárgalo en qz.io, instálalo y recarga la página.");
-      return;
-    }
     setQzEstado("conectando");
     try {
-      // Conectar si no está activo
+      // Cargar QZ si no está disponible
+      await cargarQZ();
+
+      // Conectar WebSocket con la app local de QZ Tray
       if (!qz.websocket.isActive()) {
         await qz.websocket.connect({ retries: 3, delay: 1 });
       }
 
-      // Buscar impresora TM-U220 o cualquier Epson
+      // Buscar impresora Epson TM-U220
       let impresora = null;
       try {
         const lista = await qz.printers.find("TM-U220");
         impresora = Array.isArray(lista) ? lista[0] : lista;
       } catch {
-        // Si no encuentra por nombre, usar la predeterminada
         impresora = await qz.printers.getDefault();
       }
 
-      if (!impresora) throw new Error("No se encontró ninguna impresora. Verifica que la Epson TM-U220D esté conectada.");
+      if (!impresora) throw new Error("No se encontró la impresora. Verifica que la Epson TM-U220D esté conectada y encendida.");
 
       const config = qz.configs.create(impresora, {
-        encoding: "Cp1252",  // Windows Latin-1 compatible con matriz de puntos
+        encoding: "Cp1252",
         copies:   1,
         jobName:  "GC HOGAR - Recibo"
       });
 
-      const data = [{ type: "raw", format: "plain", data: buildEscPos() }];
-      await qz.print(config, data);
+      await qz.print(config, [{ type: "raw", format: "plain", data: buildEscPos() }]);
       setQzEstado("ok");
       setTimeout(() => setQzEstado("idle"), 2500);
+
     } catch (e) {
       console.error("QZ Error:", e);
       setQzEstado("error");
       setTimeout(() => setQzEstado("idle"), 3000);
-      // Mensaje de error más claro
-      const msg = e.message || String(e);
-      if (msg.includes("Unable to establish")) {
-        alert("QZ Tray está instalado pero no está corriendo.\nBúscalo en la barra de tareas (esquina inferior derecha) y ábrelo, luego intenta de nuevo.");
-      } else if (msg.includes("certificate")) {
-        alert("Error de certificado QZ Tray.\nHaz clic derecho en el ícono de QZ Tray en la barra de tareas → Advanced → Allow unsigned.");
+      const msg = String(e.message || e);
+      if (msg.includes("Unable to establish") || msg.includes("websocket")) {
+        alert("QZ Tray está instalado pero no responde.\n\n1. Busca el ícono de QZ Tray en la barra de tareas (esquina inferior derecha)\n2. Haz clic derecho → Open\n3. Vuelve a intentar imprimir");
+      } else if (msg.includes("certificate") || msg.includes("unsigned")) {
+        alert("QZ Tray rechaza la conexión por certificado.\n\n1. Clic derecho en el ícono de QZ Tray\n2. Advanced → Allow unsigned content\n3. Acepta y vuelve a intentar");
       } else {
-        alert("Error al imprimir: " + msg + "\n\nUsa el botón Navegador como alternativa.");
+        alert("Error: " + msg + "\n\nUsa el botón Navegador mientras se resuelve.");
       }
     }
   };
@@ -3110,12 +3130,11 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
           <button onClick={onClose} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: GC.ink3 }}>Cerrar</button>
         </div>
 
-        {/* Banner QZ Tray */}
-        {!window.qz && (
-          <div style={{ background: "#fef3c7", borderBottom: "1px solid #fde047", padding: "8px 14px", fontSize: 11, color: "#92400e" }}>
-            💡 Para impresión nítida ESC/POS instala <a href="https://qz.io" target="_blank" rel="noreferrer" style={{ color: "#d97706", fontWeight: 700 }}>QZ Tray</a> en este computador y recarga la página.
-          </div>
-        )}
+        {/* Banner QZ Tray - solo si no está cargado */}
+        <div style={{ background: "#fef3c7", borderBottom: "1px solid #fde047", padding: "6px 14px", fontSize: 11, color: "#92400e" }}>
+          💡 Impresión nítida ESC/POS via <a href="https://qz.io" target="_blank" rel="noreferrer" style={{ color: "#d97706", fontWeight: 700 }}>QZ Tray</a>
+          {window.qz ? " — listo ✅" : " — no detectado, intenta igual o usa Navegador"}
+        </div>
 
         {/* Preview */}
         <div id="recibo-print" style={{ padding: "8px 12px", fontFamily: "'Courier New', monospace", fontSize: 13, color: "#000", maxWidth: 290, margin: "0 auto", lineHeight: 1.4 }}>
