@@ -5,25 +5,39 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GC HOGAR.NET — Gestión</title>
- 
-    <!-- QZ Tray: puente navegador <-> impresora ESC/POS -->
-    <!-- Descarga e instala QZ Tray en qz.io para impresión nítida -->
+
+    <!-- QZ Tray 2.2 — puente navegador a impresora ESC/POS -->
     <script src="https://cdn.jsdelivr.net/gh/qzind/tray@2.2/qz-tray.js"></script>
- 
-    <!-- Deshabilitar firma digital de QZ (para uso local sin certificado) -->
+
     <script>
-      document.addEventListener("DOMContentLoaded", function() {
-        if (window.qz) {
-          // Sin certificado digital — para uso en red local
-          qz.security.setCertificatePromise(function(resolve) {
-            resolve("-----BEGIN CERTIFICATE-----\nMIIFAzCCAuugAwIBAgICEAIwDQYJKoZIhvcNAQELBQAwgYgxCzAJBgNVBAYTAlVT\nMQswCQYDVQQIDAJORTEMMAoGA1UEBwwDT01BMRgwFgYDVQQKDA9RWiBJbmR1c3Ry\naWVzLCBMTEMxGDAWBgNVBAsMD1FaIEluZHVzdHJpZXMxGjAYBgNVBAMMEXF6aW5k\ndXN0cmllcy5jb20wHhcNMTcwMTA1MTY0NzA3WhcNMjcwMTAzMTY0NzA3WjCBiDEL\nMAkGA1UEBhMCVVMxCzAJBgNVBAgMAk5FMQwwCgYDVQQHDANPTUExGDAWBgNVBAoM\nD1FaIEluZHVzdHJpZXMsIExMQzEYMBYGA1UECwwPUVogSW5kdXN0cmllczEaMBgG\nA1UEAwwRcXppbmR1c3RyaWVzLmNvbTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCC\nAgoBggIBANQZ5JbGasLRSMHVGVq3oMHQFDRvOGvRNUFvUMChx1S0vEiRMo3QCNW/\nP9sBZ5TFQlJOvmHjP1QM5ZJYqoQ\n-----END CERTIFICATE-----\n");
-          });
-          qz.security.setSignatureAlgorithm("SHA512");
-          qz.security.setSignaturePromise(function(toSign) {
-            return function(resolve) { resolve(null); };
-          });
-        }
-      });
+      // Configurar QZ Tray sin certificado digital (uso red local)
+      window.__qzReady = false;
+
+      function configurarQZ() {
+        if (!window.qz) return;
+
+        // Sin certificado — cadena vacía acepta conexion sin validacion SSL
+        qz.security.setCertificatePromise(function(resolve, reject) {
+          resolve("");
+        });
+
+        // Sin firma digital
+        qz.security.setSignatureAlgorithm("SHA512");
+        qz.security.setSignaturePromise(function(toSign) {
+          return function(resolve, reject) {
+            resolve(null);
+          };
+        });
+
+        window.__qzReady = true;
+        console.log("[QZ Tray] Listo");
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", configurarQZ);
+      } else {
+        configurarQZ();
+      }
     </script>
   </head>
   <body>
@@ -31,4 +45,3 @@
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
- 
