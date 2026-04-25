@@ -3553,7 +3553,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       const nuevaFechaPago = nuevoSaldo <= 0 ? nuevoAbono.fecha : null;
       await db.actualizarFactura(modalAbono.id, { saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: nuevoAbono.metodoPago, fecha_pago: nuevaFechaPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 });
       setFacturas(prev => prev.map(f => f.id === modalAbono.id
-        ? { ...f, saldoPendiente: nuevoSaldo, estado: nuevoEstado, metodoPago: nuevoAbono.metodoPago, fechaPago: nuevaFechaPago }
+        ? { ...f, saldoPendiente: nuevoSaldo, estado: nuevoEstado, metodoPago: nuevoAbono.metodoPago, fechaPago: nuevaFechaPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 }
         : f
       ));
       setAbonosModal(prev => [abono, ...prev]);
@@ -4214,10 +4214,10 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
     { label: "🌐 Total global", val: formatCOP(totalGlobal), color: "#0891b2",
       tooltip: "Suma histórica de todo lo cobrado en facturas + ingresos de caja − egresos de caja. Nunca se reinicia.",
       getTirilla: () => {
-        const fPagadas = facturas.filter(f => f.estado !== "Anulada" && f.monto - f.saldoPendiente > 0);
+        const fPagadas = facturas.filter(f => f.estado !== "Anulada" && (f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)) > 0);
         return { titulo: "🌐 Total global — Histórico", subtitulo: "Todo lo cobrado + ingresos caja − egresos caja (histórico)",
           total: totalGlobal, labelTotal: "Total acumulado", colorTotal: "#0891b2",
-          filas: fPagadas.map(f => ({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio}`, estado: f.estado, monto: f.monto - f.saldoPendiente })) };
+          filas: fPagadas.map(f => ({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio}`, estado: f.estado, monto: (f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)) })) };
       }},
 
     // ⏳ PENDIENTE del mes
@@ -4638,7 +4638,7 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
   });
 
   const totalFacturado = facturasCierre.reduce((s, f) => s + f.monto, 0);
-  const totalCobrado = facturasCierre.reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
+  const totalCobrado = facturasCierre.reduce((s, f) => s + ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0))), 0);
   const totalPendiente = facturasCierre.reduce((s, f) => s + f.saldoPendiente, 0);
   const cantPagadas = facturasCierre.filter(f => f.estado === "Pagado").length;
   const cantParcial = facturasCierre.filter(f => f.estado === "Abono parcial").length;
@@ -4777,7 +4777,7 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
                     <td style={{ padding: "8px 12px", color: GC.ink2 }}>{f.fechaPago || f.fechaEmision}</td>
                     <td style={{ padding: "8px 12px" }}><span style={{ background: (COLOR_ESTADO[f.estado]||"#94a3b8") + "22", color: COLOR_ESTADO[f.estado]||"#64748b", borderRadius: 6, padding: "2px 8px", fontWeight: 700, fontSize: 11 }}>{f.estado}</span></td>
                     <td style={{ padding: "8px 12px", fontWeight: 700 }}>{formatCOP(f.monto)}</td>
-                    <td style={{ padding: "8px 12px", fontWeight: 700, color: f.saldoPendiente > 0 ? GC.warning : GC.brand }}>{formatCOP(f.monto - f.saldoPendiente)}</td>
+                    <td style={{ padding: "8px 12px", fontWeight: 700, color: f.saldoPendiente > 0 ? GC.warning : GC.brand }}>{formatCOP((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)))}</td>
                   </tr>
                 ))}
                 <tr style={{ borderTop: "2px solid #0f172a", background: GC.bg2 }}>
@@ -4825,13 +4825,13 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
   })() : null;
 
   const totalFact = facturasAudit.reduce((s, f) => s + f.monto, 0);
-  const totalCobrado = facturasAudit.reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
+  const totalCobrado = facturasAudit.reduce((s, f) => s + ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0))), 0);
   const totalPend = facturasAudit.reduce((s, f) => s + f.saldoPendiente, 0);
 
   const imprimirTirilla = (cliente, listaFact) => {
     const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
     const totalCli = listaFact.reduce((s,f) => s + f.monto, 0);
-    const cobradoCli = listaFact.reduce((s,f) => s + (f.monto - f.saldoPendiente), 0);
+    const cobradoCli = listaFact.reduce((s,f) => s + ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0))), 0);
     const pagadas = listaFact.filter(f => f.estado === "Pagado").length;
     const filas = listaFact.map(f => {
       const colorBg = {"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2","Anulada":"#f1f5f9"}[f.estado]||"#f1f5f9";
@@ -5025,7 +5025,7 @@ function FacturacionCliente({ usuario }) {
                   <div style={{ fontWeight: 700, color: GC.ink }}>{f.concepto}</div>
                   <div style={{ fontSize: 12, color: GC.ink3 }}>Emitida: {f.fechaEmision} {f.numeroRecibo ? `· Recibo #${f.numeroRecibo}` : ""}</div>
                   {f.saldoPendiente > 0 && f.saldoPendiente < f.monto && (
-                    <div style={{ fontSize: 12, color: GC.warning, marginTop: 2 }}>Abonado: {formatCOP(f.monto - f.saldoPendiente)} · Saldo: {formatCOP(f.saldoPendiente)}</div>
+                    <div style={{ fontSize: 12, color: GC.warning, marginTop: 2 }}>Abonado: {formatCOP((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)))} · Saldo: {formatCOP(f.saldoPendiente)}</div>
                   )}
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -5340,7 +5340,7 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
     // Saldo anterior = todo lo acumulado ANTES de la fecha del informe
     const cobradoAntes = facturas
       .filter(f => f.estado !== "Anulada" && f.fechaPago && f.fechaPago < fechaInforme)
-      .reduce((s, f) => s + (f.monto - f.saldoPendiente), 0);
+      .reduce((s, f) => s + ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0))), 0);
     const ingresosAntes = movimientos.filter(m => m.tipo === "Ingreso" && m.fecha < fechaInforme).reduce((s, m) => s + m.monto, 0);
     const egresosAntes = movimientos.filter(m => m.tipo === "Egreso" && m.fecha < fechaInforme).reduce((s, m) => s + m.monto, 0);
     const saldoAnterior = saldoBase + cobradoAntes + ingresosAntes - egresosAntes;
@@ -6665,6 +6665,82 @@ function ProntoPagoPanel({ z, prontoPagos, setProntoPagos, planes, editPP, setEd
   );
 }
 
+function exportarClientes(usuarios, facturas, zonas, planes, perfilesPago) {
+  const MESES_N = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+  // Solo clientes finales y empresa
+  const clientes = usuarios.filter(u => u.rol === "cliente" && u.activo);
+
+  // Para cada cliente calcular deuda total
+  const rows = clientes.map(c => {
+    const facturasCliente = facturas.filter(f => f.clienteId === c.id && f.estado !== "Anulada");
+    const deudaTotal = facturasCliente.reduce((s, f) => s + (f.saldoPendiente || 0), 0);
+    const facturasPendientes = facturasCliente.filter(f => f.saldoPendiente > 0);
+    const ultimaFactura = facturasCliente.sort((a,b) => (b.anio*12+b.mes) - (a.anio*12+a.mes))[0];
+
+    const zona = zonas.find(z => z.id === c.zonaId);
+    const plan = planes.find(p => p.id === c.planId);
+    const perfil = perfilesPago.find(p => p.id === c.perfilPagoId);
+
+    const estadoFinanciero = deudaTotal > 0
+      ? `EN DEUDA - $${deudaTotal.toLocaleString("es-CO")}`
+      : "AL DIA";
+
+    const factPend = facturasPendientes.map(f =>
+      `${MESES_N[(f.mes||1)-1]} ${f.anio}: $${(f.saldoPendiente||0).toLocaleString("es-CO")}`
+    ).join(" | ");
+
+    return {
+      "Nombre":              c.nombre || "",
+      "Tipo":                c.tipo === "empresa" ? "Empresa" : "Cliente final",
+      "Cédula / NIT":        c.cedula || "",
+      "Usuario":             c.usuario || "",
+      "Teléfono":            c.telefono || "",
+      "Correo":              c.correo || "",
+      "Dirección":           c.direccion || "",
+      "Zona":                zona?.nombre || "",
+      "Plan":                plan?.nombre || c.plan || "",
+      "Servicio":            c.servicio || "",
+      "Monto mensual":       c.monto ? `$${Number(c.monto).toLocaleString("es-CO")}` : "",
+      "Perfil de pago":      perfil?.nombre || "",
+      "IP":                  c.ip || "",
+      "Clave WiFi":          c.claveWifi || "",
+      "Estado servicio":     c.estado || "",
+      "Estado financiero":   estadoFinanciero,
+      "Deuda total":         deudaTotal > 0 ? deudaTotal : 0,
+      "Facturas pendientes": factPend || "Ninguna",
+      "Última factura":      ultimaFactura ? `${MESES_N[(ultimaFactura.mes||1)-1]} ${ultimaFactura.anio}` : "",
+      "UUID Wispro":         c.wisproUuid || "",
+      "Activo":              c.activo ? "Sí" : "No",
+    };
+  });
+
+  if (rows.length === 0) { alert("No hay clientes para exportar."); return; }
+
+  // Generar CSV
+  const headers = Object.keys(rows[0]);
+  const sep = ";"; // punto y coma para Excel en español
+
+  const escape = val => {
+    const s = String(val ?? "").replace(/"/g, '""');
+    return s.includes(sep) || s.includes("\n") || s.includes('"') ? `"${s}"` : s;
+  };
+
+  const csv = [
+    "\uFEFF" + headers.map(escape).join(sep), // BOM para UTF-8 en Excel
+    ...rows.map(r => headers.map(h => escape(r[h])).join(sep))
+  ].join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const fecha = new Date().toISOString().split("T")[0];
+  link.href     = url;
+  link.download = `clientes_gchogar_${fecha}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion, tabExterno, setTabExterno }) {
   const [tabLocal, setTabLocal] = useState("usuarios"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const [editU, setEditU] = useState(null);
@@ -7160,7 +7236,19 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <span style={{ color: GC.ink2, fontSize: 14 }}>{usuarios.length} usuarios</span>
-            <Btn onClick={() => { setEditU(emptyU); setFormTipo("usuario"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nuevo usuario</Btn>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={async () => {
+                try {
+                  // Cargar todas las facturas para calcular deudas
+                  const todasFacturas = await db.getFacturas();
+                  exportarClientes(usuarios, todasFacturas, zonas, planes, perfilesPago);
+                } catch(e) { alert("Error al exportar: " + e.message); }
+              }}
+                style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
+                📋 Exportar clientes
+              </button>
+              <Btn onClick={() => { setEditU(emptyU); setFormTipo("usuario"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nuevo usuario</Btn>
+            </div>
           </div>
 
           {showForm && formTipo === "usuario" && editU && (
