@@ -3019,18 +3019,35 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
   // ── Imprimir con QZ Tray ─────────────────────────────────────────
   const imprimirQZ = async () => {
     if (!window.qz) {
-      alert("QZ Tray no está instalado.\nDescárgalo en qz.io e instálalo en este computador.\nLuego recarga la página y vuelve a intentar.");
+      alert("QZ Tray no está instalado o no cargó.\nDescárgalo en qz.io, instálalo y recarga la página.");
       return;
     }
     setQzEstado("conectando");
     try {
-      if (!qz.websocket.isActive()) await qz.websocket.connect();
-      const impresoras = await qz.printers.find("TM-U220");
-      const impresora  = impresoras[0] || (await qz.printers.getDefault());
-      if (!impresora) throw new Error("No se encontró la impresora TM-U220");
+      // Conectar si no está activo
+      if (!qz.websocket.isActive()) {
+        await qz.websocket.connect({ retries: 3, delay: 1 });
+      }
 
-      const config = qz.configs.create(impresora, { encoding: "ISO-8859-1", copies: 1 });
-      const data   = [{ type: "raw", format: "plain", data: buildEscPos() }];
+      // Buscar impresora TM-U220 o cualquier Epson
+      let impresora = null;
+      try {
+        const lista = await qz.printers.find("TM-U220");
+        impresora = Array.isArray(lista) ? lista[0] : lista;
+      } catch {
+        // Si no encuentra por nombre, usar la predeterminada
+        impresora = await qz.printers.getDefault();
+      }
+
+      if (!impresora) throw new Error("No se encontró ninguna impresora. Verifica que la Epson TM-U220D esté conectada.");
+
+      const config = qz.configs.create(impresora, {
+        encoding: "Cp1252",  // Windows Latin-1 compatible con matriz de puntos
+        copies:   1,
+        jobName:  "GC HOGAR - Recibo"
+      });
+
+      const data = [{ type: "raw", format: "plain", data: buildEscPos() }];
       await qz.print(config, data);
       setQzEstado("ok");
       setTimeout(() => setQzEstado("idle"), 2500);
@@ -3038,7 +3055,15 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
       console.error("QZ Error:", e);
       setQzEstado("error");
       setTimeout(() => setQzEstado("idle"), 3000);
-      alert("Error QZ Tray: " + e.message + "\n\nUsa el botón 'Imprimir (navegador)' como alternativa.");
+      // Mensaje de error más claro
+      const msg = e.message || String(e);
+      if (msg.includes("Unable to establish")) {
+        alert("QZ Tray está instalado pero no está corriendo.\nBúscalo en la barra de tareas (esquina inferior derecha) y ábrelo, luego intenta de nuevo.");
+      } else if (msg.includes("certificate")) {
+        alert("Error de certificado QZ Tray.\nHaz clic derecho en el ícono de QZ Tray en la barra de tareas → Advanced → Allow unsigned.");
+      } else {
+        alert("Error al imprimir: " + msg + "\n\nUsa el botón Navegador como alternativa.");
+      }
     }
   };
 
@@ -6665,6 +6690,137 @@ function ProntoPagoPanel({ z, prontoPagos, setProntoPagos, planes, editPP, setEd
   );
 }
 
+function ExportClientesModal({ usuarios, zonas, planes, perfilesPago, db, onClose }) {
+  const [filtros, setFiltros] = useState({
+    zona:     "",
+    servicio: "",   // Internet | TV | Combo | todos
+    estado:   "",   // Al día | DPP | DPS | Cortesía | todos
+    deuda:    "",   // con_deuda | sin_deuda | todos
+  });
+  const [cargando, setCargando] = useState(false);
+
+  // Previsualización: cuántos clientes coinciden
+  const clientes = usuarios.filter(u => {
+    if (u.rol !== "cliente" || !u.activo) return false;
+    if (filtros.zona && u.zonaId !== filtros.zona) return false;
+    if (filtros.estado && u.estado !== filtros.estado) return false;
+    if (filtros.servicio) {
+      const srv = (u.servicio || "Internet").toLowerCase();
+      if (filtros.servicio === "Internet" && !srv.includes("internet")) return false;
+      if (filtros.servicio === "TV"       && !srv.includes("tv"))       return false;
+      if (filtros.servicio === "Combo"    && !(srv.includes("internet") && srv.includes("tv"))) return false;
+    }
+    return true;
+  });
+
+  const doExport = async () => {
+    setCargando(true);
+    try {
+      const todasFacturas = await db.getFacturas();
+      // Aplicar filtro de deuda después de tener las facturas
+      let clientesFinal = clientes;
+      if (filtros.deuda === "con_deuda") {
+        clientesFinal = clientes.filter(c => {
+          const deuda = todasFacturas.filter(f => f.clienteId === c.id && f.estado !== "Anulada").reduce((s,f) => s + (f.saldoPendiente||0), 0);
+          return deuda > 0;
+        });
+      } else if (filtros.deuda === "sin_deuda") {
+        clientesFinal = clientes.filter(c => {
+          const deuda = todasFacturas.filter(f => f.clienteId === c.id && f.estado !== "Anulada").reduce((s,f) => s + (f.saldoPendiente||0), 0);
+          return deuda === 0;
+        });
+      }
+      exportarClientes(clientesFinal, todasFacturas, zonas, planes, perfilesPago);
+      onClose();
+    } catch(e) { alert("Error: " + e.message); }
+    setCargando(false);
+  };
+
+  const SERVICIOS = ["Internet", "TV", "Combo"];
+  const ESTADOS   = ["Al día", "DPP", "DPS", "Cortesía", "Pendiente"];
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 480, boxShadow: "0 20px 60px #00000033", overflow: "hidden" }}>
+
+        {/* Header */}
+        <div style={{ padding: "18px 20px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16, color: GC.ink }}>📋 Exportar clientes</div>
+            <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>Aplica filtros y descarga el CSV</div>
+          </div>
+          <button onClick={onClose} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+        </div>
+
+        <div style={{ padding: 20 }}>
+
+          {/* Filtro zona */}
+          <Field label="Zona">
+            <Sel value={filtros.zona} onChange={e => setFiltros(f => ({ ...f, zona: e.target.value }))}>
+              <option value="">Todas las zonas</option>
+              {zonas.filter(z => z.activa).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+            </Sel>
+          </Field>
+
+          {/* Filtro servicio */}
+          <Field label="Tipo de servicio">
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {["", ...SERVICIOS].map(s => (
+                <button key={s} onClick={() => setFiltros(f => ({ ...f, servicio: s }))}
+                  style={{ padding: "7px 14px", borderRadius: 8, border: "2px solid " + (filtros.servicio === s ? GC.brand : "#e2e8f0"), background: filtros.servicio === s ? GC.brandLight : "#fff", color: filtros.servicio === s ? GC.brand : GC.ink2, cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit" }}>
+                  {s || "Todos"}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          {/* Filtro estado servicio */}
+          <Field label="Estado del servicio">
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {["", ...ESTADOS].map(s => (
+                <button key={s} onClick={() => setFiltros(f => ({ ...f, estado: s }))}
+                  style={{ padding: "7px 14px", borderRadius: 8, border: "2px solid " + (filtros.estado === s ? GC.brand : "#e2e8f0"), background: filtros.estado === s ? GC.brandLight : "#fff", color: filtros.estado === s ? GC.brand : GC.ink2, cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit" }}>
+                  {s || "Todos"}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          {/* Filtro deuda */}
+          <Field label="Estado financiero">
+            <div style={{ display: "flex", gap: 8 }}>
+              {[["", "Todos"], ["con_deuda", "Con deuda"], ["sin_deuda", "Al día"]].map(([val, lbl]) => (
+                <button key={val} onClick={() => setFiltros(f => ({ ...f, deuda: val }))}
+                  style={{ flex: 1, padding: "9px 8px", borderRadius: 8, border: "2px solid " + (filtros.deuda === val ? (val === "con_deuda" ? "#ef4444" : val === "sin_deuda" ? "#16a34a" : GC.brand) : "#e2e8f0"), background: filtros.deuda === val ? (val === "con_deuda" ? "#fef2f2" : val === "sin_deuda" ? "#f0fdf4" : GC.brandLight) : "#fff", color: filtros.deuda === val ? (val === "con_deuda" ? "#ef4444" : val === "sin_deuda" ? "#16a34a" : GC.brand) : GC.ink2, cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "inherit" }}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </Field>
+
+          {/* Preview */}
+          <div style={{ background: filtros.deuda === "con_deuda" ? "#fef2f2" : "#f0fdf4", border: "1px solid " + (filtros.deuda === "con_deuda" ? "#fecaca" : "#bbf7d0"), borderRadius: 10, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 13, color: GC.ink2 }}>Clientes que se exportarán:</span>
+            <span style={{ fontWeight: 800, fontSize: 18, color: GC.brand }}>{clientes.length}</span>
+          </div>
+          <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 16 }}>
+            * El filtro "Con deuda / Al día" se aplica al descargar (requiere cargar facturas).
+          </div>
+
+          {/* Botones */}
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn onClick={doExport} disabled={cargando || clientes.length === 0} style={{ flex: 1 }}>
+              {cargando ? "⏳ Generando..." : `📥 Descargar CSV (${clientes.length} clientes)`}
+            </Btn>
+            <button onClick={onClose} style={{ padding: "10px 16px", background: GC.bg3, border: "none", borderRadius: 9, cursor: "pointer", fontSize: 13, color: GC.ink2, fontFamily: "inherit" }}>Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function exportarClientes(usuarios, facturas, zonas, planes, perfilesPago) {
   const MESES_N = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
@@ -6761,6 +6917,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const [miCuentaMsg, setMiCuentaMsg] = useState(null);
   // Pronto pago
   const [prontoPagos, setProntoPagos] = useState([]);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [showFormPP, setShowFormPP] = useState(null); // zonaId del panel abierto
   const [editPP, setEditPP] = useState({ zonaId: "", planId: "", planNombre: "", descuento: "", diaLimite: 10, activo: true });
   useEffect(() => { db.getProntoPago().then(setProntoPagos).catch(console.error); }, []);
@@ -7237,19 +7394,25 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <span style={{ color: GC.ink2, fontSize: 14 }}>{usuarios.length} usuarios</span>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={async () => {
-                try {
-                  // Cargar todas las facturas para calcular deudas
-                  const todasFacturas = await db.getFacturas();
-                  exportarClientes(usuarios, todasFacturas, zonas, planes, perfilesPago);
-                } catch(e) { alert("Error al exportar: " + e.message); }
-              }}
+              <button onClick={() => setShowExportModal(true)}
                 style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
                 📋 Exportar clientes
               </button>
               <Btn onClick={() => { setEditU(emptyU); setFormTipo("usuario"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nuevo usuario</Btn>
             </div>
           </div>
+
+          {/* Modal exportar clientes */}
+          {showExportModal && (
+            <ExportClientesModal
+              usuarios={usuarios}
+              zonas={zonas}
+              planes={planes}
+              perfilesPago={perfilesPago}
+              db={db}
+              onClose={() => setShowExportModal(false)}
+            />
+          )}
 
           {showForm && formTipo === "usuario" && editU && (
             <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && (setShowForm(false), setEditU(null), setFormTipo(null))}>
