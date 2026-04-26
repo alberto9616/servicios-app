@@ -5,29 +5,76 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GC HOGAR.NET — Gestión</title>
-
-    <!-- QZ Tray: intentar cargar local primero, luego CDN como fallback -->
+ 
     <script>
-      (function() {
-        function configurarQZ() {
-          if (!window.qz) return;
-          try {
-            qz.security.setCertificatePromise(function(resolve) { resolve(""); });
-            qz.security.setSignatureAlgorithm("SHA512");
-            qz.security.setSignaturePromise(function(toSign) {
-              return function(resolve) { resolve(null); };
-            });
-            window.__qzReady = true;
-            console.log("[QZ] Configurado OK");
-          } catch(e) { console.warn("[QZ] Config error:", e); }
+      // ── Certificado QZ Tray Demo ────────────────────────────────────
+      window.__QZ_CERT = [
+        "-----BEGIN CERTIFICATE-----",
+        "MIIECzCCAvOgAwIBAgIGAZ3F2o+sMA0GCSqGSIb3DQEBCwUAMIGiMQswCQYDVQQG",
+        "EwJVUzELMAkGA1UECAwCTlkxEjAQBgNVBAcMCUNhbmFzdG90YTEbMBkGA1UECgwS",
+        "UVogSW5kdXN0cmllcywgTExDMRswGQYDVQQLDBJRWiBJbmR1c3RyaWVzLCBMTEMx",
+        "HDAaBgkqhkiG9w0BCQEWDXN1cHBvcnRAcXouaW8xGjAYBgNVBAMMEVFaIFRyYXkg",
+        "RGVtbyBDZXJ0MB4XDTI2MDQyNDE4MTUyOFoXDTQ2MDQyNDE4MTUyOFowgaIxCzAJ",
+        "BgNVBAYTAlVTMQswCQYDVQQIDAJOWTESMBAGA1UEBwwJQ2FuYXN0b3RhMRswGQYD",
+        "VQQKDBJRWiBJbmR1c3RyaWVzLCBMTEMxGzAZBgNVBAsMElFaIEluZHVzdHJpZXMs",
+        "IExMQzEcMBoGCSqGSIb3DQEJARYNc3VwcG9ydEBxei5pbzEaMBgGA1UEAwwRUVog",
+        "VHJheSBEZW1vIENlcnQwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCY",
+        "V1BzVd1QkiMCFu6rrzJ5f1n1YuaJ2FKUELNcyXQWmXeD8y19JDANLlbJu44trzb4",
+        "12gHTB+8UWi8vrzIg9wH3uR2u3sDswqGdtBNZStte9nOuoATfLHV89j6GHsjjbLv",
+        "t5/zxHkKqgMnuoA9JXhUhzy50mls9FI+l3lw/78YYC9g0S7Jw1D/pVVKNvDOz49t",
+        "RgssvozjJ7KdNhnvZ7IlXnH4kmpmzCAsWc+Ml4PxcG9VYJwzCvIiehw460qgINH7",
+        "cR3Jj+b49+MBVCGPLPHdb3L+rEbm/leKaLdtDMHERG1YRK/jk8PQAFXS6s6PBFSd",
+        "lPYSNRk5kj2Ucny4TWqhAgMBAAGjRTBDMBIGA1UdEwEB/wQIMAYBAf8CAQEwDgYD",
+        "VR0PAQH/BAQDAgEGMB0GA1UdDgQWBBSISTJdBknftk89LSjK+P1prfWmyDANBgkq",
+        "hkiG9w0BAQsFAAOCAQEAIpfTPtrcZ94IzlF6OE2E6TIauNtMyFRoSDqqaBexLwmA",
+        "ZF/kQy1kOqBedn2d8M8H5gysUxf+mXguNlbwpbCq39PF4EU9TNg4QmQBYQ51dorh",
+        "2qyuPTTYGpOlemlM0+S9HUVDqhDSEpOiTSUkhGhaThyDwKV2B3RgogYmJ7BirVLC",
+        "y7THWyFztI9UIxmlB6TVSyECWvU7/AResWPsFhd7qFewvYOPz86Zx0c3wMjRLE8l",
+        "zVuZloURs7dvDC0H4mgA+f3VzUwnIFjRK8FE+n1zrnJkBlyM2AwHaySSTiJkFZRW",
+        "GWAmT2Cz59mlc3eSXtkbsT3XmrISFUzj0JWYcv0LrQ==",
+        "-----END CERTIFICATE-----"
+      ].join("\n");
+ 
+      // ── Configurar QZ Tray ──────────────────────────────────────────
+      function configurarQZ() {
+        if (!window.qz) return;
+        try {
+          // Certificado: le dice a QZ quién firma
+          qz.security.setCertificatePromise(function(resolve) {
+            resolve(window.__QZ_CERT);
+          });
+ 
+          // Firma: el servidor (Supabase Edge Function) firma con la llave privada
+          qz.security.setSignatureAlgorithm("SHA512");
+          qz.security.setSignaturePromise(function(toSign) {
+            return function(resolve, reject) {
+              fetch("https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/qz-sign", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ toSign: toSign })
+              })
+              .then(r => r.json())
+              .then(data => {
+                if (data.signature) resolve(data.signature);
+                else reject(new Error(data.error || "Error al firmar"));
+              })
+              .catch(reject);
+            };
+          });
+ 
+          window.__qzReady = true;
+          console.log("[QZ Tray] Configurado con certificado real OK");
+        } catch(e) {
+          console.warn("[QZ] Error de configuracion:", e);
         }
-
-        // Intentar cargar desde /public/qz-tray.js (sin CSP externa)
+      }
+ 
+      // Cargar QZ desde /public/qz-tray.js primero, luego CDN como fallback
+      (function() {
         var s = document.createElement("script");
         s.src = "/qz-tray.js";
         s.onload = configurarQZ;
         s.onerror = function() {
-          // Fallback al CDN si no está en public
           var s2 = document.createElement("script");
           s2.src = "https://cdn.jsdelivr.net/gh/qzind/tray@2.2/qz-tray.js";
           s2.onload = configurarQZ;
@@ -42,3 +89,4 @@
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
+ 
