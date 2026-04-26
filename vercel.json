@@ -29,7 +29,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https://fwimnbieduydfsjwljjv.supabase.co; connect-src 'self' https://fwimnbieduydfsjwljjv.supabase.co https://api.ultramsg.com https://cloud.wispro.co wss://localhost:8181 wss://localhost:8182 ws://localhost:8181 ws://localhost:8182; frame-ancestors 'none'"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://raw.githubusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https://fwimnbieduydfsjwljjv.supabase.co; connect-src 'self' https://fwimnbieduydfsjwljjv.supabase.co https://api.ultramsg.com https://cloud.wispro.co https://graph.facebook.com wss://localhost:8181 wss://localhost:8182 wss://localhost:8183 wss://localhost:8184 wss://localhost:8185 wss://localhost:8186 ws://localhost:8181 ws://localhost:8182; frame-ancestors 'none'"
         }
       ]
     }
