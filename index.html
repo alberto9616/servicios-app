@@ -6,8 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GC HOGAR.NET — Gestión</title>
  
+    <!-- QZ Tray: cargar síncronamente antes de React -->
+    <script src="https://cdn.jsdelivr.net/gh/qzind/tray@2.2/qz-tray.js" crossorigin="anonymous"></script>
+ 
     <script>
-      // ── Certificado QZ Tray Demo ────────────────────────────────────
       window.__QZ_CERT = [
         "-----BEGIN CERTIFICATE-----",
         "MIIECzCCAvOgAwIBAgIGAZ3F2o+sMA0GCSqGSIb3DQEBCwUAMIGiMQswCQYDVQQG",
@@ -35,53 +37,32 @@
         "-----END CERTIFICATE-----"
       ].join("\n");
  
-      // ── Configurar QZ Tray ──────────────────────────────────────────
-      function configurarQZ() {
-        if (!window.qz) return;
-        try {
-          // Certificado: le dice a QZ quién firma
-          qz.security.setCertificatePromise(function(resolve) {
-            resolve(window.__QZ_CERT);
-          });
- 
-          // Firma: el servidor (Supabase Edge Function) firma con la llave privada
-          qz.security.setSignatureAlgorithm("SHA512");
-          qz.security.setSignaturePromise(function(toSign) {
-            return function(resolve, reject) {
-              fetch("https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/qz-sign", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ toSign: toSign })
-              })
-              .then(r => r.json())
-              .then(data => {
-                if (data.signature) resolve(data.signature);
-                else reject(new Error(data.error || "Error al firmar"));
-              })
-              .catch(reject);
-            };
-          });
- 
-          window.__qzReady = true;
-          console.log("[QZ Tray] Configurado con certificado real OK");
-        } catch(e) {
-          console.warn("[QZ] Error de configuracion:", e);
-        }
+      // Configurar QZ Tray con certificado real y firma via Supabase
+      if (window.qz) {
+        qz.security.setCertificatePromise(function(resolve) {
+          resolve(window.__QZ_CERT);
+        });
+        qz.security.setSignatureAlgorithm("SHA512");
+        qz.security.setSignaturePromise(function(toSign) {
+          return function(resolve, reject) {
+            fetch("https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/qz-sign", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ toSign: toSign })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              if (data.signature) resolve(data.signature);
+              else reject(new Error(data.error || "Error al firmar"));
+            })
+            .catch(reject);
+          };
+        });
+        window.__qzReady = true;
+        console.log("[QZ] Configurado OK");
+      } else {
+        console.warn("[QZ] qz-tray.js no cargó — verifica la CSP o la conexión a jsdelivr");
       }
- 
-      // Cargar QZ desde /public/qz-tray.js primero, luego CDN como fallback
-      (function() {
-        var s = document.createElement("script");
-        s.src = "/qz-tray.js";
-        s.onload = configurarQZ;
-        s.onerror = function() {
-          var s2 = document.createElement("script");
-          s2.src = "https://cdn.jsdelivr.net/gh/qzind/tray@2.2/qz-tray.js";
-          s2.onload = configurarQZ;
-          document.head.appendChild(s2);
-        };
-        document.head.appendChild(s);
-      })();
     </script>
   </head>
   <body>
