@@ -3016,86 +3016,73 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
     return d;
   };
 
-  // ── Imprimir directo via WebSocket a QZ Tray (sin CDN) ──────────
+  // ── Imprimir con QZ Tray (certificado real + firma via Supabase) ──
   const imprimirQZ = async () => {
     setQzEstado("conectando");
-    const PORTS = [8182, 8183, 8184, 8185, 8186];
-
-    const intentarPuerto = (port) => new Promise((resolve, reject) => {
-      const ws = new WebSocket(`wss://localhost:${port}`);
-      const timer = setTimeout(() => { try { ws.close(); } catch {} reject(new Error("timeout")); }, 3000);
-      ws.onopen  = () => { clearTimeout(timer); resolve({ ws, port }); };
-      ws.onerror = () => { clearTimeout(timer); reject(new Error(`Puerto ${port}`)); };
-    });
-
-    let conexion = null;
-    for (const port of PORTS) {
-      try { conexion = await intentarPuerto(port); break; }
-      catch { continue; }
-    }
-
-    if (!conexion) {
-      // Intentar con window.qz si está disponible
-      if (window.qz) {
-        try {
-          qz.security.setCertificatePromise((res) => res(""));
-          qz.security.setSignatureAlgorithm("SHA512");
-          qz.security.setSignaturePromise((s) => (res) => res(null));
-          if (!qz.websocket.isActive()) await qz.websocket.connect({ retries: 2, delay: 1 });
-          let imp = null;
-          try { const l = await qz.printers.find("TM-U220"); imp = Array.isArray(l) ? l[0] : l; } catch {}
-          if (!imp) imp = await qz.printers.getDefault();
-          await qz.print(qz.configs.create(imp, { encoding: "Cp1252", copies: 1 }), [{ type: "raw", format: "plain", data: buildEscPos() }]);
-          setQzEstado("ok");
-          setTimeout(() => setQzEstado("idle"), 2500);
-          return;
-        } catch (e2) { console.error(e2); }
-      }
-      setQzEstado("error");
-      setTimeout(() => setQzEstado("idle"), 3000);
-      alert("No se pudo conectar con QZ Tray.\n\nVerifica que:\n1. QZ Tray este corriendo (icono en barra de tareas)\n2. Clic derecho → Advanced → Allow unsigned content\n\nUsa el boton Navegador mientras tanto.");
-      return;
-    }
-
-    const { ws } = conexion;
     try {
-      // Si window.qz disponible, usarlo que maneja el protocolo completo
-      ws.close();
-      if (window.qz) {
-        qz.security.setCertificatePromise((res) => res(""));
-        qz.security.setSignatureAlgorithm("SHA512");
-        qz.security.setSignaturePromise((s) => (res) => res(null));
-        if (!qz.websocket.isActive()) await qz.websocket.connect({ retries: 2, delay: 1 });
-        let imp = null;
-        try { const l = await qz.printers.find("TM-U220"); imp = Array.isArray(l) ? l[0] : l; } catch {}
-        if (!imp) imp = await qz.printers.getDefault();
-        await qz.print(qz.configs.create(imp, { encoding: "Cp1252", copies: 1 }), [{ type: "raw", format: "plain", data: buildEscPos() }]);
-      } else {
-        // Cargar qz-tray.js desde public si existe
+      // Si qz no está disponible, intentar cargarlo
+      if (!window.qz) {
         await new Promise((res, rej) => {
-          if (window.qz) { res(); return; }
           const s = document.createElement("script");
           s.src = "/qz-tray.js";
           s.onload = res;
-          s.onerror = rej;
+          s.onerror = () => {
+            const s2 = document.createElement("script");
+            s2.src = "https://cdn.jsdelivr.net/gh/qzind/tray@2.2/qz-tray.js";
+            s2.onload = res;
+            s2.onerror = rej;
+            document.head.appendChild(s2);
+          };
           document.head.appendChild(s);
         });
-        qz.security.setCertificatePromise((res) => res(""));
-        qz.security.setSignatureAlgorithm("SHA512");
-        qz.security.setSignaturePromise((s) => (res) => res(null));
-        if (!qz.websocket.isActive()) await qz.websocket.connect({ retries: 2, delay: 1 });
-        let imp = null;
-        try { const l = await qz.printers.find("TM-U220"); imp = Array.isArray(l) ? l[0] : l; } catch {}
-        if (!imp) imp = await qz.printers.getDefault();
-        await qz.print(qz.configs.create(imp, { encoding: "Cp1252", copies: 1 }), [{ type: "raw", format: "plain", data: buildEscPos() }]);
+        // Configurar certificado y firma
+        if (window.qz && window.__QZ_CERT) {
+          qz.security.setCertificatePromise((resolve) => resolve(window.__QZ_CERT));
+          qz.security.setSignatureAlgorithm("SHA512");
+          qz.security.setSignaturePromise((toSign) => (resolve, reject) => {
+            fetch("https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/qz-sign", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ toSign })
+            }).then(r => r.json()).then(d => d.signature ? resolve(d.signature) : reject(new Error(d.error))).catch(reject);
+          });
+        }
       }
+
+      if (!window.qz) throw new Error("QZ Tray no disponible. Asegurate de que qz-tray.js este en la carpeta public del proyecto.");
+
+      // Conectar WebSocket con QZ Tray local
+      if (!qz.websocket.isActive()) {
+        await qz.websocket.connect({ retries: 3, delay: 1 });
+      }
+
+      // Buscar impresora Epson TM-U220
+      let impresora = null;
+      try {
+        const lista = await qz.printers.find("TM-U220");
+        impresora = Array.isArray(lista) ? lista[0] : lista;
+      } catch {}
+      if (!impresora) impresora = await qz.printers.getDefault();
+      if (!impresora) throw new Error("No se encontro ninguna impresora. Verifica que la Epson TM-U220D este conectada y encendida.");
+
+      const config = qz.configs.create(impresora, { encoding: "Cp1252", copies: 1, jobName: "GC HOGAR - Recibo" });
+      await qz.print(config, [{ type: "raw", format: "plain", data: buildEscPos() }]);
+
       setQzEstado("ok");
       setTimeout(() => setQzEstado("idle"), 2500);
-    } catch(e) {
-      console.error("QZ:", e);
+
+    } catch (e) {
+      console.error("QZ Error:", e);
       setQzEstado("error");
       setTimeout(() => setQzEstado("idle"), 3000);
-      alert("Error QZ Tray: " + e.message + "\n\nUsa el boton Navegador.");
+      const msg = String(e.message || e);
+      if (msg.includes("Unable to establish") || msg.includes("websocket")) {
+        alert("QZ Tray no responde.\n\n1. Verifica el icono de QZ Tray en la barra de tareas\n2. Si no esta, abrelo desde el menu Inicio\n3. Vuelve a intentar");
+      } else if (msg.includes("certificate") || msg.includes("unsigned")) {
+        alert("Error de certificado QZ Tray.\n\nClic derecho en icono QZ Tray → Advanced → Allow unsigned content");
+      } else {
+        alert("Error: " + msg + "\n\nUsa el boton Navegador mientras tanto.");
+      }
     }
   };
 
