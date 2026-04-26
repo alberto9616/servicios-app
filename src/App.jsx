@@ -3020,36 +3020,19 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
   const imprimirQZ = async () => {
     setQzEstado("conectando");
     try {
-      // Si qz no está disponible, intentar cargarlo
+      // Si qz no está disponible aún, esperar hasta 3 segundos
       if (!window.qz) {
         await new Promise((res, rej) => {
-          const s = document.createElement("script");
-          s.src = "/qz-tray.js";
-          s.onload = res;
-          s.onerror = () => {
-            const s2 = document.createElement("script");
-            s2.src = "https://cdn.jsdelivr.net/gh/qzind/tray@2.2/qz-tray.js";
-            s2.onload = res;
-            s2.onerror = rej;
-            document.head.appendChild(s2);
-          };
-          document.head.appendChild(s);
+          let intentos = 0;
+          const check = setInterval(() => {
+            intentos++;
+            if (window.qz) { clearInterval(check); res(); }
+            else if (intentos > 30) { clearInterval(check); rej(new Error("QZ_NO_CARGADO")); }
+          }, 100);
         });
-        // Configurar certificado y firma
-        if (window.qz && window.__QZ_CERT) {
-          qz.security.setCertificatePromise((resolve) => resolve(window.__QZ_CERT));
-          qz.security.setSignatureAlgorithm("SHA512");
-          qz.security.setSignaturePromise((toSign) => (resolve, reject) => {
-            fetch("https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/qz-sign", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ toSign })
-            }).then(r => r.json()).then(d => d.signature ? resolve(d.signature) : reject(new Error(d.error))).catch(reject);
-          });
-        }
       }
 
-      if (!window.qz) throw new Error("QZ Tray no disponible. Asegurate de que qz-tray.js este en la carpeta public del proyecto.");
+      if (!window.qz) throw new Error("QZ_NO_CARGADO");
 
       // Conectar WebSocket con QZ Tray local
       if (!qz.websocket.isActive()) {
@@ -3063,7 +3046,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
         impresora = Array.isArray(lista) ? lista[0] : lista;
       } catch {}
       if (!impresora) impresora = await qz.printers.getDefault();
-      if (!impresora) throw new Error("No se encontro ninguna impresora. Verifica que la Epson TM-U220D este conectada y encendida.");
+      if (!impresora) throw new Error("Sin impresora detectada");
 
       const config = qz.configs.create(impresora, { encoding: "Cp1252", copies: 1, jobName: "GC HOGAR - Recibo" });
       await qz.print(config, [{ type: "raw", format: "plain", data: buildEscPos() }]);
@@ -3076,16 +3059,18 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
       setQzEstado("error");
       setTimeout(() => setQzEstado("idle"), 3000);
       const msg = String(e.message || e);
-      if (msg.includes("Unable to establish") || msg.includes("websocket")) {
-        alert("QZ Tray no responde.\n\n1. Verifica el icono de QZ Tray en la barra de tareas\n2. Si no esta, abrelo desde el menu Inicio\n3. Vuelve a intentar");
+
+      if (msg === "QZ_NO_CARGADO" || msg.includes("object Event") || msg.includes("No cargado")) {
+        alert("El archivo qz-tray.js no esta cargado.\n\nSolucion:\n1. Ve a github.com/qzind/tray\n2. Descarga el archivo js/qz-tray.js\n3. Subelo a la carpeta public/ del repositorio\n4. Recarga la pagina\n\nO usa el boton Navegador mientras tanto.");
+      } else if (msg.includes("Unable to establish") || msg.includes("websocket")) {
+        alert("QZ Tray no responde.\nVerifica que este corriendo (icono en barra de tareas).");
       } else if (msg.includes("certificate") || msg.includes("unsigned")) {
-        alert("Error de certificado QZ Tray.\n\nClic derecho en icono QZ Tray → Advanced → Allow unsigned content");
+        alert("Error de certificado.\nClic derecho en QZ Tray → Advanced → Allow unsigned content");
       } else {
-        alert("Error: " + msg + "\n\nUsa el boton Navegador mientras tanto.");
+        alert("Error: " + msg + "\n\nUsa el boton Navegador.");
       }
     }
   };
-
 
   // ── Fallback: imprimir desde navegador ───────────────────────────
   const imprimirNavegador = () => {
