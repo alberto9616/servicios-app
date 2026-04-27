@@ -2917,70 +2917,76 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
 
   // ── Helpers ESC/POS ─────────────────────────────────────────────
   const ESC = "\x1B", GS = "\x1D";
-  const INIT        = ESC + "@";
-  const ALIGN_CTR   = ESC + "a\x01";
-  const ALIGN_LFT   = ESC + "a\x00";
-  const BOLD_ON     = ESC + "E\x01";
-  const BOLD_OFF    = ESC + "E\x00";
-  const DOUBLE_ON   = GS  + "!\x11";  // doble ancho + doble alto
-  const DOUBLE_OFF  = GS  + "!\x00";
-  const LF          = "\n";
-  const CUT         = GS  + "V\x41\x03"; // corte parcial con avance
-  const SEP_DASH    = "-".repeat(42) + LF;
-  const SEP_DOT     = ".".repeat(42) + LF;
+  const INIT      = ESC + "@";
+  const ALIGN_CTR = ESC + "a\x01";
+  const ALIGN_LFT = ESC + "a\x00";
+  const BOLD_ON   = ESC + "E\x01";
+  const BOLD_OFF  = ESC + "E\x00";
+  const LF        = "\n";
+  const CUT       = GS  + "V\x41\x03";
+  const COLS      = 40; // TM-U220D: 40 columnas en modo normal
+  const SEP_DASH  = "-".repeat(COLS) + LF;
+  const SEP_DOT   = ".".repeat(COLS) + LF;
 
-  // Centrar texto manualmente en 42 cols
+  // Centrar en COLS columnas
   const center = txt => {
-    const t = String(txt).slice(0, 42);
-    const pad = Math.max(0, Math.floor((42 - t.length) / 2));
+    const t = String(txt).slice(0, COLS);
+    const pad = Math.max(0, Math.floor((COLS - t.length) / 2));
     return " ".repeat(pad) + t + LF;
   };
 
-  // Dos columnas izq/der en 42 chars
+  // Dos columnas izq/der — total COLS chars
   const cols = (izq, der) => {
-    const l = String(izq), r = String(der);
-    const espacio = Math.max(1, 42 - l.length - r.length);
+    const l = String(izq).slice(0, COLS - 8);
+    const r = String(der).slice(0, 12);
+    const espacio = Math.max(1, COLS - l.length - r.length);
     return l + " ".repeat(espacio) + r + LF;
   };
 
-  const fCOP = n => "$" + Number(n).toLocaleString("es-CO");
+  // Formatear dinero SIN puntos de miles para la impresora de matriz
+  // Usa coma como separador de miles (ej: $50,000) compatible con ASCII
+  const fCOP = n => {
+    const num = Math.round(Number(n) || 0);
+    return "$" + num.toLocaleString("en-US").replace(/,/g, ".");
+  };
 
   // ── Construir buffer ESC/POS ─────────────────────────────────────
   const buildEscPos = () => {
-    const empresa = (nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase();
-    const tel     = telefono || "318-8255601";
-    const recibo  = "#" + String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0");
-    const fecha   = factura.fechaEmision || new Date().toISOString().split("T")[0];
-    const cliente = (factura.clienteNombre || "").toUpperCase();
-    const concepto= (factura.concepto || `MES ${factura.mes||""} ${factura.anio||""}`).toUpperCase();
+    const empresa  = (nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase();
+    const tel1     = "Tel: " + (telefono || "318-8255601");
+    const tel2     = "Tel: 315-7613752";
+    const recibo   = "#" + String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0");
+    const fecha    = factura.fechaEmision || new Date().toISOString().split("T")[0];
+    const cliente  = (factura.clienteNombre || "").toUpperCase().slice(0, COLS);
+    const concepto = (factura.concepto || `MES ${factura.mes||""} ${factura.anio||""}`).toUpperCase().slice(0, 24);
 
     let d = "";
-    d += INIT;
-    d += LF;
+    d += INIT + LF;
 
-    // Encabezado centrado
+    // Encabezado
     d += ALIGN_CTR;
     d += BOLD_ON + center(empresa) + BOLD_OFF;
-    d += center("Tel.: " + tel);
+    d += center(tel1);
+    d += center(tel2);
     d += SEP_DASH;
 
-    // Número de recibo y fecha
+    // Recibo y fecha
     d += ALIGN_LFT;
     d += cols("Recibo No.:", recibo);
     d += cols("Fecha:", fecha);
     d += SEP_DASH;
 
-    // Nombre cliente en grande
+    // Cliente
     d += ALIGN_CTR;
     d += BOLD_ON + center(cliente) + BOLD_OFF;
     d += ALIGN_LFT;
     d += SEP_DASH;
 
-    // Concepto y monto
-    d += cols(concepto.slice(0,28), fCOP(factura.monto));
+    // Concepto
+    d += cols(concepto, fCOP(factura.monto));
     d += SEP_DASH;
 
-    // Pago / saldo
+    // Detalle pago
     if (pagado) {
       if (descuentoPP > 0) {
         d += cols("Valor factura:", fCOP(factura.monto));
@@ -2988,9 +2994,11 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
         d += cols("Valor cancelado:", fCOP(totalAbonado));
         d += SEP_DASH;
       }
-      d += ALIGN_CTR;
-      d += BOLD_ON + cols("VALOR PAGADO:", fCOP(totalAbonado)) + BOLD_OFF;
+      d += BOLD_ON;
+      d += cols("VALOR PAGADO:", fCOP(totalAbonado));
+      d += BOLD_OFF;
       d += ALIGN_CTR + BOLD_ON + center("*** CANCELADO ***") + BOLD_OFF;
+      d += ALIGN_LFT;
     } else {
       d += cols("Total a pagar:", fCOP(factura.monto));
       if (descuentoPP > 0) d += cols("Desc. pronto pago:", "- " + fCOP(descuentoPP));
