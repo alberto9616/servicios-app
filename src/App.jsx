@@ -2963,23 +2963,20 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
     let d = "";
     d += INIT + LF;
 
-    // Encabezado
-    d += ALIGN_CTR;
-    d += BOLD_ON + center(empresa) + BOLD_OFF;
-    d += center(tel1);
+    // Encabezado — centrado manual con espacios
+    d += ALIGN_LFT;
+    d += center(empresa);
+    d += BOLD_OFF + center(tel1);
     d += center(tel2);
     d += SEP_DASH;
 
     // Recibo y fecha
-    d += ALIGN_LFT;
     d += cols("Recibo No.:", recibo);
     d += cols("Fecha:", fecha);
     d += SEP_DASH;
 
-    // Cliente
-    d += ALIGN_CTR;
+    // Cliente — centrado manual
     d += BOLD_ON + center(cliente) + BOLD_OFF;
-    d += ALIGN_LFT;
     d += SEP_DASH;
 
     // Concepto
@@ -2997,8 +2994,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
       d += BOLD_ON;
       d += cols("VALOR PAGADO:", fCOP(totalAbonado));
       d += BOLD_OFF;
-      d += ALIGN_CTR + BOLD_ON + center("*** CANCELADO ***") + BOLD_OFF;
-      d += ALIGN_LFT;
+      d += BOLD_ON + center("*** CANCELADO ***") + BOLD_OFF;
     } else {
       d += cols("Total a pagar:", fCOP(factura.monto));
       if (descuentoPP > 0) d += cols("Desc. pronto pago:", "- " + fCOP(descuentoPP));
