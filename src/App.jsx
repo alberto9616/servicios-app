@@ -116,6 +116,18 @@ const db = {
   async upsertProntoPago(p) { const { data, error } = await sb.from("pronto_pago").upsert({ id: p.id || undefined, zona_id: p.zonaId, plan_id: p.planId || null, plan_nombre: p.planNombre || null, descuento: Number(p.descuento) || 0, dia_limite: Number(p.diaLimite) || 10, activo: p.activo !== false }).select().single(); if (error) throw error; return data; },
   async deleteProntoPago(id) { const { error } = await sb.from("pronto_pago").delete().eq("id", id); if (error) throw error; },
 
+  // IMPRESORAS
+  async getImpresoras() { const { data, error } = await sb.from("impresoras").select("*, zonas(nombre)").order("zona_nombre"); if (error) throw error; return data || []; },
+  async upsertImpresora(p) { const { data, error } = await sb.from("impresoras").upsert({ id: p.id || undefined, nombre: p.nombre, zona_id: p.zonaId || null, zona_nombre: p.zonaNombre || null, modelo: p.modelo || "TM-U220D", qz_nombre: p.qzNombre || null, activa: p.activa !== false }).select().single(); if (error) throw error; return data; },
+  async deleteImpresora(id) { const { error } = await sb.from("impresoras").delete().eq("id", id); if (error) throw error; },
+  async pingImpresora(id) { await sb.from("impresoras").update({ ultima_vez: new Date().toISOString() }).eq("id", id); },
+  async encolarImpresion(impresoraId, datosEscpos, facturaId, solicitadoPor) {
+    const b64 = btoa(unescape(encodeURIComponent(datosEscpos)));
+    const { data, error } = await sb.from("print_queue").insert({ impresora_id: impresoraId, datos_escpos: b64, factura_id: facturaId || null, solicitado_por: solicitadoPor || null }).select().single();
+    if (error) throw error; return data;
+  },
+  async actualizarEstadoCola(id, estado, errorMsg) { await sb.from("print_queue").update({ estado, error_msg: errorMsg || null, updated_at: new Date().toISOString() }).eq("id", id); },
+
   // CORTES CONFIG
   async getCortesConfig() { const { data } = await sb.from("cortes_config").select("*").eq("id", "global").single(); return data || { hora_corte: 0, minuto_corte: 5, dias_gracia: 0, activo: true }; },
   async saveCortesConfig(cfg) { const { error } = await sb.from("cortes_config").upsert({ id: "global", ...cfg, updated_at: new Date().toISOString() }); if (error) throw error; },
@@ -2907,13 +2919,24 @@ function ModalConfirm({ titulo, mensaje, icono, onConfirm, onCancel }) {
   );
 }
 
-function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose }) {
+function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, db, usuario }) {
   const totalAbonado = abonos.reduce((s, a) => s + a.monto, 0);
   const descuentoPP  = Number(factura.descuento_pronto_pago || 0);
   const saldo = Math.max(0, factura.monto - totalAbonado - descuentoPP);
   const pagado = saldo <= 0;
   const mostrarAbonos = abonos.length > 0 && !pagado;
   const [qzEstado, setQzEstado] = useState("idle"); // idle | conectando | ok | error
+  const [impresoras, setImpresoras] = useState([]);
+  const [impresoraSeleccionada, setImpresoraSeleccionada] = useState("");
+  const [enviandoCola, setEnviandoCola] = useState(false);
+
+  useEffect(() => {
+    if (db) db.getImpresoras().then(list => {
+      const activas = list.filter(p => p.activa);
+      setImpresoras(activas);
+      if (activas.length === 1) setImpresoraSeleccionada(activas[0].id);
+    }).catch(() => {});
+  }, []);
 
   // ── Helpers ESC/POS ─────────────────────────────────────────────
   const ESC = "\x1B", GS = "\x1D";
@@ -3106,15 +3129,40 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose })
     <div style={{ position: "fixed", inset: 0, background: "#00000077", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 380, maxHeight: "95vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
         <div style={{ display: "flex", gap: 8, padding: "14px 16px", borderBottom: "1px solid #e2e8f0", flexWrap: "wrap" }}>
-          {/* Botón principal ESC/POS */}
+          {/* Selector de impresora si hay varias */}
+          {impresoras.length > 1 && (
+            <Sel value={impresoraSeleccionada} onChange={e => setImpresoraSeleccionada(e.target.value)} style={{ flex: 2, fontSize: 12 }}>
+              <option value="">Seleccionar impresora...</option>
+              {impresoras.map(p => <option key={p.id} value={p.id}>{p.nombre} {p.zona_nombre ? "· " + p.zona_nombre : ""}</option>)}
+            </Sel>
+          )}
+
+          {/* Botón enviar a cola remota */}
+          {impresoras.length > 0 && (
+            <button onClick={async () => {
+              if (!impresoraSeleccionada) { alert("Selecciona una impresora."); return; }
+              setEnviandoCola(true);
+              try {
+                await db.encolarImpresion(impresoraSeleccionada, buildEscPos(), factura.id, usuario?.usuario);
+                alert("Trabajo enviado a la impresora. Se imprimirá automáticamente.");
+              } catch(e) { alert("Error al enviar: " + e.message); }
+              setEnviandoCola(false);
+            }} disabled={enviandoCola || !impresoraSeleccionada}
+              style={{ flex: 1, background: "#7c3aed", color: "#fff", border: "none", borderRadius: 9, padding: "10px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, fontFamily: "inherit", opacity: enviandoCola ? 0.7 : 1 }}>
+              {enviandoCola ? "⏳ Enviando..." : "📡 " + (impresoras.length === 1 ? impresoras[0].nombre : "Enviar a impresora")}
+            </button>
+          )}
+
+          {/* Botón principal ESC/POS local */}
           <button onClick={imprimirQZ} disabled={qzEstado === "conectando"}
-            style={{ flex: 2, background: qzColor, color: "#fff", border: "none", borderRadius: 9, padding: "10px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, fontFamily: "inherit", opacity: qzEstado === "conectando" ? 0.7 : 1 }}>
-            {qzLabel}
+            style={{ flex: impresoras.length > 0 ? 1 : 2, background: { idle: GC.brand, conectando: "#f59e0b", ok: "#16a34a", error: "#ef4444" }[qzEstado], color: "#fff", border: "none", borderRadius: 9, padding: "10px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, fontFamily: "inherit", opacity: qzEstado === "conectando" ? 0.7 : 1 }}>
+            {{ idle: "🖨️ Este equipo", conectando: "⏳ Conectando...", ok: "✅ Impreso!", error: "❌ Error" }[qzEstado]}
           </button>
+
           {/* Fallback navegador */}
           <button onClick={imprimirNavegador}
-            style={{ flex: 1, background: GC.bg3, color: GC.ink3, border: "none", borderRadius: 9, padding: "10px 10px", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
-            🌐 Navegador
+            style={{ background: GC.bg3, color: GC.ink3, border: "none", borderRadius: 9, padding: "10px 10px", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+            🌐
           </button>
           <button onClick={onClose} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: GC.ink3 }}>Cerrar</button>
         </div>
@@ -3825,7 +3873,8 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       {/* ── Modal recibo ── */}
       {modalRecibo && (
         <ReciboImprimible factura={modalRecibo.factura} abonos={modalRecibo.abonos}
-          nombreEmpresa={nombreEmpresa} telefono="318-8255601" onClose={() => setModalRecibo(null)} />
+          nombreEmpresa={nombreEmpresa} telefono="318-8255601" onClose={() => setModalRecibo(null)}
+          db={db} usuario={usuario} />
       )}
 
       {/* ════════════════════════════════════════════════════ */}
@@ -6410,6 +6459,201 @@ function AsignacionMasiva({ usuarios, setUsuarios, zonas, planes, perfilesPago }
   );
 }
 
+// ════════════════════════════════════════════════════════════════
+// AGENTE DE IMPRESIÓN — corre silenciosamente en cada PC con impresora
+// Se activa automáticamente si el usuario tiene una impresora asignada
+// ════════════════════════════════════════════════════════════════
+function AgentImpresora({ impresoraId, qzNombre, db }) {
+  const [estado, setEstado] = useState("inactivo");
+
+  useEffect(() => {
+    if (!impresoraId || !window.qz) return;
+
+    let channel = null;
+    let activo = true;
+
+    const iniciar = async () => {
+      try {
+        // Conectar QZ Tray
+        if (!qz.websocket.isActive()) {
+          await qz.websocket.connect({ retries: 3, delay: 1 });
+        }
+        setEstado("activo");
+        await db.pingImpresora(impresoraId);
+
+        // Suscribir a la cola de impresión via Realtime
+        channel = sb.channel("print_queue_" + impresoraId)
+          .on("postgres_changes", {
+            event: "INSERT",
+            schema: "public",
+            table: "print_queue",
+            filter: "impresora_id=eq." + impresoraId
+          }, async (payload) => {
+            const job = payload.new;
+            if (job.estado !== "pendiente") return;
+
+            try {
+              await db.actualizarEstadoCola(job.id, "imprimiendo", null);
+
+              // Decodificar ESC/POS
+              const escpos = decodeURIComponent(escape(atob(job.datos_escpos)));
+
+              // Encontrar impresora
+              let imp = null;
+              if (qzNombre) {
+                try { const l = await qz.printers.find(qzNombre); imp = Array.isArray(l) ? l[0] : l; } catch {}
+              }
+              if (!imp) {
+                try { const l = await qz.printers.find("TM-U220"); imp = Array.isArray(l) ? l[0] : l; } catch {}
+              }
+              if (!imp) imp = await qz.printers.getDefault();
+
+              const config = qz.configs.create(imp, { encoding: "Cp1252", copies: 1 });
+              await qz.print(config, [{ type: "raw", format: "plain", data: escpos }]);
+              await db.actualizarEstadoCola(job.id, "completado", null);
+            } catch (e) {
+              await db.actualizarEstadoCola(job.id, "error", e.message);
+            }
+          })
+          .subscribe();
+
+        // Ping cada 30 segundos para mostrar que está activo
+        const pingInterval = setInterval(async () => {
+          if (!activo) { clearInterval(pingInterval); return; }
+          await db.pingImpresora(impresoraId);
+        }, 30000);
+
+      } catch (e) {
+        setEstado("error");
+        console.error("AgentImpresora error:", e);
+      }
+    };
+
+    iniciar();
+
+    return () => {
+      activo = false;
+      if (channel) sb.removeChannel(channel);
+      setEstado("inactivo");
+    };
+  }, [impresoraId]);
+
+  if (estado === "inactivo") return null;
+
+  return (
+    <div style={{ position: "fixed", bottom: 12, right: 12, background: estado === "activo" ? "#f0fdf4" : "#fef2f2", border: "1px solid " + (estado === "activo" ? "#bbf7d0" : "#fecaca"), borderRadius: 10, padding: "6px 12px", fontSize: 11, color: estado === "activo" ? "#16a34a" : "#ef4444", zIndex: 9999, display: "flex", alignItems: "center", gap: 6 }}>
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: estado === "activo" ? "#16a34a" : "#ef4444", display: "inline-block" }} />
+      {estado === "activo" ? "Impresora activa" : "Error de impresora"}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// PANEL DE IMPRESORAS — gestión desde el admin
+// ════════════════════════════════════════════════════════════════
+function PanelImpresoras({ zonas, db }) {
+  const [impresoras, setImpresoras] = useState([]);
+  const [editP, setEditP] = useState(null);
+  const [cargando, setCargando] = useState(false);
+  const EMPTY = { id: "", nombre: "", zonaId: "", zonaNombre: "", modelo: "TM-U220D", qzNombre: "", activa: true };
+
+  useEffect(() => { db.getImpresoras().then(setImpresoras).catch(console.error); }, []);
+
+  const guardar = async () => {
+    if (!editP.nombre) { alert("Ingresa un nombre para la impresora."); return; }
+    setCargando(true);
+    try {
+      const zona = zonas.find(z => z.id === editP.zonaId);
+      const r = await db.upsertImpresora({ ...editP, zonaNombre: zona?.nombre || "" });
+      setImpresoras(prev => editP.id ? prev.map(p => p.id === r.id ? r : p) : [r, ...prev]);
+      setEditP(null);
+    } catch(e) { alert("Error: " + e.message); }
+    setCargando(false);
+  };
+
+  const ahora = new Date();
+  const estaActiva = (p) => p.ultima_vez && (ahora - new Date(p.ultima_vez)) < 60000; // activa si ping < 1 min
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: GC.ink }}>🖨️ Impresoras registradas</div>
+        <Btn onClick={() => setEditP({ ...EMPTY })} style={{ fontSize: 13 }}>+ Agregar impresora</Btn>
+      </div>
+
+      {/* Instrucciones */}
+      <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 12, color: "#1e40af" }}>
+        <strong>Cómo funciona:</strong> Registra cada impresora con su nombre exacto en Windows. En el PC donde está conectada la impresora, el agente se activará automáticamente cuando ese usuario inicie sesión. Cualquier otro PC puede enviarle trabajos de impresión en tiempo real.
+      </div>
+
+      {/* Formulario */}
+      {editP && (
+        <div style={{ background: "#fff", border: "1px solid " + GC.border, borderRadius: 14, padding: 20, marginBottom: 16 }}>
+          <div style={{ fontWeight: 700, marginBottom: 14 }}>{editP.id ? "Editar impresora" : "Nueva impresora"}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
+            <Field label="Nombre de la impresora">
+              <Inp value={editP.nombre} onChange={e => setEditP(p => ({ ...p, nombre: e.target.value }))} placeholder="Ej: Epson Vijes Principal" />
+            </Field>
+            <Field label="Zona">
+              <Sel value={editP.zonaId || ""} onChange={e => setEditP(p => ({ ...p, zonaId: e.target.value }))}>
+                <option value="">Sin zona específica</option>
+                {zonas.filter(z => z.activa).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+              </Sel>
+            </Field>
+            <Field label="Nombre exacto en Windows / QZ Tray">
+              <Inp value={editP.qzNombre || ""} onChange={e => setEditP(p => ({ ...p, qzNombre: e.target.value }))} placeholder="Ej: EPSON TM-U220D Receipt" />
+              <div style={{ fontSize: 10, color: GC.ink3, marginTop: 2 }}>Nombre que aparece en Panel de control → Dispositivos e impresoras</div>
+            </Field>
+            <Field label="Modelo">
+              <Sel value={editP.modelo || "TM-U220D"} onChange={e => setEditP(p => ({ ...p, modelo: e.target.value }))}>
+                <option>TM-U220D</option><option>TM-T20</option><option>TM-T88</option><option>Otra</option>
+              </Sel>
+            </Field>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <Btn onClick={guardar} disabled={cargando}>{cargando ? "Guardando..." : "Guardar"}</Btn>
+            <button onClick={() => setEditP(null)} style={{ padding: "9px 16px", background: GC.bg3, border: "none", borderRadius: 9, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Lista */}
+      {impresoras.length === 0 ? (
+        <div style={{ textAlign: "center", color: GC.ink3, padding: 40 }}>No hay impresoras registradas</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {impresoras.map(p => {
+            const activa = estaActiva(p);
+            return (
+              <div key={p.id} style={{ background: "#fff", border: "1px solid " + GC.border, borderLeft: "4px solid " + (activa ? "#16a34a" : "#94a3b8"), borderRadius: 10, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: GC.ink }}>{p.nombre}</div>
+                  <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>
+                    {p.zona_nombre || "Sin zona"} · {p.modelo}
+                    {p.qz_nombre && <span> · QZ: <em>{p.qz_nombre}</em></span>}
+                  </div>
+                  <div style={{ fontSize: 11, marginTop: 4 }}>
+                    <span style={{ background: activa ? "#f0fdf4" : "#f1f5f9", color: activa ? "#16a34a" : "#94a3b8", borderRadius: 6, padding: "2px 8px", fontWeight: 700 }}>
+                      {activa ? "🟢 Agente activo" : p.ultima_vez ? "🔴 Desconectada" : "⚪ Sin conectar"}
+                    </span>
+                    {p.ultima_vez && <span style={{ color: GC.ink4, marginLeft: 8 }}>Último ping: {new Date(p.ultima_vez).toLocaleTimeString("es-CO")}</span>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => setEditP({ id: p.id, nombre: p.nombre, zonaId: p.zona_id || "", zonaNombre: p.zona_nombre || "", modelo: p.modelo, qzNombre: p.qz_nombre || "", activa: p.activa })}
+                    style={{ background: GC.bg3, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
+                  <button onClick={async () => { if (confirm("¿Eliminar impresora " + p.nombre + "?")) { await db.deleteImpresora(p.id); setImpresoras(prev => prev.filter(x => x.id !== p.id)); } }}
+                    style={{ background: "#fef2f2", color: "#ef4444", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelCortes({ usuarios, perfilesPago, sesion, db }) {
   const [subTab, setSubTab] = useState("config");
   const [cfg, setCfg]       = useState({ hora_corte: 0, minuto_corte: 5, dias_gracia: 0, activo: true });
@@ -7105,7 +7349,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     zonas: zonas.length,
   };
 
-  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["cortes", "✂️ Cortes"], ["masivo", "⚡ Asignación masiva"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación y Caja"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
+  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["cortes", "✂️ Cortes"], ["impresoras", "🖨️ Impresoras"], ["masivo", "⚡ Asignación masiva"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación y Caja"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
 
   const getNombreZona = (zonaId) => zonas.find(z => z.id === zonaId)?.nombre || "Sin zona";
 
@@ -7306,6 +7550,10 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           sesion={sesion}
           db={db}
         />
+      )}
+
+      {tab === "impresoras" && (
+        <PanelImpresoras zonas={zonas} db={db} />
       )}
 
       {/* ── TAB ASIGNACIÓN MASIVA ── */}
