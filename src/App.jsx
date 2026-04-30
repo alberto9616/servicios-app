@@ -55,6 +55,7 @@ const mapUsuario = r => r ? ({
   wisproUuid: r.wispro_uuid || null,
   ip: r.ip || null,
   contratoNum: r.contrato_num || 1,
+  telefono2: r.telefono2 || null,
 }) : null;
 const mapAviso = r => r ? ({ id: r.id, tipo: r.tipo, titulo: r.titulo, mensaje: r.mensaje, fecha: r.fecha, afecta: r.afecta, activo: r.activo }) : null;
 const mapTicket = (r, mensajes = []) => r ? ({
@@ -190,6 +191,7 @@ const db = {
       wispro_uuid: u.wisproUuid || null,
       ip: u.ip || null,
       contrato_num: u.contratoNum || 1,
+      telefono2: u.telefono2 || null,
     };
     // Remove undefined id so Supabase generates it automatically
     if (row.id === undefined) delete row.id;
@@ -2039,7 +2041,8 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 <Field label="Usuario (login)"><Inp value={editCliente.usuario} onChange={e => setEditCliente({ ...editCliente, usuario: e.target.value })} placeholder="Ej: 12345678" /></Field>
                 <Field label="Clave de acceso"><Inp value={editCliente.clave} onChange={e => setEditCliente({ ...editCliente, clave: e.target.value })} placeholder="Clave de acceso" /></Field>
                 <Field label="Cédula / NIT"><Inp value={editCliente.cedula || ""} onChange={e => setEditCliente({ ...editCliente, cedula: e.target.value })} /></Field>
-                <Field label="Teléfono"><Inp value={editCliente.telefono || ""} onChange={e => setEditCliente({ ...editCliente, telefono: e.target.value })} placeholder="Ej: 3001234567" /></Field>
+                <Field label="Teléfono principal"><Inp value={editCliente.telefono || ""} onChange={e => setEditCliente({ ...editCliente, telefono: e.target.value })} placeholder="Ej: 3001234567" /></Field>
+                <Field label="Teléfono 2 (opcional)"><Inp value={editCliente.telefono2 || ""} onChange={e => setEditCliente({ ...editCliente, telefono2: e.target.value })} placeholder="Segundo número de contacto" /></Field>
                 <Field label="Correo electrónico"><Inp type="email" value={editCliente.correo || ""} onChange={e => setEditCliente({ ...editCliente, correo: e.target.value })} placeholder="cliente@correo.com (opcional)" /></Field>
                 <Field label="Dirección de domicilio"><Inp value={editCliente.direccion || ""} onChange={e => setEditCliente({ ...editCliente, direccion: e.target.value })} placeholder="Calle / Carrera, barrio" /></Field>
                 <Field label="Servicio">
@@ -2112,6 +2115,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   </div>
                   <div style={{ fontSize: 12, color: GC.ink3 }}>@{c.usuario} · CC/NIT: {c.cedula}</div>
                   {c.telefono && <div style={{ fontSize: 11, color: GC.info }}>📞 <a href={`tel:${c.telefono}`} style={{ color: GC.info, textDecoration: "none" }}>{c.telefono}</a></div>}
+                  {c.telefono2 && <div style={{ fontSize: 11, color: GC.info }}>📞 <a href={`tel:${c.telefono2}`} style={{ color: GC.info, textDecoration: "none" }}>{c.telefono2}</a></div>}
                   {c.direccion && <div style={{ fontSize: 11, color: GC.ink3 }}>📍 {c.direccion}</div>}
                   {c.ip && <div style={{ fontSize: 11, color: GC.ink3 }}>🌐 IP: {c.ip}</div>}
                   {c.claveWifi && <div style={{ fontSize: 11, color: GC.info }}>🔑 WiFi: {c.claveWifi}</div>}
@@ -4882,33 +4886,79 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
   const [filtroMes, setFiltroMes] = useState(0);
   const [filtroDia, setFiltroDia] = useState("");
-  const [clienteDetalle, setClienteDetalle] = useState(null); // { id, nombre }
+  const [clienteDetalle, setClienteDetalle] = useState(null);
   const [abonosDetalle, setAbonosDetalle] = useState({});
+  const [modalEditFact, setModalEditFact] = useState(null); // factura a editar
+  const [editFactData, setEditFactData] = useState({});
+  const [guardandoEdit, setGuardandoEdit] = useState(false);
+
+  // Si hay búsqueda por nombre/cédula → ignorar filtros de fecha y buscar en TODAS
+  const busqActiva = busq.trim().length >= 2;
 
   const facturasAudit = facturas.filter(f => {
-    if (f.anio !== filtroAnio) return false;
-    if (filtroMes > 0 && f.mes !== filtroMes) return false;
-    if (filtroDia && f.fechaEmision !== filtroDia && f.fechaPago !== filtroDia) return false;
-    if (busq) {
+    if (busqActiva) {
+      // Solo filtrar por texto — todas las fechas
       const q = busq.toLowerCase();
       const matchNombre = f.clienteNombre?.toLowerCase().includes(q);
       const matchCedula = f.clienteCedula?.toLowerCase().includes(q);
       const matchRecibo = String(f.numeroRecibo).includes(q);
-      if (!matchNombre && !matchCedula && !matchRecibo) return false;
+      return matchNombre || matchCedula || matchRecibo;
     }
+    // Sin búsqueda: filtros normales por fecha
+    if (f.anio !== filtroAnio) return false;
+    if (filtroMes > 0 && f.mes !== filtroMes) return false;
+    if (filtroDia && f.fechaEmision !== filtroDia && f.fechaPago !== filtroDia) return false;
     return true;
-  }).sort((a, b) => (b.fechaEmision||"").localeCompare(a.fechaEmision||""));
+  }).sort((a, b) => {
+    // Ordenar: primero por cliente, luego por fecha descendente
+    if (busqActiva) {
+      const nc = (a.clienteNombre||"").localeCompare(b.clienteNombre||"");
+      if (nc !== 0) return nc;
+      return (b.anio*12+b.mes) - (a.anio*12+a.mes);
+    }
+    return (b.fechaEmision||"").localeCompare(a.fechaEmision||"");
+  });
 
-  // Agrupar por cliente cuando hay búsqueda de cliente específico
-  const clienteBuscado = busq && facturasAudit.length > 0 ? (() => {
+  // Agrupar por cliente cuando hay búsqueda
+  const clienteBuscado = busqActiva && facturasAudit.length > 0 ? (() => {
     const ids = [...new Set(facturasAudit.map(f => f.clienteId))];
     if (ids.length === 1) return { id: ids[0], nombre: facturasAudit[0].clienteNombre };
     return null;
   })() : null;
 
-  const totalFact = facturasAudit.reduce((s, f) => s + f.monto, 0);
+  // Resumen de deuda cuando se busca un cliente específico
+  const resumenCliente = clienteBuscado ? (() => {
+    const fact = facturasAudit.filter(f => f.clienteId === clienteBuscado.id && f.estado !== "Anulada");
+    const deudaTotal = fact.reduce((s, f) => s + f.saldoPendiente, 0);
+    const mesesDeuda = fact.filter(f => f.saldoPendiente > 0).length;
+    return { deudaTotal, mesesDeuda, total: fact.length };
+  })() : null;
+
+  const totalFact    = facturasAudit.reduce((s, f) => s + f.monto, 0);
   const totalCobrado = facturasAudit.reduce((s, f) => s + ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0))), 0);
-  const totalPend = facturasAudit.reduce((s, f) => s + f.saldoPendiente, 0);
+  const totalPend    = facturasAudit.reduce((s, f) => s + f.saldoPendiente, 0);
+
+  // Guardar edición de factura
+  const guardarEdicion = async () => {
+    setGuardandoEdit(true);
+    try {
+      const nuevo = {
+        concepto:   editFactData.concepto,
+        monto:      Number(editFactData.monto),
+        notas:      editFactData.notas || null,
+        fecha_pago: editFactData.fechaPago || null,
+        estado:     editFactData.estado,
+        saldo_pendiente: editFactData.estado === "Pagado" ? 0 : Number(editFactData.saldoPendiente),
+      };
+      await db.actualizarFactura(modalEditFact.id, nuevo);
+      setFacturas(prev => prev.map(f => f.id === modalEditFact.id
+        ? { ...f, concepto: nuevo.concepto, monto: nuevo.monto, notas: nuevo.notas, fechaPago: nuevo.fecha_pago, estado: nuevo.estado, saldoPendiente: nuevo.saldo_pendiente }
+        : f
+      ));
+      setModalEditFact(null);
+    } catch(e) { alert("Error al guardar: " + e.message); }
+    setGuardandoEdit(false);
+  };
 
   const imprimirTirilla = (cliente, listaFact) => {
     const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
@@ -4962,20 +5012,91 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
       {/* Filtros */}
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <Inp placeholder="🔍 Nombre, cédula o N° recibo..." value={busq} onChange={e => setBusq(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
-        <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))} style={{ width: "auto", minWidth: 80 }}>
-          {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
-        </Sel>
-        <Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))} style={{ width: "auto", minWidth: 110 }}>
-          <option value={0}>Todos los meses</option>
-          {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-        </Sel>
-        <Inp type="date" value={filtroDia} onChange={e => setFiltroDia(e.target.value)} style={{ width: "auto" }} title="Filtrar por día exacto" />
+        {/* Solo mostrar filtros de fecha si NO hay búsqueda activa */}
+        {!busqActiva && <>
+          <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))} style={{ width: "auto", minWidth: 80 }}>
+            {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
+          </Sel>
+          <Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))} style={{ width: "auto", minWidth: 110 }}>
+            <option value={0}>Todos los meses</option>
+            {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+          </Sel>
+          <Inp type="date" value={filtroDia} onChange={e => setFiltroDia(e.target.value)} style={{ width: "auto" }} title="Filtrar por día exacto" />
+        </>}
         {(busq || filtroMes > 0 || filtroDia) && (
           <button onClick={() => { setBusq(""); setFiltroMes(0); setFiltroDia(""); }}
             style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 13, color: GC.ink2 }}>✕ Limpiar</button>
         )}
-        <span style={{ fontSize: 12, color: GC.ink3 }}>{facturasAudit.length} registros</span>
+        <span style={{ fontSize: 12, color: GC.ink3 }}>{facturasAudit.length} registros {busqActiva ? "(todas las fechas)" : ""}</span>
       </div>
+
+      {/* Banner búsqueda por nombre activa */}
+      {busqActiva && (
+        <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#1e40af" }}>
+          🔍 Buscando <strong>"{busq}"</strong> en todas las facturas sin importar el mes o año
+        </div>
+      )}
+
+      {/* Resumen de deuda cuando se encuentra un cliente específico */}
+      {resumenCliente && resumenCliente.deudaTotal > 0 && (
+        <div style={{ background: "#fef2f2", border: "2px solid #fecaca", borderRadius: 12, padding: "12px 16px", marginBottom: 14 }}>
+          <div style={{ fontWeight: 800, color: "#dc2626", fontSize: 15, marginBottom: 4 }}>
+            ⚠️ {clienteBuscado.nombre} tiene deuda pendiente
+          </div>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13 }}>
+            <span>Meses sin pagar: <strong style={{ color: "#dc2626" }}>{resumenCliente.mesesDeuda}</strong></span>
+            <span>Deuda total: <strong style={{ color: "#dc2626", fontSize: 16 }}>{formatCOP(resumenCliente.deudaTotal)}</strong></span>
+            <span>Total facturas: <strong>{resumenCliente.total}</strong></span>
+          </div>
+        </div>
+      )}
+
+      {/* Modal editar factura — solo admin y superusuario */}
+      {modalEditFact && (esAdmin || esSuperusuario) && (
+        <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+          onClick={e => e.target === e.currentTarget && setModalEditFact(null)}>
+          <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 460, padding: 24, boxShadow: "0 20px 60px #00000033" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 16 }}>✏️ Editar factura</div>
+                <div style={{ fontSize: 12, color: GC.ink3 }}>{modalEditFact.clienteNombre} · #{modalEditFact.numeroRecibo}</div>
+              </div>
+              <button onClick={() => setModalEditFact(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+            </div>
+            <Field label="Concepto">
+              <Inp value={editFactData.concepto || ""} onChange={e => setEditFactData(p => ({ ...p, concepto: e.target.value }))} />
+            </Field>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+              <Field label="Monto total ($)">
+                <Inp type="number" value={editFactData.monto || ""} onChange={e => setEditFactData(p => ({ ...p, monto: e.target.value }))} />
+              </Field>
+              <Field label="Saldo pendiente ($)">
+                <Inp type="number" value={editFactData.saldoPendiente || ""} onChange={e => setEditFactData(p => ({ ...p, saldoPendiente: e.target.value }))} />
+              </Field>
+              <Field label="Estado">
+                <Sel value={editFactData.estado || "Pendiente"} onChange={e => setEditFactData(p => ({ ...p, estado: e.target.value }))}>
+                  <option>Pendiente</option>
+                  <option>Pagado</option>
+                  <option>Abono parcial</option>
+                  <option>Vencido</option>
+                </Sel>
+              </Field>
+              <Field label="Fecha de pago">
+                <Inp type="date" value={editFactData.fechaPago || ""} onChange={e => setEditFactData(p => ({ ...p, fechaPago: e.target.value }))} />
+              </Field>
+            </div>
+            <Field label="Notas (opcional)">
+              <Inp value={editFactData.notas || ""} onChange={e => setEditFactData(p => ({ ...p, notas: e.target.value }))} placeholder="Observaciones sobre esta factura..." />
+            </Field>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <Btn onClick={guardarEdicion} disabled={guardandoEdit} style={{ flex: 1 }}>
+                {guardandoEdit ? "Guardando..." : "💾 Guardar cambios"}
+              </Btn>
+              <button onClick={() => setModalEditFact(null)} style={{ padding: "9px 16px", background: GC.bg3, border: "none", borderRadius: 9, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Totales del filtro */}
       {facturasAudit.length > 0 && (
@@ -5055,6 +5176,12 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
                 <td style={{ padding: "8px 6px" }}>
                   <div style={{ display: "flex", gap: 4 }}>
                     <button onClick={verFact} style={{ background: GC.infoBg, color: GC.info, border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 12 }} title="Ver factura">🧾</button>
+                    {(esAdmin || esSuperusuario) && f.estado !== "Anulada" && (
+                      <button onClick={() => {
+                        setEditFactData({ concepto: f.concepto, monto: f.monto, saldoPendiente: f.saldoPendiente, estado: f.estado, fechaPago: f.fechaPago || "", notas: f.notas || "" });
+                        setModalEditFact(f);
+                      }} style={{ background: "#eff6ff", color: "#1d4ed8", border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 12 }} title="Editar factura">✏️</button>
+                    )}
                     {f.estado !== "Anulada" && (esAdmin || esSuperusuario) && (
                       <button onClick={() => setConfirmAnular({ id: f.id, nombre: f.clienteNombre })}
                         style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 12 }} title="Anular">🚫</button>
@@ -6085,6 +6212,7 @@ function TabSuperusuario({ usuarios, setUsuarios, sesion, zonas = [], setZonas }
             <Field label="Usuario (login)"><Inp value={editU.usuario} onChange={e => setEditU({ ...editU, usuario: e.target.value })} /></Field>
             <Field label="Clave"><Inp type="text" value={editU.clave} onChange={e => setEditU({ ...editU, clave: e.target.value })} /></Field>
             <Field label="Teléfono (opcional)"><Inp value={editU.telefono || ""} onChange={e => setEditU({ ...editU, telefono: e.target.value })} /></Field>
+            <Field label="Teléfono 2 (opcional)"><Inp value={editU.telefono2 || ""} onChange={e => setEditU({ ...editU, telefono2: e.target.value })} placeholder="Segundo número de contacto" /></Field>
             {editU.rol !== "superusuario" && zonas.length > 0 && (
               <Field label="Zonas asignadas (puede seleccionar varias)">
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
@@ -7104,6 +7232,7 @@ function exportarClientes(usuarios, facturas, zonas, planes, perfilesPago) {
       "Cédula / NIT":        c.cedula || "",
       "Usuario":             c.usuario || "",
       "Teléfono":            c.telefono || "",
+      "Teléfono 2":          c.telefono2 || "",
       "Correo":              c.correo || "",
       "Dirección":           c.direccion || "",
       "Zona":                zona?.nombre || "",
@@ -7707,6 +7836,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   <Field label="Nombre completo"><Inp value={editU.nombre} onChange={e => setEditU({ ...editU, nombre: e.target.value })} /></Field>
                   <Field label="Teléfono"><Inp value={editU.telefono || ""} onChange={e => setEditU({ ...editU, telefono: e.target.value })} placeholder="Ej: 3001234567" /></Field>
                   <Field label="Usuario (login)"><Inp value={editU.usuario} onChange={e => setEditU({ ...editU, usuario: e.target.value })} /></Field>
+                  <Field label="Teléfono 2 (opcional)"><Inp value={editU.telefono2 || ""} onChange={e => setEditU({ ...editU, telefono2: e.target.value })} placeholder="Segundo número" /></Field>
                   <Field label="Clave"><Inp type="text" value={editU.clave} onChange={e => setEditU({ ...editU, clave: e.target.value })} /></Field>
                   {editU.rol === "admin" && (
                     <Field label="Zonas asignadas (puede seleccionar varias)">
