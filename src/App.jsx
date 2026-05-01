@@ -483,7 +483,7 @@ const TICKET_COLOR = { Abierto: GC.warning, "En proceso": GC.info, Resuelto: GC.
 const ORDEN_COLOR = { Pendiente: GC.warning, "En camino": GC.info, Completada: GC.brand, Cancelada: GC.danger };
 const TIPO_COLOR = { Mantenimiento: GC.info, Falla: GC.danger, Información: GC.purple };
 
-const TIPOS_ORDEN = ["Revisión / diagnóstico", "Instalación nueva", "Punto adicional de TV", "Punto adicional de Internet", "Cotización", "Traslado / cambio de domicilio", "Reubicación de router", "Otro"];
+const TIPOS_ORDEN = ["Revisión / diagnóstico", "Instalación nueva", "Reconexión", "Punto adicional de TV", "Punto adicional de Internet", "Cotización", "Traslado / cambio de domicilio", "Reubicación de router", "Otro"];
 
 // Categorías del chat de soporte
 const CATEGORIAS_SOPORTE = [
@@ -1819,12 +1819,13 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   const crearOrdenManual = async () => {
     const errs = {};
     const esNueva = ordenManual.tipo === "Instalación nueva";
+    const esReconexion = ordenManual.tipo === "Reconexión";
+
     if (esNueva) {
       if (!ordenManual.nuevoNombre.trim()) errs.nuevoNombre = true;
       if (!ordenManual.nuevaCedula.trim()) errs.nuevaCedula = true;
       if (!ordenManual.nuevoTelefono.trim()) errs.nuevoTelefono = true;
       if (!ordenManual.nuevaDireccion.trim()) errs.nuevaDireccion = true;
-      // Usuario y clave son opcionales para clientes finales
     } else {
       if (!ordenManual.clienteExistente) errs.clienteExistente = true;
     }
@@ -1833,38 +1834,80 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
     setErroresOrdenManual({});
 
     let clienteNombre, clienteDireccion, clienteId, telefonoCliente;
+
     if (esNueva) {
-      // Crear el usuario cliente en Supabase
-      const nuevoCliente = {
-        id: "", usuario: ordenManual.nuevoUsuario.trim(), clave: ordenManual.nuevaClave.trim(),
-        rol: "cliente", nombre: ordenManual.nuevoNombre.trim(), activo: true,
-        zonaId: usuario.zonaId, secretarioId: usuario.id,
-        tipo: ordenManual.nuevoTipo || "final",
-        cedula: ordenManual.nuevaCedula.trim(),
-        telefono: ordenManual.nuevoTelefono.trim(),
-        correo: ordenManual.nuevoCorreo.trim() || null,
-        servicio: ordenManual.nuevoServicio || "Internet",
-        plan: ordenManual.nuevoPlan || "",
-        planId: ordenManual.nuevoPlanId || null,
-        monto: ordenManual.nuevoMonto ? Number(ordenManual.nuevoMonto) : null,
-        estado: ordenManual.nuevoEstado || "Activo",
-        direccion: ordenManual.nuevaDireccion.trim(),
-        claveWifi: ordenManual.nuevoClaveWifi.trim() || null,
-        perfilPagoId: ordenManual.nuevoPerfilPagoId || null,
-        fechaPrimeraFactura: ordenManual.nuevoFechaPrimeraFactura ? ordenManual.nuevoFechaPrimeraFactura + "-01" : null,
-        privilegios: [], zonasIds: [],
-      };
-      try {
-        const clienteGuardado = await db.upsertUsuario(nuevoCliente);
-        setUsuarios(p => [...p, clienteGuardado]);
-        clienteNombre = clienteGuardado.nombre;
-        clienteDireccion = clienteGuardado.direccion || ordenManual.nuevaDireccion.trim();
-        clienteId = clienteGuardado.id;
-        telefonoCliente = clienteGuardado.telefono;
-      } catch (err) {
-        console.error("Error creando cliente:", err);
-        alert("❌ Error al crear el cliente: " + err.message);
-        return;
+      // Si hay cliente existente detectado y se confirmó agregar contrato
+      if (ordenManual._clienteExistenteDetectado && ordenManual._agregarContrato) {
+        const c = ordenManual._clienteExistenteDetectado;
+        clienteId = c.id;
+        clienteNombre = c.nombre;
+        clienteDireccion = ordenManual.nuevaDireccion.trim() || c.direccion;
+        telefonoCliente = ordenManual.nuevoTelefono.trim() || c.telefono;
+        // Actualizar dirección si cambió
+        if (ordenManual.nuevaDireccion.trim() && ordenManual.nuevaDireccion.trim() !== c.direccion) {
+          try { await db.upsertUsuario({ ...c, direccion: ordenManual.nuevaDireccion.trim() }); } catch {}
+        }
+      } else {
+        // Crear nuevo cliente
+        const nuevoCliente = {
+          id: "", usuario: ordenManual.nuevoUsuario.trim(), clave: ordenManual.nuevaClave.trim(),
+          rol: "cliente", nombre: ordenManual.nuevoNombre.trim(), activo: true,
+          zonaId: usuario.zonaId, secretarioId: usuario.id,
+          tipo: ordenManual.nuevoTipo || "final",
+          cedula: ordenManual.nuevaCedula.trim(),
+          telefono: ordenManual.nuevoTelefono.trim(),
+          correo: ordenManual.nuevoCorreo.trim() || null,
+          servicio: ordenManual.nuevoServicio || "Internet",
+          plan: ordenManual.nuevoPlan || "",
+          planId: ordenManual.nuevoPlanId || null,
+          monto: ordenManual.nuevoMonto ? Number(ordenManual.nuevoMonto) : null,
+          estado: ordenManual.nuevoEstado || "Al día",
+          direccion: ordenManual.nuevaDireccion.trim(),
+          claveWifi: ordenManual.nuevoClaveWifi.trim() || null,
+          perfilPagoId: ordenManual.nuevoPerfilPagoId || null,
+          fechaPrimeraFactura: ordenManual.nuevoFechaPrimeraFactura ? ordenManual.nuevoFechaPrimeraFactura + "-01" : null,
+          privilegios: [], zonasIds: [],
+        };
+        try {
+          const clienteGuardado = await db.upsertUsuario(nuevoCliente);
+          setUsuarios(p => [...p, clienteGuardado]);
+          clienteNombre = clienteGuardado.nombre;
+          clienteDireccion = clienteGuardado.direccion || ordenManual.nuevaDireccion.trim();
+          clienteId = clienteGuardado.id;
+          telefonoCliente = clienteGuardado.telefono;
+        } catch (err) {
+          alert("Error al crear el cliente: " + err.message);
+          return;
+        }
+      }
+    } else if (esReconexion) {
+      // Reconexión: actualizar datos del cliente si se editaron
+      const c = usuarios.find(u => u.id === ordenManual.clienteExistente);
+      clienteId    = c?.id || null;
+      clienteNombre = ordenManual._reconNombre || c?.nombre || "Sin nombre";
+      clienteDireccion = ordenManual._reconDireccion || c?.direccion || "Sin dirección";
+      telefonoCliente = ordenManual._reconTelefono || c?.telefono || null;
+
+      // Guardar cambios si el usuario editó algún dato
+      if (c && (
+        ordenManual._reconNombre !== c.nombre ||
+        ordenManual._reconTelefono !== c.telefono ||
+        ordenManual._reconDireccion !== c.direccion ||
+        ordenManual._reconIp !== c.ip ||
+        ordenManual._reconClaveWifi !== c.claveWifi
+      )) {
+        try {
+          const actualizado = {
+            ...c,
+            nombre:    ordenManual._reconNombre    || c.nombre,
+            telefono:  ordenManual._reconTelefono  || c.telefono,
+            direccion: ordenManual._reconDireccion || c.direccion,
+            ip:        ordenManual._reconIp        || c.ip,
+            claveWifi: ordenManual._reconClaveWifi || c.claveWifi,
+          };
+          await db.upsertUsuario(actualizado);
+          setUsuarios(p => p.map(u => u.id === c.id ? { ...u, ...actualizado } : u));
+        } catch (err) { console.error("Error actualizando cliente:", err); }
       }
     } else {
       const c = usuarios.find(u => u.id === ordenManual.clienteExistente);
@@ -1894,7 +1937,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       const guardada = await db.crearOrden(orden);
       setOrdenes(p => [...p, guardada]);
       setShowModalOrdenManual(false);
-      setOrdenManual({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevoUsuario: "", nuevaClave: "", nuevoServicio: "Internet", nuevoPlan: "", nuevoPlanId: "", nuevoMonto: "", nuevoEstado: "Al día", nuevoClaveWifi: "", nuevoTipo: "final", nuevoPerfilPagoId: "", nuevoFechaPrimeraFactura: "" });
+      setOrdenManual({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevoUsuario: "", nuevaClave: "", nuevoServicio: "Internet", nuevoPlan: "", nuevoPlanId: "", nuevoMonto: "", nuevoEstado: "Al día", nuevoClaveWifi: "", nuevoTipo: "final", nuevoPerfilPagoId: "", nuevoFechaPrimeraFactura: "", _busqExistente: "", _clienteExistenteDetectado: null, _numContratos: 0, _agregarContrato: false, _reconNombre: "", _reconTelefono: "", _reconDireccion: "", _reconIp: "", _reconClaveWifi: "", _reconServicio: "" });
     } catch (err) { console.error("Error creando orden manual:", err); }
   };
 
@@ -2318,6 +2361,75 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
               <div style={{ background: "#0ea5e911", border: "1px solid #0ea5e933", borderRadius: 12, padding: 14, marginBottom: 14 }}>
                 <div style={{ fontSize: 12, color: GC.info, fontWeight: 700, marginBottom: 14, textTransform: "uppercase", letterSpacing: 0.8 }}>👤 Datos del nuevo cliente</div>
 
+                {/* Búsqueda para detectar cliente existente */}
+                <Field label="¿El cliente ya existe en el sistema? (buscar por nombre o cédula)">
+                  <Inp
+                    placeholder="Buscar cliente existente (opcional)..."
+                    value={ordenManual._busqExistente || ""}
+                    onChange={e => setOrdenManual({ ...ordenManual, _busqExistente: e.target.value, _clienteExistenteDetectado: null })}
+                  />
+                  {ordenManual._busqExistente && ordenManual._busqExistente.length >= 2 && !ordenManual._clienteExistenteDetectado && (() => {
+                    const q = ordenManual._busqExistente.toLowerCase();
+                    const res = usuarios.filter(u => u.rol === "cliente" && (
+                      u.nombre?.toLowerCase().includes(q) || (u.cedula||"").includes(q)
+                    )).slice(0, 5);
+                    if (!res.length) return <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>No encontrado — será cliente nuevo</div>;
+                    return (
+                      <div style={{ border: "1px solid " + GC.border, borderRadius: 8, marginTop: 4, overflow: "hidden" }}>
+                        {res.map(c => {
+                          // Contar contratos existentes
+                          const numContratos = usuarios.filter(u => u.cedula === c.cedula && u.rol === "cliente").length;
+                          return (
+                            <button key={c.id} onClick={() => {
+                              setOrdenManual(prev => ({
+                                ...prev,
+                                _busqExistente: c.nombre,
+                                _clienteExistenteDetectado: c,
+                                _numContratos: numContratos,
+                                // Pre-llenar datos del cliente existente
+                                nuevaCedula: c.cedula || prev.nuevaCedula,
+                                nuevoNombre: c.nombre,
+                                nuevoTelefono: c.telefono || prev.nuevoTelefono,
+                                nuevaDireccion: c.direccion || prev.nuevaDireccion,
+                                nuevoCorreo: c.correo || prev.nuevoCorreo,
+                                nuevoTipo: c.tipo || "final",
+                              }));
+                            }}
+                              style={{ width: "100%", display: "block", padding: "10px 14px", border: "none", borderBottom: "1px solid #f1f5f9", background: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13 }}>
+                              <strong>{c.nombre}</strong>
+                              <span style={{ color: GC.ink3, marginLeft: 8 }}>· {c.cedula}</span>
+                              <span style={{ color: "#f59e0b", marginLeft: 8, fontSize: 11, fontWeight: 700 }}>· {numContratos} contrato(s)</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </Field>
+
+                {/* Aviso de cliente existente */}
+                {ordenManual._clienteExistenteDetectado && (
+                  <div style={{ background: "#fef3c7", border: "2px solid #f59e0b", borderRadius: 10, padding: "12px 16px", marginBottom: 14 }}>
+                    <div style={{ fontWeight: 700, color: "#d97706", fontSize: 14, marginBottom: 4 }}>
+                      ⚠️ Este cliente ya existe con {ordenManual._numContratos} contrato(s)
+                    </div>
+                    <div style={{ fontSize: 13, color: "#92400e", marginBottom: 10 }}>
+                      <strong>{ordenManual._clienteExistenteDetectado.nombre}</strong> — Cédula: {ordenManual._clienteExistenteDetectado.cedula}<br/>
+                      ¿Deseas agregar un contrato adicional a este cliente?
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={() => setOrdenManual(prev => ({ ...prev, _agregarContrato: true }))}
+                        style={{ background: "#f59e0b", color: "#fff", border: "none", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, fontFamily: "inherit" }}>
+                        ✅ Sí, agregar contrato #{(ordenManual._numContratos || 0) + 1}
+                      </button>
+                      <button onClick={() => setOrdenManual(prev => ({ ...prev, _clienteExistenteDetectado: null, _busqExistente: "", _agregarContrato: false }))}
+                        style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Tipo de cliente */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
                   <Field label="Tipo de cliente">
@@ -2390,6 +2502,69 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 </div>
                 <div style={{ fontSize: 11, color: GC.ink3, marginTop: 6 }}>* Campos obligatorios · El cliente quedará registrado en el sistema al crear la orden</div>
               </div>
+
+            ) : ordenManual.tipo === "Reconexión" ? (
+              /* RECONEXIÓN: buscar cliente existente y mostrar sus datos */
+              <div style={{ background: "#f0fdf411", border: "1px solid #16a34a33", borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700, marginBottom: 14, textTransform: "uppercase", letterSpacing: 0.8 }}>⚡ Datos de reconexión</div>
+                <Field label="Buscar cliente *">
+                  <ClienteBuscador
+                    clientes={clientes}
+                    value={ordenManual.clienteExistente}
+                    onChange={id => {
+                      const c = usuarios.find(u => u.id === id);
+                      setOrdenManual(prev => ({
+                        ...prev,
+                        clienteExistente: id,
+                        // Pre-cargar datos del cliente para revisión/edición
+                        _reconNombre: c?.nombre || "",
+                        _reconTelefono: c?.telefono || "",
+                        _reconDireccion: c?.direccion || "",
+                        _reconServicio: c?.servicio || "",
+                        _reconPlan: c?.plan || "",
+                        _reconEstado: c?.estado || "",
+                        _reconClaveWifi: c?.claveWifi || "",
+                        _reconIp: c?.ip || "",
+                      }));
+                    }}
+                    error={erroresOrdenManual.clienteExistente}
+                  />
+                  {erroresOrdenManual.clienteExistente && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Debes seleccionar un cliente</div>}
+                </Field>
+
+                {/* Mostrar y permitir editar datos del cliente seleccionado */}
+                {ordenManual.clienteExistente && (
+                  <div style={{ marginTop: 12, background: "#fff", border: "1px solid #bbf7d0", borderRadius: 10, padding: 14 }}>
+                    <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700, marginBottom: 10 }}>
+                      Datos actuales del cliente — verifica y edita si es necesario
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                      <Field label="Nombre">
+                        <Inp value={ordenManual._reconNombre || ""} onChange={e => setOrdenManual(p => ({ ...p, _reconNombre: e.target.value }))} />
+                      </Field>
+                      <Field label="Teléfono">
+                        <Inp value={ordenManual._reconTelefono || ""} onChange={e => setOrdenManual(p => ({ ...p, _reconTelefono: e.target.value }))} />
+                      </Field>
+                      <Field label="Dirección">
+                        <Inp value={ordenManual._reconDireccion || ""} onChange={e => setOrdenManual(p => ({ ...p, _reconDireccion: e.target.value }))} />
+                      </Field>
+                      <Field label="IP">
+                        <Inp value={ordenManual._reconIp || ""} onChange={e => setOrdenManual(p => ({ ...p, _reconIp: e.target.value }))} placeholder="10.x.x.x" />
+                      </Field>
+                      <Field label="Servicio">
+                        <Inp value={ordenManual._reconServicio || ""} onChange={e => setOrdenManual(p => ({ ...p, _reconServicio: e.target.value }))} />
+                      </Field>
+                      <Field label="Clave WiFi">
+                        <Inp value={ordenManual._reconClaveWifi || ""} onChange={e => setOrdenManual(p => ({ ...p, _reconClaveWifi: e.target.value }))} />
+                      </Field>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#16a34a", marginTop: 6 }}>
+                      Si editas algún dato aquí, se actualizará en el sistema al crear la orden
+                    </div>
+                  </div>
+                )}
+              </div>
+
             ) : (
               /* OTROS TIPOS: seleccionar cliente existente */
               <Field label="Cliente existente">
@@ -4904,6 +5079,123 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
 }
 
 // ── Sección 3: Historial y Auditoría ─────────────────────────
+function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario, setFacturas, hoyStr }) {
+  const [montoAbono, setMontoAbono] = useState("");
+  const [metodoPago, setMetodoPago] = useState("Efectivo");
+  const [procesando, setProcesando] = useState(false);
+  const [simulacion, setSimulacion] = useState([]);
+
+  // Simular distribución al cambiar el monto
+  useEffect(() => {
+    const monto = Number(montoAbono) || 0;
+    if (monto <= 0) { setSimulacion([]); return; }
+    let restante = monto;
+    const sim = [];
+    for (const f of facturasCliente) {
+      if (restante <= 0) break;
+      const pagar = Math.min(restante, f.saldoPendiente);
+      sim.push({ facturaId: f.id, concepto: f.concepto, mes: f.mes, anio: f.anio, saldoActual: f.saldoPendiente, pagar, nuevaSaldo: f.saldoPendiente - pagar });
+      restante -= pagar;
+    }
+    setSimulacion(sim);
+  }, [montoAbono, facturasCliente]);
+
+  const sobrante = Math.max(0, (Number(montoAbono) || 0) - deudaTotal);
+  const cubreTodo = (Number(montoAbono) || 0) >= deudaTotal;
+
+  const aplicarAbono = async () => {
+    const monto = Number(montoAbono);
+    if (!monto || monto <= 0) { alert("Ingresa un monto válido."); return; }
+    if (simulacion.length === 0) return;
+    setProcesando(true);
+    try {
+      for (const s of simulacion) {
+        if (s.pagar <= 0) continue;
+        const nuevoEstado = s.nuevaSaldo <= 0 ? "Pagado" : "Abono parcial";
+        const nuevaFecha  = s.nuevaSaldo <= 0 ? hoyStr : null;
+        // Registrar abono
+        await db.registrarAbono({ facturaId: s.facturaId, monto: s.pagar, metodoPago, observacion: "Abono masivo", fecha: hoyStr, registradoPor: usuario?.id || null });
+        // Actualizar factura
+        await db.actualizarFactura(s.facturaId, { saldo_pendiente: s.nuevaSaldo, estado: nuevoEstado, metodo_pago: metodoPago, fecha_pago: nuevaFecha });
+        // Actualizar estado local
+        setFacturas(prev => prev.map(f => f.id === s.facturaId
+          ? { ...f, saldoPendiente: s.nuevaSaldo, estado: nuevoEstado, metodoPago, fechaPago: nuevaFecha }
+          : f
+        ));
+      }
+      const facturasPagadas = simulacion.filter(s => s.nuevaSaldo <= 0).length;
+      const abonosParciales = simulacion.filter(s => s.nuevaSaldo > 0).length;
+      alert(`Abono aplicado correctamente.\n${facturasPagadas > 0 ? facturasPagadas + " factura(s) pagada(s) completamente." : ""}\n${abonosParciales > 0 ? abonosParciales + " factura(s) con abono parcial." : ""}${sobrante > 0 ? "\nSobrante de " + formatCOP(sobrante) + " no aplicado." : ""}`);
+      setMontoAbono("");
+      setSimulacion([]);
+    } catch(e) { alert("Error al aplicar abono: " + e.message); }
+    setProcesando(false);
+  };
+
+  return (
+    <div style={{ background: "#fff", border: "2px solid #22c55e", borderRadius: 14, padding: 20, marginBottom: 16 }}>
+      <div style={{ fontWeight: 800, fontSize: 15, color: "#16a34a", marginBottom: 4 }}>💰 Abono masivo — {clienteBuscado.nombre}</div>
+      <div style={{ fontSize: 12, color: GC.ink3, marginBottom: 16 }}>El abono se distribuye automáticamente desde la factura más antigua a la más reciente</div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px", marginBottom: 12 }}>
+        <Field label="Monto a abonar ($)">
+          <Inp type="number" value={montoAbono} onChange={e => setMontoAbono(e.target.value)} placeholder={`Deuda total: ${formatCOP(deudaTotal)}`} />
+          <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+            <button onClick={() => setMontoAbono(String(deudaTotal))}
+              style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
+              Todo ({formatCOP(deudaTotal)})
+            </button>
+            {[50000, 100000, 150000, 200000].filter(v => v < deudaTotal).map(v => (
+              <button key={v} onClick={() => setMontoAbono(String(v))}
+                style={{ background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
+                {formatCOP(v)}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Método de pago">
+          <Sel value={metodoPago} onChange={e => setMetodoPago(e.target.value)}>
+            <option>Efectivo</option><option>Transferencia</option><option>Nequi</option><option>Daviplata</option><option>Pago en oficina</option>
+          </Sel>
+        </Field>
+      </div>
+
+      {/* Simulación de distribución */}
+      {simulacion.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: GC.ink2, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5 }}>Distribución del abono:</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {simulacion.map((s, i) => (
+              <div key={s.facturaId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: s.nuevaSaldo <= 0 ? "#f0fdf4" : "#fffbeb", border: "1px solid " + (s.nuevaSaldo <= 0 ? "#bbf7d0" : "#fde047"), borderRadius: 8, padding: "8px 12px" }}>
+                <div style={{ fontSize: 13 }}>
+                  <strong>{MESES[(s.mes||1)-1]} {s.anio}</strong>
+                  <span style={{ color: GC.ink3, marginLeft: 8, fontSize: 12 }}>Saldo: {formatCOP(s.saldoActual)}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ color: "#16a34a", fontWeight: 700, fontSize: 13 }}>- {formatCOP(s.pagar)}</span>
+                  <span style={{ fontSize: 12, color: s.nuevaSaldo <= 0 ? "#16a34a" : "#d97706", fontWeight: 700 }}>
+                    {s.nuevaSaldo <= 0 ? "PAGADO" : "Saldo: " + formatCOP(s.nuevaSaldo)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {sobrante > 0 && (
+            <div style={{ background: "#fef3c7", border: "1px solid #fde047", borderRadius: 8, padding: "8px 12px", marginTop: 6, fontSize: 12, color: "#92400e" }}>
+              ⚠️ Sobrante de <strong>{formatCOP(sobrante)}</strong> — cubre toda la deuda y sobra dinero
+            </div>
+          )}
+        </div>
+      )}
+
+      <Btn onClick={aplicarAbono} disabled={procesando || simulacion.length === 0}
+        style={{ width: "100%", background: "#16a34a", fontSize: 14 }}>
+        {procesando ? "⏳ Aplicando abono..." : `✅ Aplicar abono de ${montoAbono ? formatCOP(Number(montoAbono)) : "$0"} en ${simulacion.length} factura(s)`}
+      </Btn>
+    </div>
+  );
+}
+
 function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, nombreEmpresa, setConfirmDelete, setConfirmAnular }) {
   const [busq, setBusq] = useState("");
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
@@ -5072,6 +5364,34 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
             <span>Total facturas: <strong>{resumenCliente.total}</strong></span>
           </div>
         </div>
+      )}
+
+      {/* ── PANEL ABONO MASIVO ── */}
+      {clienteBuscado && resumenCliente && resumenCliente.deudaTotal > 0 && (
+        <PanelAbonoMasivo
+          clienteBuscado={clienteBuscado}
+          facturasCliente={facturasAudit.filter(f => f.clienteId === clienteBuscado.id && f.saldoPendiente > 0 && f.estado !== "Anulada").sort((a,b) => (a.anio*12+a.mes) - (b.anio*12+b.mes))}
+          deudaTotal={resumenCliente.deudaTotal}
+          usuario={usuario}
+          setFacturas={setFacturas}
+          hoyStr={new Date().toISOString().split("T")[0]}
+        />
+      )}
+
+      {/* PANEL ABONO MASIVO — distribuye automáticamente desde la más antigua */}
+      {clienteBuscado && resumenCliente && resumenCliente.deudaTotal > 0 && (
+        <PanelAbonoMasivo
+          cliente={clienteBuscado}
+          facturasPendientes={facturasAudit.filter(f => f.saldoPendiente > 0 && f.estado !== "Anulada").sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes))}
+          deudaTotal={resumenCliente.deudaTotal}
+          usuario={usuario}
+          onActualizar={(facturasActualizadas) => {
+            setFacturas(prev => prev.map(f => {
+              const act = facturasActualizadas.find(x => x.id === f.id);
+              return act ? { ...f, ...act } : f;
+            }));
+          }}
+        />
       )}
 
       {/* Modal editar factura — solo admin y superusuario */}
