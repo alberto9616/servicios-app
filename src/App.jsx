@@ -5079,56 +5079,49 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
 }
 
 // ── Sección 3: Historial y Auditoría ─────────────────────────
-function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario, setFacturas, hoyStr }) {
+function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario, setFacturas, hoyStr, dbObj }) {
   const [montoAbono, setMontoAbono] = useState("");
   const [metodoPago, setMetodoPago] = useState("Efectivo");
   const [procesando, setProcesando] = useState(false);
   const [simulacion, setSimulacion] = useState([]);
+  const mesesNombres = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
-  // Simular distribución al cambiar el monto
   useEffect(() => {
     const monto = Number(montoAbono) || 0;
     if (monto <= 0) { setSimulacion([]); return; }
     let restante = monto;
     const sim = [];
-    for (const f of facturasCliente) {
+    for (const f of (facturasCliente || [])) {
       if (restante <= 0) break;
       const pagar = Math.min(restante, f.saldoPendiente);
       sim.push({ facturaId: f.id, concepto: f.concepto, mes: f.mes, anio: f.anio, saldoActual: f.saldoPendiente, pagar, nuevaSaldo: f.saldoPendiente - pagar });
       restante -= pagar;
     }
     setSimulacion(sim);
-  }, [montoAbono, facturasCliente]);
+  }, [montoAbono]);
 
   const sobrante = Math.max(0, (Number(montoAbono) || 0) - deudaTotal);
-  const cubreTodo = (Number(montoAbono) || 0) >= deudaTotal;
 
   const aplicarAbono = async () => {
     const monto = Number(montoAbono);
     if (!monto || monto <= 0) { alert("Ingresa un monto válido."); return; }
-    if (simulacion.length === 0) return;
+    if (!simulacion.length) return;
     setProcesando(true);
     try {
       for (const s of simulacion) {
         if (s.pagar <= 0) continue;
         const nuevoEstado = s.nuevaSaldo <= 0 ? "Pagado" : "Abono parcial";
         const nuevaFecha  = s.nuevaSaldo <= 0 ? hoyStr : null;
-        // Registrar abono
-        await db.registrarAbono({ facturaId: s.facturaId, monto: s.pagar, metodoPago, observacion: "Abono masivo", fecha: hoyStr, registradoPor: usuario?.id || null });
-        // Actualizar factura
-        await db.actualizarFactura(s.facturaId, { saldo_pendiente: s.nuevaSaldo, estado: nuevoEstado, metodo_pago: metodoPago, fecha_pago: nuevaFecha });
-        // Actualizar estado local
-        setFacturas(prev => prev.map(f => f.id === s.facturaId
-          ? { ...f, saldoPendiente: s.nuevaSaldo, estado: nuevoEstado, metodoPago, fechaPago: nuevaFecha }
-          : f
-        ));
+        await dbObj.registrarAbono({ facturaId: s.facturaId, monto: s.pagar, metodoPago, observacion: "Abono masivo", fecha: hoyStr, registradoPor: usuario?.id || null });
+        await dbObj.actualizarFactura(s.facturaId, { saldo_pendiente: s.nuevaSaldo, estado: nuevoEstado, metodo_pago: metodoPago, fecha_pago: nuevaFecha });
+        setFacturas(prev => prev.map(f => f.id === s.facturaId ? { ...f, saldoPendiente: s.nuevaSaldo, estado: nuevoEstado, metodoPago, fechaPago: nuevaFecha } : f));
       }
-      const facturasPagadas = simulacion.filter(s => s.nuevaSaldo <= 0).length;
-      const abonosParciales = simulacion.filter(s => s.nuevaSaldo > 0).length;
-      alert(`Abono aplicado correctamente.\n${facturasPagadas > 0 ? facturasPagadas + " factura(s) pagada(s) completamente." : ""}\n${abonosParciales > 0 ? abonosParciales + " factura(s) con abono parcial." : ""}${sobrante > 0 ? "\nSobrante de " + formatCOP(sobrante) + " no aplicado." : ""}`);
+      const pagadas = simulacion.filter(s => s.nuevaSaldo <= 0).length;
+      const parciales = simulacion.filter(s => s.nuevaSaldo > 0).length;
+      alert("Abono aplicado.\n" + (pagadas ? pagadas + " factura(s) pagada(s)." : "") + (parciales ? "\n" + parciales + " factura(s) con abono parcial." : "") + (sobrante > 0 ? "\nSobrante: " + formatCOP(sobrante) : ""));
       setMontoAbono("");
       setSimulacion([]);
-    } catch(e) { alert("Error al aplicar abono: " + e.message); }
+    } catch(e) { alert("Error: " + e.message); }
     setProcesando(false);
   };
 
@@ -5168,7 +5161,7 @@ function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario
             {simulacion.map((s, i) => (
               <div key={s.facturaId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: s.nuevaSaldo <= 0 ? "#f0fdf4" : "#fffbeb", border: "1px solid " + (s.nuevaSaldo <= 0 ? "#bbf7d0" : "#fde047"), borderRadius: 8, padding: "8px 12px" }}>
                 <div style={{ fontSize: 13 }}>
-                  <strong>{MESES[(s.mes||1)-1]} {s.anio}</strong>
+                  <strong>{mesesNombres[(s.mes||1)-1]} {s.anio}</strong>
                   <span style={{ color: GC.ink3, marginLeft: 8, fontSize: 12 }}>Saldo: {formatCOP(s.saldoActual)}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -5375,22 +5368,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
           usuario={usuario}
           setFacturas={setFacturas}
           hoyStr={new Date().toISOString().split("T")[0]}
-        />
-      )}
-
-      {/* PANEL ABONO MASIVO — distribuye automáticamente desde la más antigua */}
-      {clienteBuscado && resumenCliente && resumenCliente.deudaTotal > 0 && (
-        <PanelAbonoMasivo
-          cliente={clienteBuscado}
-          facturasPendientes={facturasAudit.filter(f => f.saldoPendiente > 0 && f.estado !== "Anulada").sort((a,b) => (a.anio*12+a.mes)-(b.anio*12+b.mes))}
-          deudaTotal={resumenCliente.deudaTotal}
-          usuario={usuario}
-          onActualizar={(facturasActualizadas) => {
-            setFacturas(prev => prev.map(f => {
-              const act = facturasActualizadas.find(x => x.id === f.id);
-              return act ? { ...f, ...act } : f;
-            }));
-          }}
+          dbObj={db}
         />
       )}
 
