@@ -248,9 +248,19 @@ const db = {
 
   // FACTURACIÓN
   async getFacturas() {
-    const { data, error } = await sb.from("facturas").select("*").order("fecha_emision", { ascending: false });
-    if (error) throw error;
-    return data.map(mapFactura);
+    const todas = [];
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data, error } = await sb.from("facturas").select("*")
+        .order("fecha_emision", { ascending: false })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      todas.push(...(data || []));
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+    return todas.map(mapFactura);
   },
   async getFacturasByCliente(clienteId) {
     const { data, error } = await sb.from("facturas").select("*").eq("cliente_id", clienteId).order("fecha_emision", { ascending: false });
@@ -4223,11 +4233,16 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
     .filter(f => f.estado !== "Pagado")
     .reduce((s, f) => s + f.saldoPendiente, 0);
 
-  // 🔴 MOROSOS: clientes con facturas de MESES ANTERIORES sin pagar (no anuladas)
+  // 🔴 MOROSOS: clientes con facturas de MESES ANTERIORES sin pagar
+  // Busca en TODAS las facturas cargadas, no solo las del mes actual
   const morosos = [...new Set(
     facturas
-      .filter(f => f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0)
-      .filter(f => f.anio < anioActual || (f.anio === anioActual && f.mes < mesActual))
+      .filter(f =>
+        f.estado !== "Anulada" &&
+        f.estado !== "Pagado" &&
+        f.saldoPendiente > 0 &&
+        (f.anio < anioActual || (f.anio === anioActual && f.mes < mesActual))
+      )
       .map(f => f.clienteId)
   )].length;
 
