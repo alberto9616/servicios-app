@@ -4131,7 +4131,6 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           COLOR_ESTADO={COLOR_ESTADO} AccionesFact={AccionesFact}
           nombreEmpresa={nombreEmpresa}
           setConfirmDelete={setConfirmDelete} setConfirmAnular={setConfirmAnular}
-          movimientosCaja={movimientosCaja}
         />
       )}
 
@@ -5215,7 +5214,7 @@ function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario
   );
 }
 
-function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, nombreEmpresa, setConfirmDelete, setConfirmAnular, movimientosCaja = [] }) {
+function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, nombreEmpresa, setConfirmDelete, setConfirmAnular }) {
   const [busq, setBusq] = useState("");
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
   const [filtroMes, setFiltroMes] = useState(0);
@@ -5227,6 +5226,12 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
   const [guardandoEdit, setGuardandoEdit] = useState(false);
   const [abonosDia, setAbonosDia] = useState([]);
   const [cargandoDia, setCargandoDia] = useState(false);
+  const [movimientosCaja, setMovimientosCaja] = useState([]);
+
+  // Cargar movimientos de caja una vez al montar
+  useEffect(() => {
+    db.getMovimientosCaja().then(setMovimientosCaja).catch(() => {});
+  }, []);
 
   // Cargar abonos del día cuando se selecciona un filtroDia
   useEffect(() => {
