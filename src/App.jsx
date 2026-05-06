@@ -4131,6 +4131,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           COLOR_ESTADO={COLOR_ESTADO} AccionesFact={AccionesFact}
           nombreEmpresa={nombreEmpresa}
           setConfirmDelete={setConfirmDelete} setConfirmAnular={setConfirmAnular}
+          movimientosCaja={movimientosCaja}
         />
       )}
 
@@ -5214,7 +5215,7 @@ function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario
   );
 }
 
-function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, nombreEmpresa, setConfirmDelete, setConfirmAnular }) {
+function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, nombreEmpresa, setConfirmDelete, setConfirmAnular, movimientosCaja = [] }) {
   const [busq, setBusq] = useState("");
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
   const [filtroMes, setFiltroMes] = useState(0);
@@ -5224,6 +5225,32 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
   const [modalEditFact, setModalEditFact] = useState(null); // factura a editar
   const [editFactData, setEditFactData] = useState({});
   const [guardandoEdit, setGuardandoEdit] = useState(false);
+  const [abonosDia, setAbonosDia] = useState([]);
+  const [cargandoDia, setCargandoDia] = useState(false);
+
+  // Cargar abonos del día cuando se selecciona un filtroDia
+  useEffect(() => {
+    if (!filtroDia) { setAbonosDia([]); return; }
+    setCargandoDia(true);
+    db.getAbonosByFecha(filtroDia)
+      .then(data => setAbonosDia(data || []))
+      .catch(() => setAbonosDia([]))
+      .finally(() => setCargandoDia(false));
+  }, [filtroDia]);
+
+  // Calcular cobrado ese día y total en caja ese día
+  const cobradoDia = filtroDia
+    ? abonosDia
+        .filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; })
+        .reduce((s, a) => s + a.monto, 0)
+    : 0;
+  const ingresosDia = filtroDia
+    ? movimientosCaja.filter(m => m.tipo === "Ingreso" && m.fecha === filtroDia).reduce((s, m) => s + m.monto, 0)
+    : 0;
+  const egresosDia = filtroDia
+    ? movimientosCaja.filter(m => m.tipo === "Egreso" && m.fecha === filtroDia).reduce((s, m) => s + m.monto, 0)
+    : 0;
+  const totalCajaDia = cobradoDia + ingresosDia - egresosDia;
 
   // Si hay búsqueda por nombre/cédula → ignorar filtros de fecha y buscar en TODAS
   const busqActiva = busq.trim().length >= 2;
@@ -5441,6 +5468,67 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
               <button onClick={() => setModalEditFact(null)} style={{ padding: "9px 16px", background: GC.bg3, border: "none", borderRadius: 9, cursor: "pointer", fontSize: 13, fontFamily: "inherit" }}>Cancelar</button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── RESUMEN DEL DÍA — aparece solo cuando se filtra por día exacto ── */}
+      {filtroDia && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+            📅 Resumen del día {new Date(filtroDia + "T12:00:00").toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+          </div>
+          {cargandoDia ? (
+            <div style={{ fontSize: 13, color: GC.ink3, padding: "10px 0" }}>Cargando datos del día...</div>
+          ) : (
+            <>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                {/* Cobrado ese día */}
+                <div style={{ background: "#faf5ff", border: "2px solid #a78bfa", borderRadius: 12, padding: "12px 18px", minWidth: 160 }}>
+                  <div style={{ fontSize: 10, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>📅 Cobrado ese día</div>
+                  <div style={{ fontWeight: 900, color: "#7c3aed", fontSize: 20, marginTop: 2 }}>{formatCOP(cobradoDia)}</div>
+                  <div style={{ fontSize: 11, color: GC.ink3, marginTop: 2 }}>
+                    {abonosDia.filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; }).length} cobros registrados
+                  </div>
+                </div>
+                {/* Total en caja ese día */}
+                <div style={{ background: GC.brandLight, border: "2px solid #22c55e", borderRadius: 12, padding: "12px 18px", minWidth: 160 }}>
+                  <div style={{ fontSize: 10, color: GC.brand, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>🏦 Total en caja ese día</div>
+                  <div style={{ fontWeight: 900, color: GC.brand, fontSize: 20, marginTop: 2 }}>{formatCOP(totalCajaDia)}</div>
+                  <div style={{ fontSize: 11, color: GC.ink3, marginTop: 2 }}>
+                    {ingresosDia > 0 && <span>+{formatCOP(ingresosDia)} ingresos · </span>}
+                    {egresosDia > 0 && <span>−{formatCOP(egresosDia)} egresos</span>}
+                    {ingresosDia === 0 && egresosDia === 0 && <span>Sin movimientos de caja</span>}
+                  </div>
+                </div>
+              </div>
+              {/* Facturas cobradas ese día */}
+              {abonosDia.length > 0 && (
+                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden", marginBottom: 4 }}>
+                  <div style={{ background: GC.bg2, padding: "8px 14px", fontSize: 11, fontWeight: 700, color: GC.ink2, textTransform: "uppercase", letterSpacing: 0.7 }}>
+                    Facturas con cobros ese día ({abonosDia.length})
+                  </div>
+                  {abonosDia.filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; }).map((a, i) => {
+                    const f = facturas.find(x => x.id === a.facturaId);
+                    return (
+                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 14px", borderBottom: "1px solid #f1f5f9", flexWrap: "wrap", gap: 6 }}>
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: 13 }}>{f?.clienteNombre || "—"}</div>
+                          <div style={{ fontSize: 11, color: GC.ink3 }}>{f?.concepto || ""} {f?.numeroRecibo ? `· #${f.numeroRecibo}` : ""}</div>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ fontWeight: 800, color: GC.brand, fontSize: 14 }}>{formatCOP(a.monto)}</div>
+                          <div style={{ fontSize: 11, color: GC.ink3 }}>{a.metodoPago || "—"}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {abonosDia.length === 0 && (
+                <div style={{ fontSize: 13, color: GC.ink3, padding: "8px 0" }}>Sin cobros registrados ese día.</div>
+              )}
+            </>
+          )}
         </div>
       )}
 
