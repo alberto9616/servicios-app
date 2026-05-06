@@ -3979,6 +3979,10 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 460, maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
             <button onClick={() => { setModalAbono(null); setErrAbono(""); }}
               style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+            <button onClick={async () => {
+              const abs = await db.getAbonos(modalAbono.id).catch(() => []);
+              setModalRecibo({ factura: modalAbono, abonos: abs });
+            }} style={{ position: "absolute", top: 14, right: 54, background: GC.brandLight, color: GC.brand, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 16 }} title="Imprimir tirilla">🖨️</button>
             <h3 style={{ margin: "0 0 4px", color: GC.ink, fontSize: 16 }}>💵 Pago / Abono</h3>
             <p style={{ margin: "0 0 16px", color: GC.ink3, fontSize: 13 }}>{modalAbono.clienteNombre} · {modalAbono.concepto}</p>
             <div style={{ background: GC.bg2, border: "1px solid " + GC.border, borderRadius: 10, padding: "12px 14px", marginBottom: 16 }}>
@@ -4069,7 +4073,13 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
             {modalAbono.saldoPendiente <= 0 && (
               <div style={{ background: GC.brandLight, border: "1px solid #bbf7d0", borderRadius: 10, padding: 16, textAlign: "center" }}>
                 <div style={{ fontSize: 28, marginBottom: 6 }}>✅</div>
-                <div style={{ fontWeight: 700, color: GC.brand }}>Factura cancelada en su totalidad</div>
+                <div style={{ fontWeight: 700, color: GC.brand, marginBottom: 12 }}>Factura cancelada en su totalidad</div>
+                <button onClick={async () => {
+                  const abs = await db.getAbonos(modalAbono.id).catch(() => []);
+                  setModalRecibo({ factura: modalAbono, abonos: abs });
+                }} style={{ background: GC.brand, color: "#fff", border: "none", borderRadius: 8, padding: "10px 24px", cursor: "pointer", fontSize: 14, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  🖨️ Imprimir tirilla
+                </button>
               </div>
             )}
           </div>
