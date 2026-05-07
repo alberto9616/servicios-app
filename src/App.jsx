@@ -4984,13 +4984,14 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
       const mp = {"Efectivo":"💵","Transferencia":"🏦","Nequi":"📱","Daviplata":"📲"}[f.metodoPago]||"💳";
       return `<tr><td>#${f.numeroRecibo||"—"}</td><td>${f.clienteNombre}</td><td>${f.fechaPago||f.fechaEmision||""}</td><td><span style="background:${colorBg};color:${colorTxt};padding:1px 5px;border-radius:3px;font-weight:bold">${f.estado}</span></td><td>${f.metodoPago?mp+" "+f.metodoPago:"—"}</td><td style="text-align:right">${cop(f.monto)}</td><td style="text-align:right;color:${f.saldoPendiente>0?"#dc2626":"#16a34a"}">${cop(f.monto-f.saldoPendiente)}</td></tr>`;
     }).join("");
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cierre de Caja</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;font-size:10pt;color:#000}h1{font-size:16pt;margin:0 0 4px}h2{font-size:12pt;margin:0 0 12px;color:#555}.header{text-align:center;margin-bottom:16px;border-bottom:2px solid #000;padding-bottom:10px}.resumen{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}.card{border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;flex:1;min-width:130px}.card-label{font-size:8pt;color:#64748b;text-transform:uppercase}.card-val{font-size:14pt;font-weight:900;margin-top:2px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#f1f5f9;padding:6px 8px;text-align:left;border-bottom:2px solid #e2e8f0}td{padding:5px 8px;border-bottom:1px solid #f1f5f9}.total-row{font-weight:900;font-size:11pt;border-top:2px solid #000}.footer{margin-top:20px;border-top:1px dashed #aaa;padding-top:12px;font-size:9pt;color:#555}.btn-print{display:block;margin:16px auto;padding:10px 28px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer}@media print{.btn-print{display:none}}</style></head><body><div class="header"><h1>${nombreEmpresa}</h1><h2>CIERRE DE CAJA</h2><div>Período: <strong>${fechaInicio}</strong>${fechaInicio!==fechaFin?" al <strong>"+fechaFin+"</strong>":""}</div><div>Secretario: <strong>${nombreSec}</strong></div><div>Generado: ${new Date().toLocaleString("es-CO")}</div></div><div class="resumen"><div class="card"><div class="card-label">📅 Cobrado período</div><div class="card-val" style="color:#7c3aed">${cop(cobradoPeriodo)}</div></div><div class="card"><div class="card-label">🏦 Total en caja</div><div class="card-val" style="color:#16a34a">${cop(totalCajaPeriodo)}</div></div><div class="card"><div class="card-label">⏳ Por cobrar</div><div class="card-val" style="color:#ef4444">${cop(totalPendiente)}</div></div></div><div class="resumen"><div class="card"><div class="card-label">🧾 Facturas</div><div class="card-val">${facturasCierre.length}</div></div><div class="card"><div class="card-label">✅ Pagadas</div><div class="card-val" style="color:#16a34a">${cantPagadas}</div></div><div class="card"><div class="card-label">🔵 Parciales</div><div class="card-val" style="color:#0ea5e9">${cantParcial}</div></div><div class="card"><div class="card-label">⏳ Pendientes</div><div class="card-val" style="color:#f59e0b">${cantPendiente}</div></div></div><table><thead><tr><th>#Recibo</th><th>Cliente</th><th>Fecha</th><th>Estado</th><th>Método</th><th style="text-align:right">Total</th><th style="text-align:right">Cobrado</th></tr></thead><tbody>${filas}</tbody><tr class="total-row"><td colspan="5">TOTALES</td><td style="text-align:right">${cop(totalFacturado)}</td><td style="text-align:right;color:#16a34a">${cop(totalCobrado)}</td></tr></table><div class="footer"><div>Firma del responsable: _______________________________</div><div style="margin-top:6px">Documento interno. No tiene validez fiscal.</div></div><button class="btn-print" onclick="window.print()">🖨️ Imprimir cierre</button></body></html>`;
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cierre de Caja</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;font-size:10pt;color:#000}h1{font-size:16pt;margin:0 0 4px}h2{font-size:12pt;margin:0 0 12px;color:#555}.header{text-align:center;margin-bottom:16px;border-bottom:2px solid #000;padding-bottom:10px}.resumen{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}.card{border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;flex:1;min-width:130px}.card-label{font-size:8pt;color:#64748b;text-transform:uppercase}.card-val{font-size:14pt;font-weight:900;margin-top:2px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#f1f5f9;padding:6px 8px;text-align:left;border-bottom:2px solid #e2e8f0}td{padding:5px 8px;border-bottom:1px solid #f1f5f9}.total-row{font-weight:900;font-size:11pt;border-top:2px solid #000}.footer{margin-top:20px;border-top:1px dashed #aaa;padding-top:12px;font-size:9pt;color:#555}.btn-print{display:block;margin:16px auto;padding:10px 28px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer}@media print{.btn-print{display:none}}</style></head><body><div class="header"><h1>${nombreEmpresa}</h1><h2>CIERRE DE CAJA</h2><div>Período: <strong>${fechaInicio}</strong>${fechaInicio!==fechaFin?" al <strong>"+fechaFin+"</strong>":""}</div><div>Secretario: <strong>${nombreSec}</strong></div><div>Generado: ${new Date().toLocaleString("es-CO")}</div></div><div class="resumen"><div class="card"><div class="card-label">📅 Cobrado</div><div class="card-val" style="color:#7c3aed">${cop(cobradoPeriodo)}</div></div><div class="card"><div class="card-label">🏦 Total en caja</div><div class="card-val" style="color:#16a34a">${cop(totalCajaPeriodo)}</div></div><div class="card"><div class="card-label">💰 Total facturado</div><div class="card-val" style="color:#0ea5e9">${cop(totalFacturado)}</div></div><div class="card"><div class="card-label">✅ Total cobrado</div><div class="card-val" style="color:#16a34a">${cop(totalCobrado)}</div></div><div class="card"><div class="card-label">⏳ Por cobrar</div><div class="card-val" style="color:#ef4444">${cop(totalPendiente)}</div></div></div><div class="resumen"><div class="card"><div class="card-label">🧾 Facturas</div><div class="card-val">${facturasCierre.length}</div></div><div class="card"><div class="card-label">✅ Pagadas</div><div class="card-val" style="color:#16a34a">${cantPagadas}</div></div><div class="card"><div class="card-label">🔵 Parciales</div><div class="card-val" style="color:#0ea5e9">${cantParcial}</div></div><div class="card"><div class="card-label">⏳ Pendientes</div><div class="card-val" style="color:#f59e0b">${cantPendiente}</div></div></div><table><thead><tr><th>#Recibo</th><th>Cliente</th><th>Fecha</th><th>Estado</th><th>Método</th><th style="text-align:right">Total</th><th style="text-align:right">Cobrado</th></tr></thead><tbody>${filas}</tbody><tr class="total-row"><td colspan="5">TOTALES</td><td style="text-align:right">${cop(totalFacturado)}</td><td style="text-align:right;color:#16a34a">${cop(totalCobrado)}</td></tr></table><div class="footer"><div>Firma del responsable: _______________________________</div><div style="margin-top:6px">Documento interno. No tiene validez fiscal.</div></div><button class="btn-print" onclick="window.print()">🖨️ Imprimir cierre</button></body></html>`;
     const w = window.open("", "_blank", "width=900,height=700");
     w.document.write(html); w.document.close();
   };
 
   return (
     <div>
+      {/* ── Filtros ── */}
       <div style={{ background: GC.bg3, border: "1px solid " + GC.border, borderRadius: 12, padding: "14px 18px", marginBottom: 18 }}>
         <div style={{ fontWeight: 700, color: GC.ink, marginBottom: 12, fontSize: 14 }}>⚙️ Configurar cierre</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: "0 14px" }}>
@@ -5006,36 +5007,51 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
           )}
         </div>
       </div>
+
+      {/* ── Título del período ── */}
       <div style={{ fontSize: 11, fontWeight: 700, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>
         {esUnDia
-          ? `📅 Resumen del día ${new Date(fechaInicio + "T12:00:00").toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`
+          ? `📅 ${new Date(fechaInicio + "T12:00:00").toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}`
           : `📋 Período: ${fechaInicio} → ${fechaFin}`}
       </div>
+
+      {/* ── 5 cuadros unificados ── */}
       {cargandoCierre ? (
-        <div style={{ fontSize: 13, color: GC.ink3, padding: "10px 0", marginBottom: 14 }}>Cargando datos del período...</div>
+        <div style={{ fontSize: 13, color: GC.ink3, padding: "10px 0", marginBottom: 14 }}>Cargando datos...</div>
       ) : (
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-          <div style={{ background: "#faf5ff", border: "2px solid #a78bfa", borderRadius: 12, padding: "14px 20px", minWidth: 170, flex: 1 }}>
-            <div style={{ fontSize: 10, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>{esUnDia ? "📅 Cobrado ese día" : "📅 Cobrado en el período"}</div>
-            <div style={{ fontWeight: 900, color: "#7c3aed", fontSize: 22, marginTop: 4 }}>{formatCOP(cobradoPeriodo)}</div>
-            <div style={{ fontSize: 11, color: GC.ink3, marginTop: 2 }}>{abonosCierre.filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; }).length} cobros · {cantPagadas} facturas pagadas</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+          <div style={{ background: "#faf5ff", border: "2px solid #a78bfa", borderRadius: 10, padding: "10px 14px", minWidth: 140, flex: 1 }}>
+            <div style={{ fontSize: 10, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 }}>{esUnDia ? "📅 Cobrado ese día" : "📅 Cobrado período"}</div>
+            <div style={{ fontWeight: 900, color: "#7c3aed", fontSize: 18, marginTop: 2 }}>{formatCOP(cobradoPeriodo)}</div>
+            <div style={{ fontSize: 10, color: GC.ink3, marginTop: 1 }}>{abonosCierre.filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; }).length} cobros · {cantPagadas} pagadas</div>
           </div>
-          <div style={{ background: GC.brandLight, border: "2px solid #22c55e", borderRadius: 12, padding: "14px 20px", minWidth: 170, flex: 1 }}>
-            <div style={{ fontSize: 10, color: GC.brand, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>{esUnDia ? "🏦 Total en caja ese día" : "🏦 Total en caja del período"}</div>
-            <div style={{ fontWeight: 900, color: GC.brand, fontSize: 22, marginTop: 4 }}>{formatCOP(totalCajaPeriodo)}</div>
-            <div style={{ fontSize: 11, color: GC.ink3, marginTop: 2 }}>
-              {ingresosPeriodo > 0 && <span>+{formatCOP(ingresosPeriodo)} ingresos · </span>}
-              {egresosPeriodo > 0 && <span>−{formatCOP(egresosPeriodo)} egresos</span>}
-              {ingresosPeriodo === 0 && egresosPeriodo === 0 && <span>Sin movimientos de caja</span>}
+          <div style={{ background: GC.brandLight, border: "2px solid #22c55e", borderRadius: 10, padding: "10px 14px", minWidth: 140, flex: 1 }}>
+            <div style={{ fontSize: 10, color: GC.brand, textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 }}>{esUnDia ? "🏦 Total en caja ese día" : "🏦 Total en caja"}</div>
+            <div style={{ fontWeight: 900, color: GC.brand, fontSize: 18, marginTop: 2 }}>{formatCOP(totalCajaPeriodo)}</div>
+            <div style={{ fontSize: 10, color: GC.ink3, marginTop: 1 }}>
+              {ingresosPeriodo > 0 && `+${formatCOP(ingresosPeriodo)} ing. · `}
+              {egresosPeriodo > 0 ? `−${formatCOP(egresosPeriodo)} egr.` : "sin egresos"}
             </div>
           </div>
-          <div style={{ background: "#fff5f5", border: "2px solid #fca5a5", borderRadius: 12, padding: "14px 20px", minWidth: 150, flex: 1 }}>
-            <div style={{ fontSize: 10, color: "#dc2626", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>⏳ Pendiente por cobrar</div>
-            <div style={{ fontWeight: 900, color: "#dc2626", fontSize: 22, marginTop: 4 }}>{formatCOP(totalPendiente)}</div>
-            <div style={{ fontSize: 11, color: GC.ink3, marginTop: 2 }}>{cantPendiente} pendientes · {cantParcial} parciales</div>
+          <div style={{ background: "#fff", border: "1px solid #0ea5e933", borderRadius: 10, padding: "10px 14px", minWidth: 120, flex: 1 }}>
+            <div style={{ fontSize: 10, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.7 }}>💰 Total facturado</div>
+            <div style={{ fontWeight: 800, color: "#0ea5e9", fontSize: 16, marginTop: 2 }}>{formatCOP(totalFacturado)}</div>
+            <div style={{ fontSize: 10, color: GC.ink3, marginTop: 1 }}>{facturasCierre.length} facturas</div>
+          </div>
+          <div style={{ background: "#fff", border: "1px solid #22c55e33", borderRadius: 10, padding: "10px 14px", minWidth: 120, flex: 1 }}>
+            <div style={{ fontSize: 10, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.7 }}>✅ Total cobrado</div>
+            <div style={{ fontWeight: 800, color: "#22c55e", fontSize: 16, marginTop: 2 }}>{formatCOP(totalCobrado)}</div>
+            <div style={{ fontSize: 10, color: GC.ink3, marginTop: 1 }}>{cantPagadas} pagadas · {cantParcial} parciales</div>
+          </div>
+          <div style={{ background: "#fff", border: "1px solid #ef444433", borderRadius: 10, padding: "10px 14px", minWidth: 120, flex: 1 }}>
+            <div style={{ fontSize: 10, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.7 }}>⏳ Saldo pendiente</div>
+            <div style={{ fontWeight: 800, color: "#ef4444", fontSize: 16, marginTop: 2 }}>{formatCOP(totalPendiente)}</div>
+            <div style={{ fontSize: 10, color: GC.ink3, marginTop: 1 }}>{cantPendiente} facturas pendientes</div>
           </div>
         </div>
       )}
+
+      {/* ── Tabla estilo historial ── */}
       {facturasCierre.length === 0 ? (
         <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>💼</div>
@@ -5044,9 +5060,7 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
       ) : (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-            <span style={{ fontWeight: 700, color: GC.ink, fontSize: 13 }}>
-              {facturasCierre.length} facturas · facturado {formatCOP(totalFacturado)} · cobrado <span style={{ color: GC.brand }}>{formatCOP(totalCobrado)}</span>
-            </span>
+            <span style={{ fontWeight: 700, color: GC.ink, fontSize: 13 }}>{facturasCierre.length} facturas en el período</span>
             <Btn onClick={imprimir} style={{ fontSize: 13 }}>🖨️ Imprimir cierre</Btn>
           </div>
           <div style={{ overflowX: "auto" }}>
@@ -5219,9 +5233,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
   const [cargandoDia, setCargandoDia] = useState(false);
   const [movimientosCaja, setMovimientosCaja] = useState([]);
 
-  useEffect(() => {
-    db.getMovimientosCaja().then(setMovimientosCaja).catch(() => {});
-  }, []);
+  useEffect(() => { db.getMovimientosCaja().then(setMovimientosCaja).catch(() => {}); }, []);
 
   useEffect(() => {
     if (!filtroDia) { setAbonosDia([]); return; }
@@ -5458,72 +5470,59 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
         </div>
       )}
 
-      {filtroDia && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
-            📅 Resumen del día {new Date(filtroDia + "T12:00:00").toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-          </div>
-          {cargandoDia ? <div style={{ fontSize: 13, color: GC.ink3, padding: "10px 0" }}>Cargando...</div> : (
-            <>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-                <div style={{ background: "#faf5ff", border: "2px solid #a78bfa", borderRadius: 12, padding: "12px 18px", minWidth: 160 }}>
-                  <div style={{ fontSize: 10, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>📅 Cobrado ese día</div>
-                  <div style={{ fontWeight: 900, color: "#7c3aed", fontSize: 20, marginTop: 2 }}>{formatCOP(cobradoDia)}</div>
-                  <div style={{ fontSize: 11, color: GC.ink3, marginTop: 2 }}>{abonosDia.filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; }).length} cobros</div>
-                </div>
-                <div style={{ background: GC.brandLight, border: "2px solid #22c55e", borderRadius: 12, padding: "12px 18px", minWidth: 160 }}>
-                  <div style={{ fontSize: 10, color: GC.brand, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>🏦 Total en caja ese día</div>
-                  <div style={{ fontWeight: 900, color: GC.brand, fontSize: 20, marginTop: 2 }}>{formatCOP(totalCajaDia)}</div>
-                  <div style={{ fontSize: 11, color: GC.ink3, marginTop: 2 }}>
-                    {ingresosDia > 0 && <span>+{formatCOP(ingresosDia)} ingresos · </span>}
-                    {egresosDia > 0 && <span>−{formatCOP(egresosDia)} egresos</span>}
-                    {ingresosDia === 0 && egresosDia === 0 && <span>Sin movimientos de caja</span>}
-                  </div>
-                </div>
-              </div>
-              {abonosDia.filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; }).length > 0 && (
-                <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden", marginBottom: 4 }}>
-                  <div style={{ background: GC.bg2, padding: "8px 14px", fontSize: 11, fontWeight: 700, color: GC.ink2, textTransform: "uppercase", letterSpacing: 0.7 }}>
-                    Facturas con cobros ese día ({abonosDia.length})
-                  </div>
-                  {abonosDia.filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; }).map((a, i) => {
-                    const f = facturas.find(x => x.id === a.facturaId);
-                    return (
-                      <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 14px", borderBottom: "1px solid #f1f5f9", flexWrap: "wrap", gap: 6 }}>
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: 13 }}>{f?.clienteNombre || "—"}</div>
-                          <div style={{ fontSize: 11, color: GC.ink3 }}>{f?.concepto || ""}{f?.numeroRecibo ? ` · #${f.numeroRecibo}` : ""}</div>
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontWeight: 800, color: GC.brand, fontSize: 14 }}>{formatCOP(a.monto)}</div>
-                          <div style={{ fontSize: 11, color: GC.ink3 }}>{a.metodoPago || "—"}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Totales del filtro */}
+      {/* ── Resumen unificado: cuadros del día + totales del filtro ── */}
       {facturasAudit.length > 0 && (
-        <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-          {[["Total facturado", formatCOP(totalFact), "#0ea5e9"], ["Total cobrado", formatCOP(totalCobrado), "#22c55e"], ["Saldo pendiente", formatCOP(totalPend), "#ef4444"]].map(([label, val, color]) => (
-            <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderRadius: 10, padding: "8px 14px" }}>
-              <div style={{ fontSize: 10, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</div>
-              <div style={{ fontWeight: 800, color, fontSize: 14 }}>{val}</div>
+        <div style={{ marginBottom: 14 }}>
+          {filtroDia && (
+            <div style={{ fontSize: 11, fontWeight: 700, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 8 }}>
+              📅 {new Date(filtroDia + "T12:00:00").toLocaleDateString("es-CO", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
             </div>
-          ))}
-          {/* Botón tirilla del cliente si la búsqueda devuelve solo uno */}
-          {clienteBuscado && (
-            <button onClick={() => imprimirTirilla(clienteBuscado, facturasAudit)}
-              style={{ background: GC.brandLight, color: GC.brand, border: "1px solid #bbf7d0", borderRadius: 10, padding: "8px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13 }}>
-              🖨️ Tirilla del cliente
-            </button>
           )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {/* Cuadros del día — solo cuando hay filtroDia */}
+            {filtroDia && !cargandoDia && (
+              <>
+                <div style={{ background: "#faf5ff", border: "2px solid #a78bfa", borderRadius: 10, padding: "10px 14px", minWidth: 150, flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 }}>📅 Cobrado ese día</div>
+                  <div style={{ fontWeight: 900, color: "#7c3aed", fontSize: 16, marginTop: 2 }}>{formatCOP(cobradoDia)}</div>
+                  <div style={{ fontSize: 10, color: GC.ink3, marginTop: 1 }}>
+                    {abonosDia.filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; }).length} cobros
+                    {ingresosDia > 0 && ` · +${formatCOP(ingresosDia)} ing.`}
+                    {egresosDia > 0 && ` · −${formatCOP(egresosDia)} egr.`}
+                  </div>
+                </div>
+                <div style={{ background: GC.brandLight, border: "2px solid #22c55e", borderRadius: 10, padding: "10px 14px", minWidth: 150, flex: 1 }}>
+                  <div style={{ fontSize: 10, color: GC.brand, textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 }}>🏦 Total en caja ese día</div>
+                  <div style={{ fontWeight: 900, color: GC.brand, fontSize: 16, marginTop: 2 }}>{formatCOP(totalCajaDia)}</div>
+                  <div style={{ fontSize: 10, color: GC.ink3, marginTop: 1 }}>cobros + ingresos − egresos</div>
+                </div>
+              </>
+            )}
+            {filtroDia && cargandoDia && (
+              <div style={{ background: "#faf5ff", border: "2px solid #a78bfa", borderRadius: 10, padding: "10px 14px", minWidth: 150, flex: 1, color: GC.ink3, fontSize: 13 }}>
+                Cargando datos del día...
+              </div>
+            )}
+            {/* Siempre: 3 casillas del filtro activo */}
+            {[
+              ["💰 Total facturado", formatCOP(totalFact), "#0ea5e9"],
+              ["✅ Total cobrado",   formatCOP(totalCobrado), "#22c55e"],
+              ["⏳ Saldo pendiente", formatCOP(totalPend),   "#ef4444"]
+            ].map(([label, val, color]) => (
+              <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderRadius: 10, padding: "10px 14px", flex: 1, minWidth: 120 }}>
+                <div style={{ fontSize: 10, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.7 }}>{label}</div>
+                <div style={{ fontWeight: 800, color, fontSize: 15, marginTop: 2 }}>{val}</div>
+                {!filtroDia && label === "💰 Total facturado" && <div style={{ fontSize: 10, color: GC.ink4, marginTop: 1 }}>de las facturas filtradas</div>}
+              </div>
+            ))}
+            {/* Botón tirilla cliente */}
+            {clienteBuscado && (
+              <button onClick={() => imprimirTirilla(clienteBuscado, facturasAudit)}
+                style={{ background: GC.brandLight, color: GC.brand, border: "1px solid #bbf7d0", borderRadius: 10, padding: "10px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, alignSelf: "stretch" }}>
+                🖨️ Tirilla del cliente
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -5569,7 +5568,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
               return (
               <tr key={f.id} style={{ borderBottom: "1px solid #f1f5f9", opacity: f.estado === "Anulada" ? 0.5 : 1 }}>
                 <td style={{ padding: "8px 12px", color: GC.info, fontWeight: 700 }}>#{f.numeroRecibo || f.id?.slice(-6)}</td>
-                <td style={{ padding: "8px 12px", color: GC.ink2 }}>{f.fechaEmision}</td>
+                <td style={{ padding: "8px 12px", color: GC.ink2 }}>{f.fechaPago || f.fechaEmision}</td>
                 <td style={{ padding: "8px 12px", fontWeight: 600 }}>{f.clienteNombre}</td>
                 <td style={{ padding: "8px 12px", color: GC.ink2 }}>{f.clienteCedula}</td>
                 <td style={{ padding: "8px 12px", color: GC.ink2 }}>{MESES[(f.mes||1)-1]} {f.anio}</td>
