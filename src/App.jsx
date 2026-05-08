@@ -320,7 +320,7 @@ const db = {
     return (data || []).map(mapFactura);
   },
   async getFacturasUltimosMeses(meses = 6) {
-    // Carga facturas de los últimos N meses para morosos, búsqueda y validación deuda
+    // Carga TODAS las facturas de los últimos N meses (incluye Pagado para búsqueda)
     const ahora = new Date();
     const resultados = [];
     for (let i = 1; i <= meses; i++) {
@@ -328,7 +328,7 @@ const db = {
       try {
         const { data, error } = await sb.from("facturas").select("*")
           .eq("mes", d.getMonth() + 1).eq("anio", d.getFullYear())
-          .in("estado", ["Pendiente", "Vencido", "Abono parcial"]);
+          .neq("estado", "Anulada");
         if (!error && data) resultados.push(...data.map(mapFactura));
       } catch { /* ignorar errores por mes */ }
     }
@@ -5303,13 +5303,18 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
   // Si hay búsqueda por nombre/cédula → ignorar filtros de fecha y buscar en TODAS
   const busqActiva = busq.trim().length >= 2;
 
-  const facturasAudit = facturas.filter(f => {
+  // Cuando hay búsqueda activa, incluir también facturas históricas (meses anteriores)
+  const todasParaBusqueda = busqActiva
+    ? [...facturas, ...facturasHistoricas].filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i)
+    : facturas;
+
+  const facturasAudit = todasParaBusqueda.filter(f => {
     if (busqActiva) {
-      // Solo filtrar por texto — todas las fechas
+      // Solo filtrar por texto — todas las fechas disponibles
       const q = busq.toLowerCase();
       const matchNombre = f.clienteNombre?.toLowerCase().includes(q);
       const matchCedula = f.clienteCedula?.toLowerCase().includes(q);
-      const matchRecibo = String(f.numeroRecibo).includes(q);
+      const matchRecibo = String(f.numeroRecibo || "").includes(q);
       return matchNombre || matchCedula || matchRecibo;
     }
     // Sin búsqueda: filtros normales por fecha
@@ -5318,8 +5323,8 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
     if (filtroDia && f.fechaEmision !== filtroDia && f.fechaPago !== filtroDia) return false;
     return true;
   }).sort((a, b) => {
-    // Ordenar: primero por cliente, luego por fecha descendente
     if (busqActiva) {
+      // Ordenar por cliente, luego mes más reciente primero
       const nc = (a.clienteNombre||"").localeCompare(b.clienteNombre||"");
       if (nc !== 0) return nc;
       return (b.anio*12+b.mes) - (a.anio*12+a.mes);
