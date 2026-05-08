@@ -100,9 +100,8 @@ const mapAbono = r => r ? ({
   metodoPago: r.metodo_pago, fecha: r.fecha,
   observacion: r.observacion || "", registradoPor: r.registrado_por,
   creadoEn: r.created_at,
-  // Campos del JOIN con facturas (disponibles cuando se usa getAbonosByFecha)
-  clienteNombre: r.facturas?.cliente_nombre || r.cliente_nombre || null,
-  concepto:      r.facturas?.concepto       || r.concepto       || null,
+  clienteNombre: r.facturas?.cliente_nombre || null,
+  concepto:      r.facturas?.concepto       || null,
   numeroRecibo:  r.facturas?.numero_recibo  || null,
 }) : null;
 
@@ -296,8 +295,7 @@ const db = {
   async getAbonosByFecha(fecha) {
     const { data, error } = await sb.from("abonos")
       .select("*, facturas(cliente_nombre, concepto, numero_recibo)")
-      .eq("fecha", fecha)
-      .order("created_at", { ascending: false });
+      .eq("fecha", fecha).order("created_at", { ascending: false });
     if (error) throw error;
     return data.map(mapAbono);
   },
@@ -320,6 +318,20 @@ const db = {
       .order("fecha_emision", { ascending: false });
     if (error) throw error;
     return (data || []).map(mapFactura);
+  },
+  async getFacturasUltimosMeses(meses = 6) {
+    // Carga facturas de los últimos N meses para morosos, búsqueda y validación deuda
+    const ahora = new Date();
+    const resultados = [];
+    for (let i = 1; i <= meses; i++) {
+      const d = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
+      const { data } = await sb.from("facturas").select("*")
+        .eq("mes", d.getMonth() + 1).eq("anio", d.getFullYear())
+        .in("estado", ["Pendiente", "Vencido", "Abono parcial"])
+        .catch(() => ({ data: [] }));
+      if (data) resultados.push(...data.map(mapFactura));
+    }
+    return resultados;
   },
   async crearFacturaAtomica(f) {
     const { data, error } = await sb.rpc("crear_factura_atomica", {
@@ -3781,6 +3793,7 @@ function SeccionProntoPagoReporte({ facturas, usuarios, zonas }) {
 
 function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perfilesPago = [], prontoPagos = [] }) {
   const [facturas, setFacturas] = useState([]);
+  const [facturasHistoricas, setFacturasHistoricas] = useState([]); // meses anteriores pendientes
   const [cargando, setCargando] = useState(true);
   const [subTab, setSubTab] = useState("emitidas");
   const [filtroMes, setFiltroMes]   = useState(new Date().getMonth() + 1);
@@ -3809,18 +3822,29 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   const clientesVisibles = usuarios.filter(u => u.rol === "cliente" && u.activo && (esAdmin || u.zonaId === zonaId));
   const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444", "Anulada": "#94a3b8" };
 
+  const filtrarZona = data => esAdmin ? data : data.filter(f => {
+    const c = usuarios.find(u => u.id === f.clienteId);
+    return c?.zonaId === zonaId;
+  });
+
   const cargarFacturas = async (mes, anio) => {
     setCargando(true);
     try {
       const data = await db.getFacturasByMesAnio(mes, anio);
-      setFacturas(esAdmin ? data : data.filter(f => {
-        const c = usuarios.find(u => u.id === f.clienteId);
-        return c?.zonaId === zonaId;
-      }));
+      setFacturas(filtrarZona(data));
     } catch(e) { console.error("Error cargando facturas:", e); }
     finally { setCargando(false); }
   };
+
+  // Cargar mes actual al inicio y cuando cambia mes/año
   useEffect(() => { cargarFacturas(filtroMes, filtroAnio); }, [filtroMes, filtroAnio]);
+
+  // Cargar facturas históricas (meses anteriores pendientes) para morosos y validación de deuda
+  useEffect(() => {
+    db.getFacturasUltimosMeses(6)
+      .then(data => setFacturasHistoricas(filtrarZona(data)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const canalFacturas = sb.channel("realtime-facturas")
@@ -3832,6 +3856,14 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           if (!existe) return [updated, ...prev];
           return prev.map(f => f.id === updated.id ? updated : f);
         });
+        // También actualizar históricos si aplica
+        if (updated.saldoPendiente > 0) {
+          setFacturasHistoricas(prev => prev.find(f => f.id === updated.id)
+            ? prev.map(f => f.id === updated.id ? updated : f)
+            : prev);
+        } else {
+          setFacturasHistoricas(prev => prev.filter(f => f.id !== updated.id));
+        }
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "facturas" }, payload => {
         const nueva = mapFactura(payload.new);
@@ -3840,6 +3872,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "facturas" }, payload => {
         setFacturas(prev => prev.filter(f => f.id !== payload.old.id));
+        setFacturasHistoricas(prev => prev.filter(f => f.id !== payload.old.id));
       })
       .subscribe();
     const canalAbonos = sb.channel("realtime-abonos")
@@ -3919,9 +3952,11 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   };
 
   const abrirDetalle = async (f) => {
-    // Verificar si el cliente tiene facturas de meses ANTERIORES sin pagar
+    // Verificar deuda anterior: combina facturas del mes actual + históricas
+    const todasFacturasCliente = [...facturas, ...facturasHistoricas]
+      .filter((x, i, arr) => arr.findIndex(y => y.id === x.id) === i); // dedup
     const mesFactura = f.anio * 12 + f.mes;
-    const deudaAnterior = facturas.filter(x =>
+    const deudaAnterior = todasFacturasCliente.filter(x =>
       x.clienteId === f.clienteId &&
       x.id !== f.id &&
       x.estado !== "Anulada" &&
@@ -4310,8 +4345,9 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
 
   // 🔴 MOROSOS: clientes con facturas de MESES ANTERIORES sin pagar
   // Busca en TODAS las facturas cargadas, no solo las del mes actual
+  // Morosos: clientes con facturas de meses ANTERIORES pendientes (usa histórico)
   const morosos = [...new Set(
-    facturas
+    facturasHistoricas
       .filter(f =>
         f.estado !== "Anulada" &&
         f.estado !== "Pagado" &&
@@ -4988,22 +5024,20 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, z
 
 // ── Sección 2: Cierre de Caja ─────────────────────────────────
 function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSuperusuario, nombreEmpresa, COLOR_ESTADO }) {
-  const hoy = fechaLocal();
-  const primerDiaMes = fechaLocal().slice(0,8) + "01";
-  const [fechaInicio, setFechaInicio] = useState(primerDiaMes);
-  const [fechaFin, setFechaFin]       = useState(hoy);
-  const [secretarioFiltro, setSecretarioFiltro] = useState(esAdmin ? "todos" : usuario.id);
-  const [movimientosCaja, setMovimientosCaja]   = useState([]);
-  const [abonosCierre, setAbonosCierre]         = useState([]);
-  const [cargandoCierre, setCargandoCierre]     = useState(false);
-  const secretarios = usuarios.filter(u=>(u.rol==="secretario"||u.rol==="admin")&&u.activo);
+  const hoy=fechaLocal(),primerDiaMes=fechaLocal().slice(0,8)+"01";
+  const [fechaInicio,setFechaInicio]=useState(primerDiaMes);
+  const [fechaFin,setFechaFin]=useState(hoy);
+  const [secretarioFiltro,setSecretarioFiltro]=useState(esAdmin?"todos":usuario.id);
+  const [movimientosCaja,setMovimientosCaja]=useState([]);
+  const [abonosCierre,setAbonosCierre]=useState([]);
+  const [cargandoCierre,setCargandoCierre]=useState(false);
+  const secretarios=usuarios.filter(u=>(u.rol==="secretario"||u.rol==="admin")&&u.activo);
   useEffect(()=>{db.getMovimientosCaja().then(setMovimientosCaja).catch(()=>{});}, []);
   useEffect(()=>{
-    if (!fechaInicio||!fechaFin) return;
+    if(!fechaInicio||!fechaFin)return;
     setCargandoCierre(true);
-    const cargar = async()=>{
-      try {
-        const dias=[];let cur=new Date(fechaInicio+"T12:00:00");const fin=new Date(fechaFin+"T12:00:00");
+    const cargar=async()=>{
+      try{const dias=[];let cur=new Date(fechaInicio+"T12:00:00");const fin=new Date(fechaFin+"T12:00:00");
         while(cur<=fin){dias.push(cur.toISOString().split("T")[0]);cur.setDate(cur.getDate()+1);}
         const results=await Promise.all(dias.map(d=>db.getAbonosByFecha(d).catch(()=>[])));
         setAbonosCierre(results.flat());
@@ -5016,15 +5050,15 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
     if(secretarioFiltro!=="todos"){const secId=f.creadoPor||usuarios.find(u=>u.id===f.clienteId)?.secretarioId;if(secId!==secretarioFiltro)return false;}
     return f.estado!=="Anulada";
   });
-  const totalFacturado =facturasCierre.reduce((s,f)=>s+f.monto,0);
-  const totalCobrado   =facturasCierre.reduce((s,f)=>s+(f.monto-f.saldoPendiente-(f.descuento_pronto_pago||0)),0);
-  const totalPendiente =facturasCierre.reduce((s,f)=>s+f.saldoPendiente,0);
-  const cantPagadas    =facturasCierre.filter(f=>f.estado==="Pagado").length;
-  const cantParcial    =facturasCierre.filter(f=>f.estado==="Abono parcial").length;
-  const cantPendiente  =facturasCierre.filter(f=>f.estado==="Pendiente"||f.estado==="Vencido").length;
-  const cobradoPeriodo =abonosCierre.filter(a=>{const f=facturas.find(x=>x.id===a.facturaId);return !f||f.estado!=="Anulada";}).reduce((s,a)=>s+a.monto,0);
+  const totalFacturado=facturasCierre.reduce((s,f)=>s+f.monto,0);
+  const totalCobrado=facturasCierre.reduce((s,f)=>s+(f.monto-f.saldoPendiente-(f.descuento_pronto_pago||0)),0);
+  const totalPendiente=facturasCierre.reduce((s,f)=>s+f.saldoPendiente,0);
+  const cantPagadas=facturasCierre.filter(f=>f.estado==="Pagado").length;
+  const cantParcial=facturasCierre.filter(f=>f.estado==="Abono parcial").length;
+  const cantPendiente=facturasCierre.filter(f=>f.estado==="Pendiente"||f.estado==="Vencido").length;
+  const cobradoPeriodo=abonosCierre.filter(a=>{const f=facturas.find(x=>x.id===a.facturaId);return !f||f.estado!=="Anulada";}).reduce((s,a)=>s+a.monto,0);
   const ingresosPeriodo=movimientosCaja.filter(m=>m.tipo==="Ingreso"&&m.fecha>=fechaInicio&&m.fecha<=fechaFin).reduce((s,m)=>s+m.monto,0);
-  const egresosPeriodo =movimientosCaja.filter(m=>m.tipo==="Egreso" &&m.fecha>=fechaInicio&&m.fecha<=fechaFin).reduce((s,m)=>s+m.monto,0);
+  const egresosPeriodo=movimientosCaja.filter(m=>m.tipo==="Egreso"&&m.fecha>=fechaInicio&&m.fecha<=fechaFin).reduce((s,m)=>s+m.monto,0);
   const totalCajaPeriodo=cobradoPeriodo+ingresosPeriodo-egresosPeriodo;
   const esUnDia=fechaInicio===fechaFin;
   const imprimir=()=>{
@@ -5036,92 +5070,90 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
       const mp={"Efectivo":"💵","Transferencia":"🏦","Nequi":"📱","Daviplata":"📲"}[f.metodoPago]||"💳";
       return `<tr><td>#${f.numeroRecibo||"—"}</td><td>${f.clienteNombre}</td><td>${f.fechaPago||f.fechaEmision||""}</td><td><span style="background:${colorBg};color:${colorTxt};padding:1px 5px;border-radius:3px;font-weight:bold">${f.estado}</span></td><td>${f.metodoPago?mp+" "+f.metodoPago:"—"}</td><td style="text-align:right">${cop(f.monto)}</td><td style="text-align:right;color:${f.saldoPendiente>0?"#dc2626":"#16a34a"}">${cop(f.monto-f.saldoPendiente)}</td></tr>`;
     }).join("");
-    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cierre</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;font-size:10pt}h1{font-size:16pt;margin:0 0 4px}h2{font-size:12pt;margin:0 0 12px;color:#555}.header{text-align:center;margin-bottom:16px;border-bottom:2px solid #000;padding-bottom:10px}.resumen{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}.card{border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;flex:1;min-width:120px}.card-label{font-size:8pt;color:#64748b;text-transform:uppercase}.card-val{font-size:13pt;font-weight:900;margin-top:2px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#f1f5f9;padding:6px 8px;text-align:left;border-bottom:2px solid #e2e8f0}td{padding:5px 8px;border-bottom:1px solid #f1f5f9}.total-row{font-weight:900;font-size:11pt;border-top:2px solid #000}.footer{margin-top:20px;border-top:1px dashed #aaa;padding-top:12px;font-size:9pt;color:#555}.btn-print{display:block;margin:16px auto;padding:10px 28px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer}@media print{.btn-print{display:none}}</style></head><body><div class="header"><h1>${nombreEmpresa}</h1><h2>CIERRE DE CAJA</h2><div>Período: <strong>${fechaInicio}${fechaInicio!==fechaFin?" → "+fechaFin:""}</strong></div><div>Secretario: <strong>${nombreSec}</strong> · ${new Date().toLocaleString("es-CO")}</div></div><div class="resumen"><div class="card"><div class="card-label">📅 Cobrado</div><div class="card-val" style="color:#7c3aed">${cop(cobradoPeriodo)}</div></div><div class="card"><div class="card-label">🏦 Caja</div><div class="card-val" style="color:#16a34a">${cop(totalCajaPeriodo)}</div></div><div class="card"><div class="card-label">💰 Facturado</div><div class="card-val" style="color:#0ea5e9">${cop(totalFacturado)}</div></div><div class="card"><div class="card-label">✅ Cobrado</div><div class="card-val" style="color:#16a34a">${cop(totalCobrado)}</div></div><div class="card"><div class="card-label">⏳ Pendiente</div><div class="card-val" style="color:#ef4444">${cop(totalPendiente)}</div></div></div><table><thead><tr><th>#Recibo</th><th>Cliente</th><th>Fecha</th><th>Estado</th><th>Método</th><th style="text-align:right">Total</th><th style="text-align:right">Cobrado</th></tr></thead><tbody>${filas}</tbody><tr class="total-row"><td colspan="5">TOTALES</td><td style="text-align:right">${cop(totalFacturado)}</td><td style="text-align:right;color:#16a34a">${cop(totalCobrado)}</td></tr></table><div class="footer"><div>Firma: _______________________________</div></div><button class="btn-print" onclick="window.print()">🖨️ Imprimir</button></body></html>`;
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cierre</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;font-size:10pt}h1{font-size:16pt;margin:0 0 4px}h2{font-size:12pt;margin:0 0 12px;color:#555}.header{text-align:center;margin-bottom:16px;border-bottom:2px solid #000;padding-bottom:10px}.resumen{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}.card{border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;flex:1;min-width:120px}.card-label{font-size:8pt;color:#64748b;text-transform:uppercase}.card-val{font-size:13pt;font-weight:900;margin-top:2px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#f1f5f9;padding:6px 8px;text-align:left;border-bottom:2px solid #e2e8f0}td{padding:5px 8px;border-bottom:1px solid #f1f5f9}.total-row{font-weight:900;font-size:11pt;border-top:2px solid #000}.footer{margin-top:20px;border-top:1px dashed #aaa;padding-top:12px;font-size:9pt}.btn-print{display:block;margin:16px auto;padding:10px 28px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer}@media print{.btn-print{display:none}}</style></head><body><div class="header"><h1>${nombreEmpresa}</h1><h2>CIERRE DE CAJA</h2><div>Período: <strong>${fechaInicio}${fechaInicio!==fechaFin?" → "+fechaFin:""}</strong></div><div>Secretario: <strong>${nombreSec}</strong> · ${new Date().toLocaleString("es-CO")}</div></div><div class="resumen"><div class="card"><div class="card-label">📅 Cobrado</div><div class="card-val" style="color:#7c3aed">${cop(cobradoPeriodo)}</div></div><div class="card"><div class="card-label">🏦 Caja</div><div class="card-val" style="color:#16a34a">${cop(totalCajaPeriodo)}</div></div><div class="card"><div class="card-label">💰 Facturado</div><div class="card-val" style="color:#0ea5e9">${cop(totalFacturado)}</div></div><div class="card"><div class="card-label">✅ Cobrado</div><div class="card-val" style="color:#16a34a">${cop(totalCobrado)}</div></div><div class="card"><div class="card-label">⏳ Pendiente</div><div class="card-val" style="color:#ef4444">${cop(totalPendiente)}</div></div></div><table><thead><tr><th>#Recibo</th><th>Cliente</th><th>Fecha</th><th>Estado</th><th>Método</th><th style="text-align:right">Total</th><th style="text-align:right">Cobrado</th></tr></thead><tbody>${filas}</tbody><tr class="total-row"><td colspan="5">TOTALES</td><td style="text-align:right">${cop(totalFacturado)}</td><td style="text-align:right;color:#16a34a">${cop(totalCobrado)}</td></tr></table><div class="footer"><div>Firma: _______________________________</div></div><button class="btn-print" onclick="window.print()">🖨️ Imprimir</button></body></html>`;
     const w=window.open("","_blank","width=900,height=700");w.document.write(html);w.document.close();
   };
-  return (
-    <div>
-      <div style={{ background:GC.bg3,border:"1px solid "+GC.border,borderRadius:12,padding:"14px 18px",marginBottom:18 }}>
-        <div style={{ fontWeight:700,color:GC.ink,marginBottom:12,fontSize:14 }}>⚙️ Configurar cierre</div>
-        <div style={{ display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(150px,1fr))",gap:"0 14px" }}>
-          <Field label="Fecha inicio"><Inp type="date" value={fechaInicio} onChange={e=>setFechaInicio(e.target.value)} /></Field>
-          <Field label="Fecha fin"><Inp type="date" value={fechaFin} onChange={e=>setFechaFin(e.target.value)} /></Field>
-          {esAdmin&&<Field label="Secretario"><Sel value={secretarioFiltro} onChange={e=>setSecretarioFiltro(e.target.value)}><option value="todos">Todos</option>{secretarios.map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</Sel></Field>}
-        </div>
+  return(<div>
+    <div style={{background:GC.bg3,border:"1px solid "+GC.border,borderRadius:12,padding:"14px 18px",marginBottom:18}}>
+      <div style={{fontWeight:700,color:GC.ink,marginBottom:12,fontSize:14}}>⚙️ Configurar cierre</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(150px,1fr))",gap:"0 14px"}}>
+        <Field label="Fecha inicio"><Inp type="date" value={fechaInicio} onChange={e=>setFechaInicio(e.target.value)} /></Field>
+        <Field label="Fecha fin"><Inp type="date" value={fechaFin} onChange={e=>setFechaFin(e.target.value)} /></Field>
+        {esAdmin&&<Field label="Secretario"><Sel value={secretarioFiltro} onChange={e=>setSecretarioFiltro(e.target.value)}><option value="todos">Todos</option>{secretarios.map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</Sel></Field>}
       </div>
-      <div style={{ fontSize:11,fontWeight:700,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.8,marginBottom:10 }}>
-        {esUnDia?`📅 ${new Date(fechaInicio+"T12:00:00").toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`:`📋 Período: ${fechaInicio} → ${fechaFin}`}
-      </div>
-      {cargandoCierre?<div style={{ fontSize:13,color:GC.ink3,padding:"10px 0",marginBottom:14 }}>Cargando datos...</div>:(
-        <div style={{ display:"flex",gap:8,flexWrap:"wrap",marginBottom:16 }}>
-          <div style={{ background:"#faf5ff",border:"2px solid #a78bfa",borderRadius:10,padding:"10px 14px",minWidth:140,flex:1 }}>
-            <div style={{ fontSize:10,color:"#7c3aed",textTransform:"uppercase",letterSpacing:0.7,fontWeight:700 }}>{esUnDia?"📅 Cobrado ese día":"📅 Cobrado período"}</div>
-            <div style={{ fontWeight:900,color:"#7c3aed",fontSize:18,marginTop:2 }}>{formatCOP(cobradoPeriodo)}</div>
-            <div style={{ fontSize:10,color:GC.ink3,marginTop:1 }}>{abonosCierre.filter(a=>{const f=facturas.find(x=>x.id===a.facturaId);return !f||f.estado!=="Anulada";}).length} cobros · {cantPagadas} pagadas</div>
-          </div>
-          <div style={{ background:GC.brandLight,border:"2px solid #22c55e",borderRadius:10,padding:"10px 14px",minWidth:140,flex:1 }}>
-            <div style={{ fontSize:10,color:GC.brand,textTransform:"uppercase",letterSpacing:0.7,fontWeight:700 }}>{esUnDia?"🏦 Total en caja ese día":"🏦 Total en caja"}</div>
-            <div style={{ fontWeight:900,color:GC.brand,fontSize:18,marginTop:2 }}>{formatCOP(totalCajaPeriodo)}</div>
-            <div style={{ fontSize:10,color:GC.ink3,marginTop:1 }}>{ingresosPeriodo>0?`+${formatCOP(ingresosPeriodo)} ing. · `:""}{ egresosPeriodo>0?`−${formatCOP(egresosPeriodo)} egr.`:"sin egresos"}</div>
-          </div>
-          <div style={{ background:"#fff",border:"1px solid #0ea5e933",borderRadius:10,padding:"10px 14px",minWidth:120,flex:1 }}>
-            <div style={{ fontSize:10,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.7 }}>💰 Total facturado</div>
-            <div style={{ fontWeight:800,color:"#0ea5e9",fontSize:16,marginTop:2 }}>{formatCOP(totalFacturado)}</div>
-            <div style={{ fontSize:10,color:GC.ink3,marginTop:1 }}>{facturasCierre.length} facturas</div>
-          </div>
-          <div style={{ background:"#fff",border:"1px solid #22c55e33",borderRadius:10,padding:"10px 14px",minWidth:120,flex:1 }}>
-            <div style={{ fontSize:10,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.7 }}>✅ Total cobrado</div>
-            <div style={{ fontWeight:800,color:"#22c55e",fontSize:16,marginTop:2 }}>{formatCOP(totalCobrado)}</div>
-            <div style={{ fontSize:10,color:GC.ink3,marginTop:1 }}>{cantPagadas} pagadas · {cantParcial} parciales</div>
-          </div>
-          <div style={{ background:"#fff",border:"1px solid #ef444433",borderRadius:10,padding:"10px 14px",minWidth:120,flex:1 }}>
-            <div style={{ fontSize:10,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.7 }}>⏳ Saldo pendiente</div>
-            <div style={{ fontWeight:800,color:"#ef4444",fontSize:16,marginTop:2 }}>{formatCOP(totalPendiente)}</div>
-            <div style={{ fontSize:10,color:GC.ink3,marginTop:1 }}>{cantPendiente} pendientes</div>
-          </div>
-        </div>
-      )}
-      {facturasCierre.length===0?(
-        <div style={{ textAlign:"center",color:GC.ink4,padding:40 }}><div style={{ fontSize:32,marginBottom:8 }}>💼</div><div>Sin facturas en el período</div></div>
-      ):(
-        <>
-          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8 }}>
-            <span style={{ fontWeight:700,color:GC.ink,fontSize:13 }}>{facturasCierre.length} facturas en el período</span>
-            <Btn onClick={imprimir} style={{ fontSize:13 }}>🖨️ Imprimir cierre</Btn>
-          </div>
-          <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%",borderCollapse:"collapse",fontSize:12 }}>
-              <thead><tr style={{ background:GC.bg2,borderBottom:"2px solid #e2e8f0" }}>
-                {["#Recibo","Cliente","Fecha","Mes","Estado","Método","Total","Cobrado"].map(h=>(
-                  <th key={h} style={{ padding:"8px 10px",textAlign:"left",color:GC.ink3,fontWeight:700,whiteSpace:"nowrap" }}>{h}</th>
-                ))}
-              </tr></thead>
-              <tbody>
-                {facturasCierre.map(f=>{
-                  const mp={"Efectivo":"💵","Transferencia":"🏦","Nequi":"📱","Daviplata":"📲"}[f.metodoPago];
-                  return(<tr key={f.id} style={{ borderBottom:"1px solid #f1f5f9" }}>
-                    <td style={{ padding:"8px 10px",color:GC.info,fontWeight:700 }}>#{f.numeroRecibo||f.id?.slice(-6)}</td>
-                    <td style={{ padding:"8px 10px",fontWeight:600 }}>{f.clienteNombre}</td>
-                    <td style={{ padding:"8px 10px",color:GC.ink2 }}>{f.fechaPago||f.fechaEmision}</td>
-                    <td style={{ padding:"8px 10px",color:GC.ink2 }}>{MESES[(f.mes||1)-1]} {f.anio}</td>
-                    <td style={{ padding:"8px 10px" }}><span style={{ background:(COLOR_ESTADO[f.estado]||"#94a3b8")+"22",color:COLOR_ESTADO[f.estado]||"#64748b",borderRadius:6,padding:"2px 7px",fontWeight:700,fontSize:11 }}>{f.estado}</span></td>
-                    <td style={{ padding:"8px 10px" }}>{f.metodoPago?<span style={{ background:GC.infoBg,color:GC.info,borderRadius:6,padding:"2px 7px",fontSize:11,fontWeight:700 }}>{mp} {f.metodoPago}</span>:<span style={{ color:GC.ink4,fontSize:11 }}>—</span>}</td>
-                    <td style={{ padding:"8px 10px",fontWeight:700 }}>{formatCOP(f.monto)}</td>
-                    <td style={{ padding:"8px 10px",fontWeight:800,color:f.saldoPendiente>0?GC.warning:GC.brand }}>{formatCOP(f.monto-f.saldoPendiente-(f.descuento_pronto_pago||0))}</td>
-                  </tr>);
-                })}
-                <tr style={{ borderTop:"2px solid #0f172a",background:GC.bg2 }}>
-                  <td colSpan={6} style={{ padding:"10px",fontWeight:800,fontSize:13 }}>TOTALES</td>
-                  <td style={{ padding:"10px",fontWeight:800,fontSize:13 }}>{formatCOP(totalFacturado)}</td>
-                  <td style={{ padding:"10px",fontWeight:800,fontSize:13,color:GC.brand }}>{formatCOP(totalCobrado)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
     </div>
-  );
+    <div style={{fontSize:11,fontWeight:700,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.8,marginBottom:10}}>
+      {esUnDia?`📅 ${new Date(fechaInicio+"T12:00:00").toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`:`📋 Período: ${fechaInicio} → ${fechaFin}`}
+    </div>
+    {cargandoCierre?<div style={{fontSize:13,color:GC.ink3,padding:"10px 0",marginBottom:14}}>Cargando...</div>:(
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+        <div style={{background:"#faf5ff",border:"2px solid #a78bfa",borderRadius:10,padding:"10px 14px",minWidth:140,flex:1}}>
+          <div style={{fontSize:10,color:"#7c3aed",textTransform:"uppercase",letterSpacing:0.7,fontWeight:700}}>{esUnDia?"📅 Cobrado ese día":"📅 Cobrado período"}</div>
+          <div style={{fontWeight:900,color:"#7c3aed",fontSize:18,marginTop:2}}>{formatCOP(cobradoPeriodo)}</div>
+          <div style={{fontSize:10,color:GC.ink3,marginTop:1}}>{abonosCierre.filter(a=>{const f=facturas.find(x=>x.id===a.facturaId);return !f||f.estado!=="Anulada";}).length} cobros · {cantPagadas} pagadas</div>
+        </div>
+        <div style={{background:GC.brandLight,border:"2px solid #22c55e",borderRadius:10,padding:"10px 14px",minWidth:140,flex:1}}>
+          <div style={{fontSize:10,color:GC.brand,textTransform:"uppercase",letterSpacing:0.7,fontWeight:700}}>{esUnDia?"🏦 Total en caja ese día":"🏦 Total en caja"}</div>
+          <div style={{fontWeight:900,color:GC.brand,fontSize:18,marginTop:2}}>{formatCOP(totalCajaPeriodo)}</div>
+          <div style={{fontSize:10,color:GC.ink3,marginTop:1}}>{ingresosPeriodo>0?`+${formatCOP(ingresosPeriodo)} ing. · `:""}{ egresosPeriodo>0?`−${formatCOP(egresosPeriodo)} egr.`:"sin egresos"}</div>
+        </div>
+        <div style={{background:"#fff",border:"1px solid #0ea5e933",borderRadius:10,padding:"10px 14px",minWidth:120,flex:1}}>
+          <div style={{fontSize:10,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.7}}>💰 Total facturado</div>
+          <div style={{fontWeight:800,color:"#0ea5e9",fontSize:16,marginTop:2}}>{formatCOP(totalFacturado)}</div>
+          <div style={{fontSize:10,color:GC.ink3,marginTop:1}}>{facturasCierre.length} facturas</div>
+        </div>
+        <div style={{background:"#fff",border:"1px solid #22c55e33",borderRadius:10,padding:"10px 14px",minWidth:120,flex:1}}>
+          <div style={{fontSize:10,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.7}}>✅ Total cobrado</div>
+          <div style={{fontWeight:800,color:"#22c55e",fontSize:16,marginTop:2}}>{formatCOP(totalCobrado)}</div>
+          <div style={{fontSize:10,color:GC.ink3,marginTop:1}}>{cantPagadas} pagadas · {cantParcial} parciales</div>
+        </div>
+        <div style={{background:"#fff",border:"1px solid #ef444433",borderRadius:10,padding:"10px 14px",minWidth:120,flex:1}}>
+          <div style={{fontSize:10,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.7}}>⏳ Saldo pendiente</div>
+          <div style={{fontWeight:800,color:"#ef4444",fontSize:16,marginTop:2}}>{formatCOP(totalPendiente)}</div>
+          <div style={{fontSize:10,color:GC.ink3,marginTop:1}}>{cantPendiente} pendientes</div>
+        </div>
+      </div>
+    )}
+    {facturasCierre.length===0?(
+      <div style={{textAlign:"center",color:GC.ink4,padding:40}}><div style={{fontSize:32,marginBottom:8}}>💼</div><div>Sin facturas en el período</div></div>
+    ):(
+      <>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
+          <span style={{fontWeight:700,color:GC.ink,fontSize:13}}>{facturasCierre.length} facturas en el período</span>
+          <Btn onClick={imprimir} style={{fontSize:13}}>🖨️ Imprimir cierre</Btn>
+        </div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead><tr style={{background:GC.bg2,borderBottom:"2px solid #e2e8f0"}}>
+              {["#Recibo","Cliente","Fecha","Mes","Estado","Método","Total","Cobrado"].map(h=>(
+                <th key={h} style={{padding:"8px 10px",textAlign:"left",color:GC.ink3,fontWeight:700,whiteSpace:"nowrap"}}>{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {facturasCierre.map(f=>{
+                const mp={"Efectivo":"💵","Transferencia":"🏦","Nequi":"📱","Daviplata":"📲"}[f.metodoPago];
+                return(<tr key={f.id} style={{borderBottom:"1px solid #f1f5f9"}}>
+                  <td style={{padding:"8px 10px",color:GC.info,fontWeight:700}}>#{f.numeroRecibo||f.id?.slice(-6)}</td>
+                  <td style={{padding:"8px 10px",fontWeight:600}}>{f.clienteNombre}</td>
+                  <td style={{padding:"8px 10px",color:GC.ink2}}>{f.fechaPago||f.fechaEmision}</td>
+                  <td style={{padding:"8px 10px",color:GC.ink2}}>{MESES[(f.mes||1)-1]} {f.anio}</td>
+                  <td style={{padding:"8px 10px"}}><span style={{background:(COLOR_ESTADO[f.estado]||"#94a3b8")+"22",color:COLOR_ESTADO[f.estado]||"#64748b",borderRadius:6,padding:"2px 7px",fontWeight:700,fontSize:11}}>{f.estado}</span></td>
+                  <td style={{padding:"8px 10px"}}>{f.metodoPago?<span style={{background:GC.infoBg,color:GC.info,borderRadius:6,padding:"2px 7px",fontSize:11,fontWeight:700}}>{mp} {f.metodoPago}</span>:<span style={{color:GC.ink4,fontSize:11}}>—</span>}</td>
+                  <td style={{padding:"8px 10px",fontWeight:700}}>{formatCOP(f.monto)}</td>
+                  <td style={{padding:"8px 10px",fontWeight:800,color:f.saldoPendiente>0?GC.warning:GC.brand}}>{formatCOP(f.monto-f.saldoPendiente-(f.descuento_pronto_pago||0))}</td>
+                </tr>);
+              })}
+              <tr style={{borderTop:"2px solid #0f172a",background:GC.bg2}}>
+                <td colSpan={6} style={{padding:"10px",fontWeight:800,fontSize:13}}>TOTALES</td>
+                <td style={{padding:"10px",fontWeight:800,fontSize:13}}>{formatCOP(totalFacturado)}</td>
+                <td style={{padding:"10px",fontWeight:800,fontSize:13,color:GC.brand}}>{formatCOP(totalCobrado)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </>
+    )}
+  </div>);
 }
 
 // ── Sección 3: Historial y Auditoría ─────────────────────────
@@ -5248,15 +5280,15 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
   const [abonosDia, setAbonosDia] = useState([]);
   const [cargandoDia, setCargandoDia] = useState(false);
   const [movimientosCaja, setMovimientosCaja] = useState([]);
-  useEffect(() => { db.getMovimientosCaja().then(setMovimientosCaja).catch(() => {}); }, []);
-  useEffect(() => {
-    if (!filtroDia) { setAbonosDia([]); return; }
+  useEffect(()=>{db.getMovimientosCaja().then(setMovimientosCaja).catch(()=>{});}, []);
+  useEffect(()=>{
+    if (!filtroDia){setAbonosDia([]);return;}
     setCargandoDia(true);
     db.getAbonosByFecha(filtroDia).then(d=>setAbonosDia(d||[])).catch(()=>setAbonosDia([])).finally(()=>setCargandoDia(false));
-  }, [filtroDia]);
-  const cobradoDia   = filtroDia ? abonosDia.filter(a=>{const f=facturas.find(x=>x.id===a.facturaId);return !f||f.estado!=="Anulada";}).reduce((s,a)=>s+a.monto,0) : 0;
-  const ingresosDia  = filtroDia ? movimientosCaja.filter(m=>m.tipo==="Ingreso"&&m.fecha===filtroDia).reduce((s,m)=>s+m.monto,0) : 0;
-  const egresosDia   = filtroDia ? movimientosCaja.filter(m=>m.tipo==="Egreso" &&m.fecha===filtroDia).reduce((s,m)=>s+m.monto,0) : 0;
+  },[filtroDia]);
+  const cobradoDia   = filtroDia?abonosDia.filter(a=>{const f=facturas.find(x=>x.id===a.facturaId);return !f||f.estado!=="Anulada";}).reduce((s,a)=>s+a.monto,0):0;
+  const ingresosDia  = filtroDia?movimientosCaja.filter(m=>m.tipo==="Ingreso"&&m.fecha===filtroDia).reduce((s,m)=>s+m.monto,0):0;
+  const egresosDia   = filtroDia?movimientosCaja.filter(m=>m.tipo==="Egreso" &&m.fecha===filtroDia).reduce((s,m)=>s+m.monto,0):0;
   const totalCajaDia = cobradoDia+ingresosDia-egresosDia;
 
   // Si hay búsqueda por nombre/cédula → ignorar filtros de fecha y buscar en TODAS
@@ -5482,7 +5514,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
         <div style={{ marginBottom: 14 }}>
           {filtroDia && <div style={{ fontSize:11,fontWeight:700,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.8,marginBottom:8 }}>📅 {new Date(filtroDia+"T12:00:00").toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>}
           <div style={{ display:"flex",gap:8,flexWrap:"wrap" }}>
-            {filtroDia && !cargandoDia && (<>
+            {filtroDia&&!cargandoDia&&(<>
               <div style={{ background:"#faf5ff",border:"2px solid #a78bfa",borderRadius:10,padding:"10px 14px",minWidth:150,flex:1 }}>
                 <div style={{ fontSize:10,color:"#7c3aed",textTransform:"uppercase",letterSpacing:0.7,fontWeight:700 }}>📅 Cobrado ese día</div>
                 <div style={{ fontWeight:900,color:"#7c3aed",fontSize:16,marginTop:2 }}>{formatCOP(cobradoDia)}</div>
@@ -5494,14 +5526,14 @@ function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esA
                 <div style={{ fontSize:10,color:GC.ink3,marginTop:1 }}>cobros + ingresos − egresos</div>
               </div>
             </>)}
-            {filtroDia && cargandoDia && <div style={{ background:"#faf5ff",border:"2px solid #a78bfa",borderRadius:10,padding:"10px 14px",flex:1,color:GC.ink3,fontSize:13 }}>Cargando...</div>}
+            {filtroDia&&cargandoDia&&<div style={{ background:"#faf5ff",border:"2px solid #a78bfa",borderRadius:10,padding:"10px 14px",flex:1,color:GC.ink3,fontSize:13 }}>Cargando...</div>}
             {[["💰 Total facturado",formatCOP(totalFact),"#0ea5e9"],["✅ Total cobrado",formatCOP(totalCobrado),"#22c55e"],["⏳ Saldo pendiente",formatCOP(totalPend),"#ef4444"]].map(([label,val,color])=>(
               <div key={label} style={{ background:"#fff",border:"1px solid "+color+"33",borderRadius:10,padding:"10px 14px",flex:1,minWidth:120 }}>
                 <div style={{ fontSize:10,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.7 }}>{label}</div>
                 <div style={{ fontWeight:800,color,fontSize:15,marginTop:2 }}>{val}</div>
               </div>
             ))}
-            {clienteBuscado && (
+            {clienteBuscado&&(
               <button onClick={()=>imprimirTirilla(clienteBuscado,facturasAudit)}
                 style={{ background:GC.brandLight,color:GC.brand,border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 14px",cursor:"pointer",fontWeight:700,fontSize:13,alignSelf:"stretch" }}>
                 🖨️ Tirilla del cliente
