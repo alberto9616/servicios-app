@@ -335,14 +335,19 @@ const db = {
     return resultados;
   },
   async crearFacturaAtomica(f) {
+    // Validar que zonaId y clienteId sean UUIDs válidos antes de enviar
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const zonaIdVal    = f.zonaId    && uuidRegex.test(f.zonaId)    ? f.zonaId    : null;
+    const clienteIdVal = f.clienteId && uuidRegex.test(f.clienteId) ? f.clienteId : null;
+    const creadoPorVal = f.creadoPor && uuidRegex.test(f.creadoPor) ? f.creadoPor : null;
     const { data, error } = await sb.rpc("crear_factura_atomica", {
-      p_cliente_id: f.clienteId, p_cliente_nombre: f.clienteNombre,
+      p_cliente_id: clienteIdVal, p_cliente_nombre: f.clienteNombre,
       p_cliente_cedula: f.clienteCedula||"", p_cliente_direccion: f.clienteDireccion||"",
-      p_zona_id: f.zonaId, p_mes: f.mes, p_anio: f.anio,
+      p_zona_id: zonaIdVal, p_mes: f.mes, p_anio: f.anio,
       p_concepto: f.concepto, p_monto: f.monto,
       p_items: f.items ? JSON.stringify(f.items) : null,
       p_fecha_emision: f.fechaEmision||fechaLocal(),
-      p_notas: f.notas||"", p_creado_por: f.creadoPor||null,
+      p_notas: f.notas||"", p_creado_por: creadoPorVal,
     });
     if (error) throw error;
     return mapFactura(data);
@@ -4642,14 +4647,16 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     { label: "🔴 Morosos", val: morosos + " clientes", color: GC.danger,
       tooltip: "Clientes con facturas de meses anteriores sin pagar (excluye anuladas).",
       getTirilla: () => {
-        const morososFact = facturas.filter(f =>
+        // Usa facturasHistoricas (meses anteriores) + facturas actuales pendientes de meses anteriores
+        const todas = [...facturasHistoricas, ...facturas].filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i);
+        const morososFact = todas.filter(f =>
           f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
           (f.anio < anioActual || (f.anio === anioActual && f.mes < mesActual))
-        );
+        ).sort((a,b) => (a.anio*12+a.mes) - (b.anio*12+b.mes));
         return {
           titulo: "🔴 Morosos — meses anteriores", subtitulo: "Clientes con facturas de meses anteriores sin pagar",
           total: morososFact.reduce((s,f)=>s+f.saldoPendiente,0), labelTotal: "Deuda morosa", colorTotal: GC.danger,
-          filas: morososFact.map(f=>({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio}`, estado: f.estado, monto: f.saldoPendiente }))
+          filas: morososFact.map(f=>({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio} · #${f.numeroRecibo||"—"}`, estado: f.estado, monto: f.saldoPendiente }))
         };
       }},
   ];
