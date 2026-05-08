@@ -4198,6 +4198,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       {subTab === "emitidas" && (
         <SeccionEmitidas
           usuario={usuario} facturas={facturas} setFacturas={setFacturas}
+          facturasHistoricas={facturasHistoricas}
           cargando={cargando} usuarios={usuarios} zonas={zonas}
           planes={planes} perfilesPago={perfilesPago}
           clientesVisibles={clientesVisibles} nombreEmpresa={nombreEmpresa}
@@ -4250,7 +4251,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
 }
 
 // ── Sección 1: Emitidas ───────────────────────────────────────
-function SeccionEmitidas({ usuario, facturas, setFacturas, cargando, usuarios, zonas, planes, perfilesPago, clientesVisibles, nombreEmpresa, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, agregarAbonoHoyRef, prontoPagos = [], setUsuarios, filtroMes: filtroMesProp, setFiltroMes: setFiltroMesProp, filtroAnio: filtroAnioProp, setFiltroAnio: setFiltroAnioProp }) {
+function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = [], cargando, usuarios, zonas, planes, perfilesPago, clientesVisibles, nombreEmpresa, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, agregarAbonoHoyRef, prontoPagos = [], setUsuarios, filtroMes: filtroMesProp, setFiltroMes: setFiltroMesProp, filtroAnio: filtroAnioProp, setFiltroAnio: setFiltroAnioProp }) {
   const [filtroMes, setFiltroMes] = useState(new Date().getMonth() + 1);
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
   const [busq, setBusq] = useState("");
