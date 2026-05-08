@@ -57,6 +57,7 @@ const mapUsuario = r => r ? ({
   contratoNum: r.contrato_num || 1,
   telefono2: r.telefono2 || null,
 }) : null;
+const [facturasHistoricas, setFacturasHistoricas] = useState([]);
 const mapAviso = r => r ? ({ id: r.id, tipo: r.tipo, titulo: r.titulo, mensaje: r.mensaje, fecha: r.fecha, afecta: r.afecta, activo: r.activo }) : null;
 const mapTicket = (r, mensajes = []) => r ? ({
   id: r.id, clienteId: r.cliente_id, clienteNombre: r.cliente_nombre,
