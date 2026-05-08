@@ -325,11 +325,12 @@ const db = {
     const resultados = [];
     for (let i = 1; i <= meses; i++) {
       const d = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
-      const { data } = await sb.from("facturas").select("*")
-        .eq("mes", d.getMonth() + 1).eq("anio", d.getFullYear())
-        .in("estado", ["Pendiente", "Vencido", "Abono parcial"])
-        .catch(() => ({ data: [] }));
-      if (data) resultados.push(...data.map(mapFactura));
+      try {
+        const { data, error } = await sb.from("facturas").select("*")
+          .eq("mes", d.getMonth() + 1).eq("anio", d.getFullYear())
+          .in("estado", ["Pendiente", "Vencido", "Abono parcial"]);
+        if (!error && data) resultados.push(...data.map(mapFactura));
+      } catch { /* ignorar errores por mes */ }
     }
     return resultados;
   },
