@@ -4233,6 +4233,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       {subTab === "historial" && (
         <SeccionHistorial
           usuario={usuario} facturas={facturas} setFacturas={setFacturas}
+          facturasHistoricas={facturasHistoricas}
           usuarios={usuarios} zonas={zonas}
           esAdmin={esAdmin} esSuperusuario={esSuperusuario}
           COLOR_ESTADO={COLOR_ESTADO} AccionesFact={AccionesFact}
@@ -4242,7 +4243,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       )}
 
       {subTab === "prontopago" && (
-        <SeccionProntoPagoReporte facturas={facturas} usuarios={usuarios} zonas={zonas} />
+        <SeccionProntoPagoReporte facturas={[...facturas, ...facturasHistoricas].filter((f,i,arr)=>arr.findIndex(x=>x.id===f.id)===i)} usuarios={usuarios} zonas={zonas} />
       )}
 
       {/* ════════════════════════════════════════════════════ */}
@@ -5279,7 +5280,7 @@ function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario
   );
 }
 
-function SeccionHistorial({ usuario, facturas, setFacturas, usuarios, zonas, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, nombreEmpresa, setConfirmDelete, setConfirmAnular }) {
+function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas = [], usuarios, zonas, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, nombreEmpresa, setConfirmDelete, setConfirmAnular }) {
   const [busq, setBusq] = useState("");
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
   const [filtroMes, setFiltroMes] = useState(0);
