@@ -4257,8 +4257,11 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
 
 // ── Sección 1: Emitidas ───────────────────────────────────────
 function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = [], cargando, usuarios, zonas, planes, perfilesPago, clientesVisibles, nombreEmpresa, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, agregarAbonoHoyRef, prontoPagos = [], setUsuarios, filtroMes: filtroMesProp, setFiltroMes: setFiltroMesProp, filtroAnio: filtroAnioProp, setFiltroAnio: setFiltroAnioProp }) {
-  const [filtroMes, setFiltroMes] = useState(new Date().getMonth() + 1);
-  const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
+  // filtroMes/filtroAnio vienen del padre (ModuloFacturacion) para disparar recarga en Supabase
+  const filtroMes     = filtroMesProp    ?? new Date().getMonth() + 1;
+  const setFiltroMes  = setFiltroMesProp ?? (() => {});
+  const filtroAnio    = filtroAnioProp   ?? new Date().getFullYear();
+  const setFiltroAnio = setFiltroAnioProp ?? (() => {});
   const [busq, setBusq] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("todos");
   const [showGenerarMasivo, setShowGenerarMasivo] = useState(false);
