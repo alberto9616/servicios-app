@@ -3722,10 +3722,8 @@ function OrdenServicio({ cliente, perfilesPago = [], numeroContrato, secretario,
 // MÓDULO FACTURACIÓN — Admin y Secretario
 // ══════════════════════════════════════════════════════════════
 function SeccionProntoPagoReporte({ facturas, usuarios, zonas }) {
-  const filtroMes     = filtroMesProp    ?? new Date().getMonth() + 1;
-  const setFiltroMes  = setFiltroMesProp ?? (() => {});
-  const filtroAnio    = filtroAnioProp   ?? new Date().getFullYear();
-  const setFiltroAnio = setFiltroAnioProp ?? (() => {});
+  const [filtroMes,  setFiltroMes]  = useState(new Date().getMonth() + 1);
+  const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
 
   const conDescuento = facturas.filter(f =>
     f.pronto_pago_aplicado &&
@@ -5307,8 +5305,8 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
   // Si hay búsqueda por nombre/cédula → ignorar filtros de fecha y buscar en TODAS
   const busqActiva = busq.trim().length >= 2;
 
-  // Cuando hay búsqueda activa, incluir también facturas históricas (meses anteriores)
-  const todasParaBusqueda = busqActiva
+  // Cuando hay búsqueda activa o filtroDia, incluir también facturas históricas
+  const todasParaBusqueda = (busqActiva || filtroDia)
     ? [...facturas, ...facturasHistoricas].filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i)
     : facturas;
 
@@ -5322,9 +5320,16 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
       return matchNombre || matchCedula || matchRecibo;
     }
     // Sin búsqueda: filtros normales por fecha
-    if (f.anio !== filtroAnio) return false;
-    if (filtroMes > 0 && f.mes !== filtroMes) return false;
-    if (filtroDia && f.fechaEmision !== filtroDia && f.fechaPago !== filtroDia) return false;
+    if (!filtroDia) {
+      if (f.anio !== filtroAnio) return false;
+      if (filtroMes > 0 && f.mes !== filtroMes) return false;
+    }
+    if (filtroDia) {
+      // Mostrar facturas pagadas ese día O creadas ese día (de cualquier mes)
+      const pagadaEseDia = f.fechaPago === filtroDia;
+      const emitidaEseDia = f.fechaEmision === filtroDia;
+      if (!pagadaEseDia && !emitidaEseDia) return false;
+    }
     return true;
   }).sort((a, b) => {
     if (busqActiva) {
