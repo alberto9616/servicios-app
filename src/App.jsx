@@ -4339,8 +4339,11 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
 
   // 🌐 TOTAL GLOBAL (acumulado histórico): suma de TODOS los abonos registrados + ingresos caja - egresos caja
   // Para facturas con pronto pago: lo cobrado = monto - saldoPendiente - descuento_pronto_pago
+  // Total global: combina mes actual + históricos (deduplicados) para acumulado real
+  const todasParaGlobal = [...facturas, ...facturasHistoricas]
+    .filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i);
   const totalGlobal =
-    facturas.filter(f => f.estado !== "Anulada").reduce((s, f) => {
+    todasParaGlobal.filter(f => f.estado !== "Anulada").reduce((s, f) => {
       const cobrado = f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0);
       return s + Math.max(0, cobrado);
     }, 0) +
