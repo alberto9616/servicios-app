@@ -103,6 +103,7 @@ const mapAbono = r => r ? ({
   clienteNombre: r.facturas?.cliente_nombre || null,
   concepto:      r.facturas?.concepto       || null,
   numeroRecibo:  r.facturas?.numero_recibo  || null,
+  numeroPago:    r.numero_pago              || null,
 }) : null;
 
 // ──────────────────────────────────────────────────────────
@@ -300,11 +301,15 @@ const db = {
     return data.map(mapAbono);
   },
   async registrarAbono(a) {
-    const { data, error } = await sb.from("abonos").insert({
-      factura_id: a.facturaId, monto: a.monto,
-      metodo_pago: a.metodoPago, fecha: a.fecha || fechaLocal(),
-      observacion: a.observacion || "", registrado_por: a.registradoPor || null,
-    }).select().single();
+    const uuidR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const { data, error } = await sb.rpc("registrar_abono_atomico", {
+      p_factura_id:     a.facturaId,
+      p_monto:          a.monto,
+      p_metodo_pago:    a.metodoPago || "Efectivo",
+      p_fecha:          a.fecha || fechaLocal(),
+      p_observacion:    a.observacion || "",
+      p_registrado_por: a.registradoPor && uuidR.test(a.registradoPor) ? a.registradoPor : null,
+    });
     if (error) throw error;
     return mapAbono(data);
   },
@@ -3227,8 +3232,13 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
     d += center(tel2);
     d += SEP_DASH;
 
-    // Recibo y fecha
+    // Recibo, número de pago y fecha
     d += cols("Recibo No.:", recibo);
+    // Número de pago consecutivo (se asigna al momento del cobro)
+    const numPago = abonos && abonos.length > 0 && abonos[0].numeroPago
+      ? "Pago #" + String(abonos[0].numeroPago).padStart(5, "0")
+      : null;
+    if (numPago) d += cols("No. de pago:", numPago);
     d += cols("Fecha:", fecha);
     d += SEP_DASH;
 
@@ -3418,11 +3428,17 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
 
           <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
 
-          {/* Número de recibo */}
+          {/* Número de recibo y número de pago */}
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
             <span>Recibo No.:</span>
             <span>#{String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0")}</span>
           </div>
+          {abonos && abonos.length > 0 && abonos[0].numeroPago && (
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>
+              <span>No. de pago:</span>
+              <span>#{String(abonos[0].numeroPago).padStart(5,"0")}</span>
+            </div>
+          )}
           <div style={{ fontSize: 11, marginBottom: 3 }}>Fecha: {factura.fechaEmision || fechaLocal()}</div>
 
           <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
