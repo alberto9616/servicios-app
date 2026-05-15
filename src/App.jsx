@@ -302,14 +302,28 @@ const db = {
   },
   async registrarAbono(a) {
     const uuidR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const { data, error } = await sb.rpc("registrar_abono_atomico", {
-      p_factura_id:     a.facturaId,
-      p_monto:          a.monto,
-      p_metodo_pago:    a.metodoPago || "Efectivo",
-      p_fecha:          a.fecha || fechaLocal(),
-      p_observacion:    a.observacion || "",
-      p_registrado_por: a.registradoPor && uuidR.test(a.registradoPor) ? a.registradoPor : null,
-    });
+    const regPor = a.registradoPor && uuidR.test(a.registradoPor) ? a.registradoPor : null;
+
+    // Intentar con RPC atómica (asigna número de pago consecutivo)
+    // Si la función no existe aún en Supabase, cae al INSERT directo
+    try {
+      const { data, error } = await sb.rpc("registrar_abono_atomico", {
+        p_factura_id:     a.facturaId,
+        p_monto:          a.monto,
+        p_metodo_pago:    a.metodoPago || "Efectivo",
+        p_fecha:          a.fecha || fechaLocal(),
+        p_observacion:    a.observacion || "",
+        p_registrado_por: regPor,
+      });
+      if (!error && data) return mapAbono(data);
+    } catch { /* RPC no disponible, usar INSERT directo */ }
+
+    // Fallback: INSERT directo (sin número de pago consecutivo)
+    const { data, error } = await sb.from("abonos").insert({
+      factura_id: a.facturaId, monto: a.monto,
+      metodo_pago: a.metodoPago, fecha: a.fecha || fechaLocal(),
+      observacion: a.observacion || "", registrado_por: regPor,
+    }).select().single();
     if (error) throw error;
     return mapAbono(data);
   },
