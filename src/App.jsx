@@ -304,8 +304,7 @@ const db = {
     const uuidR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const regPor = a.registradoPor && uuidR.test(a.registradoPor) ? a.registradoPor : null;
 
-    // Intentar con RPC atómica (asigna número de pago consecutivo)
-    // Si la función no existe aún en Supabase, cae al INSERT directo
+    // Intentar con RPC atómica (retorna JSON, asigna numero_pago consecutivo)
     try {
       const { data, error } = await sb.rpc("registrar_abono_atomico", {
         p_factura_id:     a.facturaId,
@@ -315,10 +314,27 @@ const db = {
         p_observacion:    a.observacion || "",
         p_registrado_por: regPor,
       });
-      if (!error && data) return mapAbono(data);
+      if (!error && data) {
+        // RPC retorna JSON — mapearlo manualmente
+        const r = typeof data === "string" ? JSON.parse(data) : data;
+        return {
+          id:           r.id,
+          facturaId:    r.factura_id,
+          monto:        Number(r.monto),
+          metodoPago:   r.metodo_pago,
+          fecha:        r.fecha,
+          observacion:  r.observacion || "",
+          registradoPor: r.registrado_por,
+          creadoEn:     r.created_at,
+          numeroPago:   r.numero_pago || null,
+          clienteNombre: null,
+          concepto:     null,
+          numeroRecibo: null,
+        };
+      }
     } catch { /* RPC no disponible, usar INSERT directo */ }
 
-    // Fallback: INSERT directo (sin número de pago consecutivo)
+    // Fallback: INSERT directo (sin numero_pago)
     const { data, error } = await sb.from("abonos").insert({
       factura_id: a.facturaId, monto: a.monto,
       metodo_pago: a.metodoPago, fecha: a.fecha || fechaLocal(),
