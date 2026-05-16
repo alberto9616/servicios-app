@@ -4004,6 +4004,8 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
     } catch (e) { setErrAbono("Error: " + e.message); }
     finally { setRegistrandoPago(false); }
   };
+
+  const abrirDetalle = async (f) => {
     // Verificar deuda anterior: combina facturas del mes actual + históricas
     const todasFacturasCliente = [...facturas, ...facturasHistoricas]
       .filter((x, i, arr) => arr.findIndex(y => y.id === x.id) === i); // dedup
