@@ -3982,8 +3982,6 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       await db.actualizarFactura(modalAbono.id, { saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: nuevoAbono.metodoPago, fecha_pago: nuevaFechaPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 });
       const facturaActualizada = { saldoPendiente: nuevoSaldo, estado: nuevoEstado, metodoPago: nuevoAbono.metodoPago, fechaPago: nuevaFechaPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 };
       setFacturas(prev => prev.map(f => f.id === modalAbono.id ? { ...f, ...facturaActualizada } : f));
-      // Actualizar también en resultados de búsqueda si la factura viene de ahí
-      setResultadosBusqueda(prev => prev.map(f => f.id === modalAbono.id ? { ...f, ...facturaActualizada } : f));
       setAbonosModal(prev => [abono, ...prev]);
       if (abono.fecha === hoyStr && agregarAbonoHoyRef.current?.agregar) {
         agregarAbonoHoyRef.current.agregar(abono);
@@ -4013,15 +4011,6 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
     } catch (e) { setErrAbono("Error: " + e.message); }
     finally { setRegistrandoPago(false); }
   };
-
-  // Merge resultados de búsqueda en facturas locales para que el cobro funcione
-  useEffect(() => {
-    if (resultadosBusqueda.length === 0) return;
-    resultadosBusqueda.forEach(r => {
-      // Si la factura no está en el estado local, agregarla temporalmente para que AccionesFact funcione
-      // No se modifica setFacturas para no alterar los totales del mes
-    });
-  }, [resultadosBusqueda]);
 
   const abrirDetalle = async (f) => {
     // Verificar deuda anterior: combina facturas del mes actual + históricas
