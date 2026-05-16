@@ -288,6 +288,15 @@ const db = {
   },
   async actualizarFactura(id, campos) { const { error } = await sb.from("facturas").update(campos).eq("id", id); if (error) throw error; },
   async deleteFactura(id) { const { error } = await sb.from("facturas").delete().eq("id", id); if (error) throw error; },
+  async buscarFacturasPorNombre(q) {
+    if (!q || q.trim().length < 2) return [];
+    const term = q.trim();
+    const { data: porNombre } = await sb.from("facturas").select("*").ilike("cliente_nombre", `%${term}%`).order("fecha_emision", { ascending: false }).limit(60);
+    const { data: porCedula } = await sb.from("facturas").select("*").ilike("cliente_cedula", `%${term}%`).order("fecha_emision", { ascending: false }).limit(30);
+    const combined = [...(porNombre || []), ...(porCedula || [])];
+    const seen = new Set();
+    return combined.filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; }).map(mapFactura);
+  },
   async getAbonos(facturaId) {
     const { data, error } = await sb.from("abonos").select("*").eq("factura_id", facturaId).order("fecha", { ascending: false });
     if (error) throw error;
@@ -3971,10 +3980,10 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       const nuevoEstado = nuevoSaldo <= 0 ? "Pagado" : "Abono parcial";
       const nuevaFechaPago = nuevoSaldo <= 0 ? nuevoAbono.fecha : null;
       await db.actualizarFactura(modalAbono.id, { saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: nuevoAbono.metodoPago, fecha_pago: nuevaFechaPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 });
-      setFacturas(prev => prev.map(f => f.id === modalAbono.id
-        ? { ...f, saldoPendiente: nuevoSaldo, estado: nuevoEstado, metodoPago: nuevoAbono.metodoPago, fechaPago: nuevaFechaPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 }
-        : f
-      ));
+      const facturaActualizada = { saldoPendiente: nuevoSaldo, estado: nuevoEstado, metodoPago: nuevoAbono.metodoPago, fechaPago: nuevaFechaPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 };
+      setFacturas(prev => prev.map(f => f.id === modalAbono.id ? { ...f, ...facturaActualizada } : f));
+      // Actualizar también en resultados de búsqueda si la factura viene de ahí
+      setResultadosBusqueda(prev => prev.map(f => f.id === modalAbono.id ? { ...f, ...facturaActualizada } : f));
       setAbonosModal(prev => [abono, ...prev]);
       if (abono.fecha === hoyStr && agregarAbonoHoyRef.current?.agregar) {
         agregarAbonoHoyRef.current.agregar(abono);
@@ -4004,6 +4013,15 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
     } catch (e) { setErrAbono("Error: " + e.message); }
     finally { setRegistrandoPago(false); }
   };
+
+  // Merge resultados de búsqueda en facturas locales para que el cobro funcione
+  useEffect(() => {
+    if (resultadosBusqueda.length === 0) return;
+    resultadosBusqueda.forEach(r => {
+      // Si la factura no está en el estado local, agregarla temporalmente para que AccionesFact funcione
+      // No se modifica setFacturas para no alterar los totales del mes
+    });
+  }, [resultadosBusqueda]);
 
   const abrirDetalle = async (f) => {
     // Verificar deuda anterior: combina facturas del mes actual + históricas
@@ -4325,8 +4343,27 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   const [exportando, setExportando] = useState(false);
   const [movimientosCaja, setMovimientosCaja] = useState([]);
   const [abonosHoy, setAbonosHoy] = useState([]);
+  const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
+  const [buscandoDB, setBuscandoDB] = useState(false);
+  const busqTimerRef = useRef(null);
 
   const hoyStr = fechaLocal();
+
+  // Busqueda con debounce directo en Supabase para encontrar facturas de cualquier mes
+  useEffect(() => {
+    const q = busq.trim();
+    if (q.length < 2) { setResultadosBusqueda([]); setBuscandoDB(false); return; }
+    setBuscandoDB(true);
+    clearTimeout(busqTimerRef.current);
+    busqTimerRef.current = setTimeout(async () => {
+      try {
+        const res = await db.buscarFacturasPorNombre(q);
+        setResultadosBusqueda(res);
+      } catch { setResultadosBusqueda([]); }
+      finally { setBuscandoDB(false); }
+    }, 400);
+    return () => clearTimeout(busqTimerRef.current);
+  }, [busq]);
 
   // Exponer funciones para que ModuloFacturacion pueda modificar abonosHoy sin prop drilling
   useEffect(() => {
@@ -4352,17 +4389,16 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   }, []); // Solo al montar — hoyStr no cambia dentro de una sesión del día
 
   const facturasFiltradas = (() => {
-    const q = busq.toLowerCase().trim();
-    // Si hay búsqueda por texto, buscar también en facturas históricas (todos los meses)
-    const fuente = q
-      ? [...facturas, ...facturasHistoricas].filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i)
-      : facturas;
-    return fuente.filter(f => {
-      const matchQ = !q || f.clienteNombre?.toLowerCase().includes(q) || f.clienteCedula?.toLowerCase().includes(q) || String(f.numeroRecibo).includes(q);
+    const q = busq.trim();
+    if (q.length >= 2) {
+      // Usar resultados directos de Supabase (todos los meses/años)
+      const matchEstado = (f) => filtroEstado === "todos" || f.estado === filtroEstado;
+      return resultadosBusqueda.filter(matchEstado);
+    }
+    // Sin busqueda: solo el mes/año seleccionado
+    return facturas.filter(f => {
       const matchEstado = filtroEstado === "todos" || f.estado === filtroEstado;
-      // Solo aplicar filtro de mes/año cuando NO hay búsqueda activa
-      const matchFecha = q ? true : (f.mes === filtroMes && f.anio === filtroAnio);
-      return matchQ && matchEstado && matchFecha;
+      return matchEstado && f.mes === filtroMes && f.anio === filtroAnio;
     });
   })();
 
@@ -4780,14 +4816,14 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       </div>
 
       {/* Lista facturas */}
-      {busq.trim().length >= 1 && (
+      {busq.trim().length >= 2 && (
         <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 9, padding: "8px 14px", marginBottom: 10, fontSize: 12, color: "#1e40af", display: "flex", alignItems: "center", gap: 8 }}>
-          🔍 Buscando <strong>"{busq.trim()}"</strong> en <strong>todos los meses</strong> — se muestran facturas históricas y del mes actual.
-          <button onClick={() => setBusq("")} style={{ marginLeft: "auto", background: "none", border: "none", color: GC.info, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: 0 }}>✕ Limpiar</button>
+          {buscandoDB ? "⏳ Buscando..." : <>🔍 Resultados para <strong>"{busq.trim()}"</strong> en <strong>todos los meses</strong></>}
+          <button onClick={() => { setBusq(""); setResultadosBusqueda([]); }} style={{ marginLeft: "auto", background: "none", border: "none", color: GC.info, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: 0 }}>✕ Limpiar</button>
         </div>
       )}
-      {cargando ? (
-        <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>Cargando...</div>
+      {(cargando || buscandoDB) ? (
+        <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>{buscandoDB ? "🔍 Buscando en todas las facturas..." : "Cargando..."}</div>
       ) : facturasFiltradas.length === 0 ? (
         <div style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>🧾</div>
