@@ -3855,6 +3855,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   const [abonosModal, setAbonosModal] = useState([]);
   const [nuevoAbono, setNuevoAbono] = useState({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: fechaLocal() });
   const [errAbono, setErrAbono] = useState("");
+  const [registrandoPago, setRegistrandoPago] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [confirmAnular, setConfirmAnular] = useState(null);
 
@@ -3936,10 +3937,12 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
 
   // ── registrar abono ──
   const registrarAbono = async () => {
+    if (registrandoPago) return; // evitar doble clic / doble pago
     setErrAbono("");
     const monto = Number(nuevoAbono.monto);
     if (!monto || monto <= 0) { setErrAbono("Ingresa un monto válido."); return; }
     if (monto > modalAbono.saldoPendiente) { setErrAbono(`Máximo: ${formatCOP(modalAbono.saldoPendiente)}`); return; }
+    setRegistrandoPago(true);
     try {
       // Verificar si aplica pronto pago
       const cliente = usuarios.find(u => u.id === modalAbono.clienteId);
@@ -3999,9 +4002,8 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
         }
       }
     } catch (e) { setErrAbono("Error: " + e.message); }
+    finally { setRegistrandoPago(false); }
   };
-
-  const abrirDetalle = async (f) => {
     // Verificar deuda anterior: combina facturas del mes actual + históricas
     const todasFacturasCliente = [...facturas, ...facturasHistoricas]
       .filter((x, i, arr) => arr.findIndex(y => y.id === x.id) === i); // dedup
@@ -4215,7 +4217,9 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
                 <Field label="Fecha de pago"><Inp type="date" value={nuevoAbono.fecha} onChange={e => setNuevoAbono({ ...nuevoAbono, fecha: e.target.value })} /></Field>
                 <Field label="Observación (opcional)"><Inp value={nuevoAbono.observacion} onChange={e => setNuevoAbono({ ...nuevoAbono, observacion: e.target.value })} /></Field>
                 {errAbono && <div style={{ color: GC.danger, fontSize: 13, marginBottom: 10 }}>⚠️ {errAbono}</div>}
-                <Btn onClick={registrarAbono} style={{ width: "100%", padding: "12px 0", fontSize: 15 }}>✅ Registrar pago</Btn>
+                <Btn onClick={registrarAbono} disabled={registrandoPago} style={{ width: "100%", padding: "12px 0", fontSize: 15, background: registrandoPago ? "#94a3b8" : undefined, cursor: registrandoPago ? "not-allowed" : "pointer" }}>
+                  {registrandoPago ? "⏳ Registrando..." : "✅ Registrar pago"}
+                </Btn>
               </div>
             )}
             {modalAbono.saldoPendiente <= 0 && (
@@ -4345,12 +4349,20 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Solo al montar — hoyStr no cambia dentro de una sesión del día
 
-  const facturasFiltradas = facturas.filter(f => {
+  const facturasFiltradas = (() => {
     const q = busq.toLowerCase().trim();
-    const matchQ = !q || f.clienteNombre?.toLowerCase().includes(q) || f.clienteCedula?.toLowerCase().includes(q) || String(f.numeroRecibo).includes(q);
-    const matchEstado = filtroEstado === "todos" || f.estado === filtroEstado;
-    return matchQ && matchEstado && f.mes === filtroMes && f.anio === filtroAnio;
-  });
+    // Si hay búsqueda por texto, buscar también en facturas históricas (todos los meses)
+    const fuente = q
+      ? [...facturas, ...facturasHistoricas].filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i)
+      : facturas;
+    return fuente.filter(f => {
+      const matchQ = !q || f.clienteNombre?.toLowerCase().includes(q) || f.clienteCedula?.toLowerCase().includes(q) || String(f.numeroRecibo).includes(q);
+      const matchEstado = filtroEstado === "todos" || f.estado === filtroEstado;
+      // Solo aplicar filtro de mes/año cuando NO hay búsqueda activa
+      const matchFecha = q ? true : (f.mes === filtroMes && f.anio === filtroAnio);
+      return matchQ && matchEstado && matchFecha;
+    });
+  })();
 
   // ── Totales ────────────────────────────────────────────────────
   const hoy = new Date();
@@ -4766,13 +4778,19 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       </div>
 
       {/* Lista facturas */}
+      {busq.trim().length >= 1 && (
+        <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 9, padding: "8px 14px", marginBottom: 10, fontSize: 12, color: "#1e40af", display: "flex", alignItems: "center", gap: 8 }}>
+          🔍 Buscando <strong>"{busq.trim()}"</strong> en <strong>todos los meses</strong> — se muestran facturas históricas y del mes actual.
+          <button onClick={() => setBusq("")} style={{ marginLeft: "auto", background: "none", border: "none", color: GC.info, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: 0 }}>✕ Limpiar</button>
+        </div>
+      )}
       {cargando ? (
         <div style={{ textAlign: "center", color: GC.ink4, padding: 40 }}>Cargando...</div>
       ) : facturasFiltradas.length === 0 ? (
         <div style={{ textAlign: "center", padding: 40 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>🧾</div>
-          <div style={{ color: GC.ink3 }}>Sin facturas para {MESES[filtroMes-1]} {filtroAnio}</div>
-          <div style={{ color: GC.ink4, fontSize: 13, marginTop: 4 }}>Usa "⚡ Generar" para crear las facturas del mes</div>
+          <div style={{ color: GC.ink3 }}>{busq.trim() ? `Sin facturas para "${busq.trim()}"` : `Sin facturas para ${MESES[filtroMes-1]} ${filtroAnio}`}</div>
+          <div style={{ color: GC.ink4, fontSize: 13, marginTop: 4 }}>{busq.trim() ? "Verifica el nombre o cédula del cliente" : 'Usa "⚡ Generar" para crear las facturas del mes'}</div>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -4785,6 +4803,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
                     {f.numeroRecibo && <span style={{ fontSize: 11, color: GC.ink4, marginLeft: 8 }}>#{f.numeroRecibo}</span>}
                   </div>
                   <div style={{ fontSize: 12, color: GC.ink3 }}>{f.concepto}</div>
+                  {busq.trim() && <div style={{ fontSize: 11, color: GC.purple, fontWeight: 700, marginTop: 2 }}>📅 {MESES[(f.mes||1)-1]} {f.anio}</div>}
                   {f.clienteDireccion && <div style={{ fontSize: 11, color: GC.ink4 }}>📍 {f.clienteDireccion}</div>}
                 </div>
                 <div style={{ textAlign: "right" }}>
