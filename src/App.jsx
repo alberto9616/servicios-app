@@ -907,14 +907,15 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
 
   const MENUS = {
     superusuario: [
-      { key: "tickets",     icon: "🎫", label: "Tickets" },
-      { key: "ordenes",     icon: "📋", label: "Órdenes" },
-      { key: "usuarios",    icon: "👥", label: "Usuarios" },
-      { key: "planes",      icon: "📦", label: "Planes" },
-      { key: "perfiles",    icon: "📅", label: "Perfiles pago" },
-      { key: "zonas",       icon: "🗺️", label: "Zonas" },
-      { key: "masivo",      icon: "⚡", label: "Asignación masiva" },
-      { key: "avisos",      icon: "📢", label: "Avisos" },
+      { key: "tickets",      icon: "🎫", label: "Tickets" },
+      { key: "ordenes",      icon: "📋", label: "Órdenes" },
+      { key: "usuarios",     icon: "👥", label: "Usuarios" },
+      { key: "planes",       icon: "📦", label: "Planes" },
+      { key: "perfiles",     icon: "📅", label: "Perfiles pago" },
+      { key: "zonas",        icon: "🗺️", label: "Zonas" },
+      { key: "masivo",       icon: "⚡", label: "Asignación masiva" },
+      { key: "metodos_pago", icon: "💳", label: "Métodos pago" },
+      { key: "avisos",       icon: "📢", label: "Avisos" },
       { key: "propaganda",  icon: "🎁", label: "Promociones" },
       { key: "facturacion", icon: "🧾", label: "Facturación y Caja" },
       { key: "equipo",      icon: "👷", label: "Equipo de trabajo" },
@@ -928,13 +929,14 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "planes",      icon: "📦", label: "Planes" },
       { key: "perfiles",    icon: "📅", label: "Perfiles pago" },
       { key: "zonas",       icon: "🗺️", label: "Zonas" },
-      { key: "masivo",      icon: "⚡", label: "Asignación masiva" },
-      { key: "avisos",      icon: "📢", label: "Avisos" },
-      { key: "propaganda",  icon: "🎁", label: "Promociones" },
-      { key: "facturacion", icon: "🧾", label: "Facturación y Caja" },
-      { key: "equipo",      icon: "👷", label: "Equipo de trabajo" },
-      { key: "resumen",     icon: "📊", label: "Resumen" },
-      { key: "micuenta",    icon: "🔐", label: "Mi cuenta" },
+      { key: "masivo",       icon: "⚡", label: "Asignación masiva" },
+      { key: "metodos_pago", icon: "💳", label: "Métodos pago" },
+      { key: "avisos",       icon: "📢", label: "Avisos" },
+      { key: "propaganda",   icon: "🎁", label: "Promociones" },
+      { key: "facturacion",  icon: "🧾", label: "Facturación y Caja" },
+      { key: "equipo",       icon: "👷", label: "Equipo de trabajo" },
+      { key: "resumen",      icon: "📊", label: "Resumen" },
+      { key: "micuenta",     icon: "🔐", label: "Mi cuenta" },
     ],
     secretario: [
       { key: "tickets",         icon: "🎫", label: "Tickets" },
@@ -3170,6 +3172,26 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
 // HELPERS FACTURACIÓN
 // ══════════════════════════════════════════════════════════════
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+// ── Métodos de pago — editable desde Panel Superusuario / Admin ──────────
+// Para agregar/quitar métodos sin tocar el código, usa el panel de configuración.
+// Esta lista es el valor por defecto si no hay configuración guardada.
+const METODOS_PAGO_DEFAULT = [
+  { id: "Efectivo",       emoji: "💵", label: "Efectivo" },
+  { id: "Transferencia",  emoji: "🏦", label: "Transferencia" },
+  { id: "Nequi",          emoji: "📱", label: "Nequi" },
+  { id: "Daviplata",      emoji: "📲", label: "Daviplata" },
+  { id: "Pago en oficina",emoji: "🏢", label: "Pago en oficina" },
+];
+// Cargar desde localStorage si el admin los personalizó
+let METODOS_PAGO = (() => {
+  try {
+    const saved = localStorage.getItem("gc_metodos_pago");
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return METODOS_PAGO_DEFAULT;
+})();
+const getMetodoEmoji = (nombre) => (METODOS_PAGO.find(m => m.id === nombre) || METODOS_PAGO_DEFAULT.find(m => m.id === nombre))?.emoji || "💳";
 const numeroALetras = (n) => {
   const u = ["","uno","dos","tres","cuatro","cinco","seis","siete","ocho","nueve","diez","once","doce","trece","catorce","quince","dieciséis","diecisiete","dieciocho","diecinueve","veinte","veintiuno","veintidós","veintitrés","veinticuatro","veinticinco","veintiséis","veintisiete","veintiocho","veintinueve"];
   const d = ["","","veinte","treinta","cuarenta","cincuenta","sesenta","setenta","ochenta","noventa"];
@@ -4240,7 +4262,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
                 </Field>
                 <Field label="Método de pago">
                   <Sel value={nuevoAbono.metodoPago} onChange={e => setNuevoAbono({ ...nuevoAbono, metodoPago: e.target.value })}>
-                    <option>Efectivo</option><option>Transferencia</option><option>Nequi</option><option>Daviplata</option><option>Pago en oficina</option>
+                    {METODOS_PAGO.map(m => <option key={m.id} value={m.id}>{m.emoji} {m.label}</option>)}
                   </Sel>
                 </Field>
                 <Field label="Fecha de pago"><Inp type="date" value={nuevoAbono.fecha} onChange={e => setNuevoAbono({ ...nuevoAbono, fecha: e.target.value })} /></Field>
@@ -5206,7 +5228,7 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
     const filas=facturasCierre.map(f=>{
       const colorBg={"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2"}[f.estado]||"#f1f5f9";
       const colorTxt={"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c"}[f.estado]||"#555";
-      const mp={"Efectivo":"💵","Transferencia":"🏦","Nequi":"📱","Daviplata":"📲"}[f.metodoPago]||"💳";
+      const mp=getMetodoEmoji(f.metodoPago);
       return `<tr><td>#${f.numeroRecibo||"—"}</td><td>${f.clienteNombre}</td><td>${f.fechaPago||f.fechaEmision||""}</td><td><span style="background:${colorBg};color:${colorTxt};padding:1px 5px;border-radius:3px;font-weight:bold">${f.estado}</span></td><td>${f.metodoPago?mp+" "+f.metodoPago:"—"}</td><td style="text-align:right">${cop(f.monto)}</td><td style="text-align:right;color:${f.saldoPendiente>0?"#dc2626":"#16a34a"}">${cop(f.monto-f.saldoPendiente)}</td></tr>`;
     }).join("");
     const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cierre</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;font-size:10pt}h1{font-size:16pt;margin:0 0 4px}h2{font-size:12pt;margin:0 0 12px;color:#555}.header{text-align:center;margin-bottom:16px;border-bottom:2px solid #000;padding-bottom:10px}.resumen{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}.card{border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;flex:1;min-width:120px}.card-label{font-size:8pt;color:#64748b;text-transform:uppercase}.card-val{font-size:13pt;font-weight:900;margin-top:2px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#f1f5f9;padding:6px 8px;text-align:left;border-bottom:2px solid #e2e8f0}td{padding:5px 8px;border-bottom:1px solid #f1f5f9}.total-row{font-weight:900;font-size:11pt;border-top:2px solid #000}.footer{margin-top:20px;border-top:1px dashed #aaa;padding-top:12px;font-size:9pt}.btn-print{display:block;margin:16px auto;padding:10px 28px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer}@media print{.btn-print{display:none}}</style></head><body><div class="header"><h1>${nombreEmpresa}</h1><h2>CIERRE DE CAJA</h2><div>Período: <strong>${fechaInicio}${fechaInicio!==fechaFin?" → "+fechaFin:""}</strong></div><div>Secretario: <strong>${nombreSec}</strong> · ${new Date().toLocaleString("es-CO")}</div></div><div class="resumen"><div class="card"><div class="card-label">📅 Cobrado</div><div class="card-val" style="color:#7c3aed">${cop(cobradoPeriodo)}</div></div><div class="card"><div class="card-label">🏦 Caja</div><div class="card-val" style="color:#16a34a">${cop(totalCajaPeriodo)}</div></div><div class="card"><div class="card-label">💰 Facturado</div><div class="card-val" style="color:#0ea5e9">${cop(totalFacturado)}</div></div><div class="card"><div class="card-label">✅ Cobrado</div><div class="card-val" style="color:#16a34a">${cop(totalCobrado)}</div></div><div class="card"><div class="card-label">⏳ Pendiente</div><div class="card-val" style="color:#ef4444">${cop(totalPendiente)}</div></div></div><table><thead><tr><th>#Recibo</th><th>Cliente</th><th>Fecha</th><th>Estado</th><th>Método</th><th style="text-align:right">Total</th><th style="text-align:right">Cobrado</th></tr></thead><tbody>${filas}</tbody><tr class="total-row"><td colspan="5">TOTALES</td><td style="text-align:right">${cop(totalFacturado)}</td><td style="text-align:right;color:#16a34a">${cop(totalCobrado)}</td></tr></table><div class="footer"><div>Firma: _______________________________</div></div><button class="btn-print" onclick="window.print()">🖨️ Imprimir</button></body></html>`;
@@ -5270,7 +5292,7 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
             </tr></thead>
             <tbody>
               {facturasCierre.map(f=>{
-                const mp={"Efectivo":"💵","Transferencia":"🏦","Nequi":"📱","Daviplata":"📲"}[f.metodoPago];
+                const mp=getMetodoEmoji(f.metodoPago);
                 return(<tr key={f.id} style={{borderBottom:"1px solid #f1f5f9"}}>
                   <td style={{padding:"8px 10px",color:GC.info,fontWeight:700}}>#{f.numeroRecibo||f.id?.slice(-6)}</td>
                   <td style={{padding:"8px 10px",fontWeight:600}}>{f.clienteNombre}</td>
@@ -5365,7 +5387,7 @@ function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario
         </Field>
         <Field label="Método de pago">
           <Sel value={metodoPago} onChange={e => setMetodoPago(e.target.value)}>
-            <option>Efectivo</option><option>Transferencia</option><option>Nequi</option><option>Daviplata</option><option>Pago en oficina</option>
+            {METODOS_PAGO.map(m => <option key={m.id} value={m.id}>{m.emoji} {m.label}</option>)}
           </Sel>
         </Field>
       </div>
@@ -5729,7 +5751,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
                 const w = window.open("", "_blank", "width=380,height=640");
                 const its = Array.isArray(f.items) ? f.items : [];
                 const cop = v => Number(v).toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
-                const mp = {"Efectivo":"💵","Transferencia":"🏦","Nequi":"📱","Daviplata":"📲"}[f.metodoPago]||"💳";
+                const mp = getMetodoEmoji(f.metodoPago);
                 w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Factura #${f.numeroRecibo}</title><style>@page{size:76mm auto;margin:8mm 6mm}body{font-family:'Courier New',monospace;font-size:9pt;width:64mm;padding:4mm;line-height:1.5}.c{text-align:center}.b{font-weight:bold}.sep{border:none;border-top:1px dashed #555;margin:6px 0}table{width:100%;border-collapse:collapse;font-size:8pt}td,th{padding:3px 2px}th{border-bottom:1px solid #000;font-size:7.5pt}.tr td{font-weight:900;border-top:2px solid #000;padding:5px 2px}@media print{.btn{display:none}body{width:64mm;padding:0}}</style></head><body><div class="c b" style="font-size:11pt;text-transform:uppercase">FACTURA #${f.numeroRecibo||"—"}</div><div class="c" style="font-size:8pt">Fecha: ${f.fechaPago||f.fechaEmision||"—"}</div><hr class="sep"/><div class="b">${f.clienteNombre}</div><div style="font-size:8pt">CC: ${f.clienteCedula||"—"}</div><div style="font-size:8pt">${f.clienteDireccion||""}</div><hr class="sep"/><table><thead><tr><th>Concepto</th><th style="text-align:right">Valor</th></tr></thead><tbody>${its.map(i=>`<tr><td>${i.concepto||""}</td><td style="text-align:right">${cop(i.monto||0)}</td></tr>`).join("")}</tbody><tr class="tr"><td>TOTAL</td><td style="text-align:right">${cop(f.monto)}</td></tr></table><hr class="sep"/><div style="font-size:8pt">Estado: <b>${f.estado}</b></div><div style="font-size:8pt">Método de pago: <b>${mp} ${f.metodoPago||"—"}</b></div>${f.saldoPendiente>0?`<div style="font-size:8pt;color:#dc2626">Saldo pendiente: <b>${cop(f.saldoPendiente)}</b></div>`:`<div style="font-size:8pt;color:#16a34a">✅ Pagado completo</div>`}<hr class="sep"/><div class="c" style="font-size:7.5pt">Gracias por su pago</div><br/><button class="btn" onclick="window.print()" style="display:block;margin:10px auto;padding:8px 20px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">🖨️ Imprimir</button></body></html>`);
                 w.document.close();
               };
@@ -5745,7 +5767,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
                 <td style={{ padding: "8px 12px" }}>
                   {f.metodoPago ? (
                     <span style={{ background: GC.infoBg, color: GC.info, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>
-                      {{"Efectivo":"💵","Transferencia":"🏦","Nequi":"📱","Daviplata":"📲"}[f.metodoPago]||"💳"} {f.metodoPago}
+                      {getMetodoEmoji(f.metodoPago)} {f.metodoPago}
                     </span>
                   ) : <span style={{ color: GC.ink4, fontSize: 11 }}>—</span>}
                 </td>
@@ -7855,6 +7877,163 @@ function exportarClientes(usuarios, facturas, zonas, planes, perfilesPago) {
   URL.revokeObjectURL(url);
 }
 
+// ══════════════════════════════════════════════════════════════
+// PANEL MÉTODOS DE PAGO — Gestión desde admin/superusuario
+// ══════════════════════════════════════════════════════════════
+function PanelMetodosPago({ onActualizar }) {
+  const [metodos, setMetodos] = React.useState(() => {
+    try { const s = localStorage.getItem("gc_metodos_pago"); if (s) return JSON.parse(s); } catch {}
+    return METODOS_PAGO_DEFAULT.map(m => ({ ...m }));
+  });
+  const [nuevoNombre, setNuevoNombre] = React.useState("");
+  const [nuevoEmoji, setNuevoEmoji] = React.useState("💳");
+  const [msg, setMsg] = React.useState(null);
+  const [dragIdx, setDragIdx] = React.useState(null);
+
+  const guardar = (lista) => {
+    try {
+      localStorage.setItem("gc_metodos_pago", JSON.stringify(lista));
+      // Actualizar la variable global en tiempo de ejecución
+      METODOS_PAGO.length = 0;
+      lista.forEach(m => METODOS_PAGO.push(m));
+      if (onActualizar) onActualizar(lista);
+    } catch {}
+  };
+
+  const agregar = () => {
+    const nombre = nuevoNombre.trim();
+    if (!nombre) { setMsg({ ok: false, txt: "Escribe el nombre del método." }); return; }
+    if (metodos.find(m => m.id.toLowerCase() === nombre.toLowerCase())) {
+      setMsg({ ok: false, txt: "Ya existe un método con ese nombre." }); return;
+    }
+    const nueva = [...metodos, { id: nombre, emoji: nuevoEmoji || "💳", label: nombre }];
+    setMetodos(nueva);
+    guardar(nueva);
+    setNuevoNombre("");
+    setNuevoEmoji("💳");
+    setMsg({ ok: true, txt: `"${nombre}" agregado correctamente.` });
+    setTimeout(() => setMsg(null), 2500);
+  };
+
+  const eliminar = (id) => {
+    if (METODOS_PAGO_DEFAULT.find(m => m.id === id)) {
+      if (!window.confirm(`"${id}" es un método predeterminado. ¿Seguro que deseas eliminarlo?`)) return;
+    }
+    const nueva = metodos.filter(m => m.id !== id);
+    setMetodos(nueva);
+    guardar(nueva);
+  };
+
+  const moverArriba = (idx) => {
+    if (idx === 0) return;
+    const nueva = [...metodos];
+    [nueva[idx-1], nueva[idx]] = [nueva[idx], nueva[idx-1]];
+    setMetodos(nueva);
+    guardar(nueva);
+  };
+  const moverAbajo = (idx) => {
+    if (idx === metodos.length - 1) return;
+    const nueva = [...metodos];
+    [nueva[idx], nueva[idx+1]] = [nueva[idx+1], nueva[idx]];
+    setMetodos(nueva);
+    guardar(nueva);
+  };
+
+  const restaurarDefecto = () => {
+    if (!window.confirm("¿Restaurar los métodos de pago predeterminados?")) return;
+    const def = METODOS_PAGO_DEFAULT.map(m => ({ ...m }));
+    setMetodos(def);
+    guardar(def);
+    setMsg({ ok: true, txt: "Métodos restaurados a los valores predeterminados." });
+    setTimeout(() => setMsg(null), 2500);
+  };
+
+  const EMOJIS_SUGERIDOS = ["💵","🏦","📱","📲","🏢","💳","🏧","💰","📧","🔄","💎","🎫"];
+
+  return (
+    <div>
+      <div style={{ background: GC.bg2, border: "1px solid " + GC.border, borderRadius: 12, padding: "14px 18px", marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14, marginBottom: 4 }}>💳 Métodos de pago activos</div>
+        <div style={{ fontSize: 12, color: GC.ink3, marginBottom: 14 }}>
+          Estos métodos aparecen al registrar un cobro. Puedes agregar, eliminar y reordenar.
+          Los cambios se guardan localmente en este navegador.
+        </div>
+
+        {msg && (
+          <div style={{ background: msg.ok ? GC.brandLight : GC.dangerBg, border: "1px solid " + (msg.ok ? GC.brandMid : GC.dangerBdr), borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13, color: msg.ok ? GC.brandText : GC.danger }}>
+            {msg.txt}
+          </div>
+        )}
+
+        {/* Lista editable */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+          {metodos.map((m, idx) => (
+            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: "1px solid " + GC.border, borderRadius: 10, padding: "10px 14px" }}>
+              <span style={{ fontSize: 20, minWidth: 28 }}>{m.emoji}</span>
+              <span style={{ flex: 1, fontWeight: 600, color: GC.ink, fontSize: 14 }}>{m.label}</span>
+              {METODOS_PAGO_DEFAULT.find(d => d.id === m.id) && (
+                <span style={{ fontSize: 10, color: GC.ink4, background: GC.bg3, borderRadius: 6, padding: "1px 7px" }}>predeterminado</span>
+              )}
+              <div style={{ display: "flex", gap: 4 }}>
+                <button onClick={() => moverArriba(idx)} disabled={idx === 0}
+                  style={{ background: GC.bg3, border: "none", borderRadius: 6, padding: "4px 8px", cursor: idx === 0 ? "not-allowed" : "pointer", opacity: idx === 0 ? 0.3 : 1, fontSize: 13 }}>▲</button>
+                <button onClick={() => moverAbajo(idx)} disabled={idx === metodos.length-1}
+                  style={{ background: GC.bg3, border: "none", borderRadius: 6, padding: "4px 8px", cursor: idx === metodos.length-1 ? "not-allowed" : "pointer", opacity: idx === metodos.length-1 ? 0.3 : 1, fontSize: 13 }}>▼</button>
+                <button onClick={() => eliminar(m.id)}
+                  style={{ background: GC.dangerBg, color: GC.danger, border: "none", borderRadius: 6, padding: "4px 9px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>🗑️</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Agregar nuevo */}
+        <div style={{ background: GC.brandLight, border: "1px solid " + GC.brandMid, borderRadius: 12, padding: "14px 16px" }}>
+          <div style={{ fontWeight: 700, color: GC.brandText, fontSize: 13, marginBottom: 10 }}>➕ Agregar método de pago</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <label style={{ fontSize: 11, color: GC.ink3, display: "block", marginBottom: 4 }}>Nombre</label>
+              <Inp value={nuevoNombre} onChange={e => setNuevoNombre(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && agregar()}
+                placeholder="Ej: PSE, Banco Agrario, Bold..." />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: GC.ink3, display: "block", marginBottom: 4 }}>Emoji</label>
+              <Inp value={nuevoEmoji} onChange={e => setNuevoEmoji(e.target.value)}
+                style={{ width: 60, textAlign: "center", fontSize: 20 }} maxLength={2} />
+            </div>
+            <div style={{ alignSelf: "flex-end" }}>
+              <Btn onClick={agregar} style={{ whiteSpace: "nowrap" }}>Agregar</Btn>
+            </div>
+          </div>
+          {/* Emojis sugeridos */}
+          <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, color: GC.ink3, alignSelf: "center" }}>Sugeridos:</span>
+            {EMOJIS_SUGERIDOS.map(e => (
+              <button key={e} onClick={() => setNuevoEmoji(e)}
+                style={{ background: nuevoEmoji === e ? GC.brandMid : "#fff", border: "1px solid " + GC.border, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 16, fontFamily: "inherit" }}>
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Restaurar */}
+        <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={restaurarDefecto}
+            style={{ background: "none", border: "1px solid " + GC.border2, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, color: GC.ink3, fontFamily: "inherit" }}>
+            🔄 Restaurar predeterminados
+          </button>
+        </div>
+      </div>
+
+      {/* Instrucción para producción */}
+      <div style={{ background: GC.infoBg, border: "1px solid " + GC.infoBdr, borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#1e40af" }}>
+        ℹ️ Los cambios se guardan en este navegador. Si usas múltiples PCs, repite la configuración en cada uno, o pide al desarrollador guardarlos en la base de datos.
+      </div>
+    </div>
+  );
+}
+
 function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion, tabExterno, setTabExterno }) {
   const [tabLocal, setTabLocal] = useState("usuarios"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const [editU, setEditU] = useState(null);
@@ -8055,14 +8234,14 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     zonas: zonas.length,
   };
 
-  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["cortes", "✂️ Cortes"], ["impresoras", "🖨️ Impresoras"], ["masivo", "⚡ Asignación masiva"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación y Caja"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
+  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["cortes", "✂️ Cortes"], ["impresoras", "🖨️ Impresoras"], ["masivo", "⚡ Asignación masiva"], ["metodos_pago", "💳 Métodos pago"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación y Caja"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
 
   const getNombreZona = (zonaId) => zonas.find(z => z.id === zonaId)?.nombre || "Sin zona";
 
   // Sincronizar tab con el SideNav
 
 
-  const LABEL_TAB = { tickets:"🎫 Tickets", ordenes:"📋 Órdenes", usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", masivo:"⚡ Asignación masiva", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación y Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta", superusuario:"👑 Superusuario" };
+  const LABEL_TAB = { tickets:"🎫 Tickets", ordenes:"📋 Órdenes", usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", masivo:"⚡ Asignación masiva", metodos_pago:"💳 Métodos de pago", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación y Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta", superusuario:"👑 Superusuario" };
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px" }}>
@@ -8151,6 +8330,13 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} zonaId={null} />}
 
       {/* ── TAB MI CUENTA ── */}
+      {tab === "metodos_pago" && (
+        <PanelMetodosPago onActualizar={(lista) => {
+          // Forzar re-render del componente para que los selects se actualicen
+          setTab("metodos_pago");
+        }} />
+      )}
+
       {tab === "micuenta" && (
         <div style={{ maxWidth: 480, margin: "0 auto" }}>
           <div style={{ background: "#ffffff", border: "1px solid " + GC.border2, borderRadius: 16, padding: 28 }}>
