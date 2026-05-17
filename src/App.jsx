@@ -343,11 +343,14 @@ const db = {
       }
     } catch { /* RPC no disponible, usar INSERT directo */ }
 
-    // Fallback: INSERT directo (sin numero_pago)
+    // Fallback: INSERT directo con numero_pago consecutivo
+    let numeroPago = null;
+    try { numeroPago = await db.getSiguienteNumeroPago(); } catch {}
     const { data, error } = await sb.from("abonos").insert({
       factura_id: a.facturaId, monto: a.monto,
       metodo_pago: a.metodoPago, fecha: a.fecha || fechaLocal(),
       observacion: a.observacion || "", registrado_por: regPor,
+      numero_pago: numeroPago,
     }).select().single();
     if (error) throw error;
     return mapAbono(data);
@@ -355,6 +358,10 @@ const db = {
   async getSiguienteNumeroRecibo() {
     const { data } = await sb.from("facturas").select("numero_recibo").not("numero_recibo", "is", null).order("numero_recibo", { ascending: false }).limit(1).single();
     return data ? (Number(data.numero_recibo) + 1) : 68849;
+  },
+  async getSiguienteNumeroPago() {
+    const { data } = await sb.from("abonos").select("numero_pago").not("numero_pago", "is", null).order("numero_pago", { ascending: false }).limit(1).single();
+    return data ? (Number(data.numero_pago) + 1) : 1;
   },
   async getFacturasByMesAnio(mes, anio) {
     const { data, error } = await sb.from("facturas").select("*")
@@ -3257,7 +3264,8 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
     const tel1     = "Tel: " + (telefono || "318-8255601");
     const tel2     = "Tel: 315-7613752";
     const recibo   = "#" + String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0");
-    const fecha    = factura.fechaPago || factura.fechaEmision || new Date().toISOString().split("T")[0];
+    const lastAbono = abonos && abonos.length > 0 ? abonos[0] : null;
+    const fecha    = lastAbono?.fecha || factura.fechaPago || factura.fechaEmision || new Date().toISOString().split("T")[0];
     const cliente  = (factura.clienteNombre || "").toUpperCase().slice(0, COLS);
     const concepto = (factura.concepto || `MES ${factura.mes||""} ${factura.anio||""}`).toUpperCase().slice(0, 24);
 
@@ -3467,18 +3475,30 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
 
           <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
 
-          {/* Número de recibo y número de pago */}
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-            <span>Recibo No.:</span>
-            <span>#{String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0")}</span>
-          </div>
-          {abonos && abonos.length > 0 && abonos[0].numeroPago && (
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, fontWeight: 700, color: "#7c3aed" }}>
-              <span>No. de pago:</span>
-              <span>#{String(abonos[0].numeroPago).padStart(5,"0")}</span>
-            </div>
-          )}
-          <div style={{ fontSize: 11, marginBottom: 3 }}>Fecha: {factura.fechaEmision || fechaLocal()}</div>
+          {/* Número de recibo, número de pago y fecha */}
+          {(() => {
+            const lastAbono = abonos && abonos.length > 0 ? abonos[0] : null;
+            const numPago = lastAbono?.numeroPago;
+            const fechaPago = lastAbono?.fecha || factura.fechaPago || factura.fechaEmision || fechaLocal();
+            return (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                  <span>Recibo No.:</span>
+                  <span style={{ fontWeight: 700 }}>#{String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0")}</span>
+                </div>
+                {numPago && (
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 800, color: "#7c3aed", marginTop: 2, marginBottom: 2 }}>
+                    <span>No. de pago:</span>
+                    <span>#{String(numPago).padStart(5,"0")}</span>
+                  </div>
+                )}
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                  <span>Fecha pago:</span>
+                  <span style={{ fontWeight: 700 }}>{fechaPago}</span>
+                </div>
+              </>
+            );
+          })()}
 
           <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
 
@@ -4226,9 +4246,22 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
                 <Field label="Fecha de pago"><Inp type="date" value={nuevoAbono.fecha} onChange={e => setNuevoAbono({ ...nuevoAbono, fecha: e.target.value })} /></Field>
                 <Field label="Observación (opcional)"><Inp value={nuevoAbono.observacion} onChange={e => setNuevoAbono({ ...nuevoAbono, observacion: e.target.value })} /></Field>
                 {errAbono && <div style={{ color: GC.danger, fontSize: 13, marginBottom: 10 }}>⚠️ {errAbono}</div>}
-                <Btn onClick={registrarAbono} disabled={registrandoPago} style={{ width: "100%", padding: "12px 0", fontSize: 15, background: registrandoPago ? "#94a3b8" : undefined, cursor: registrandoPago ? "not-allowed" : "pointer" }}>
-                  {registrandoPago ? "⏳ Registrando..." : "✅ Registrar pago"}
-                </Btn>
+                <button
+                  onClick={registrarAbono}
+                  disabled={registrandoPago}
+                  style={{
+                    width: "100%", padding: "13px 0", fontSize: 15, fontWeight: 800,
+                    background: registrandoPago ? "#94a3b8" : "#16a34a",
+                    color: "#ffffff",
+                    border: "none", borderRadius: 10,
+                    cursor: registrandoPago ? "not-allowed" : "pointer",
+                    opacity: registrandoPago ? 0.7 : 1,
+                    fontFamily: "inherit",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    boxShadow: registrandoPago ? "none" : "0 2px 8px #16a34a44",
+                  }}>
+                  {registrandoPago ? <><span style={{fontSize:16}}>⏳</span> Registrando...</> : <><span style={{fontSize:16}}>✅</span> Registrar pago</>}
+                </button>
               </div>
             )}
             {modalAbono.saldoPendiente <= 0 && (
