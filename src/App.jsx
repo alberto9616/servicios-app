@@ -290,7 +290,8 @@ const db = {
   async deleteFactura(id) { const { error } = await sb.from("facturas").delete().eq("id", id); if (error) throw error; },
   async buscarFacturasPorNombre(q) {
     if (!q || q.trim().length < 2) return [];
-    const term = q.trim();
+    // Colapsar espacios múltiples para que "Juan  Lopez" == "Juan Lopez"
+    const term = q.trim().replace(/\s+/g, " ");
     const { data: porNombre } = await sb.from("facturas").select("*").ilike("cliente_nombre", `%${term}%`).order("fecha_emision", { ascending: false }).limit(60);
     const { data: porCedula } = await sb.from("facturas").select("*").ilike("cliente_cedula", `%${term}%`).order("fecha_emision", { ascending: false }).limit(30);
     const combined = [...(porNombre || []), ...(porCedula || [])];
@@ -589,7 +590,29 @@ const TICKET_COLOR = { Abierto: GC.warning, "En proceso": GC.info, Resuelto: GC.
 const ORDEN_COLOR = { Pendiente: GC.warning, "En camino": GC.info, Completada: GC.brand, Cancelada: GC.danger };
 const TIPO_COLOR = { Mantenimiento: GC.info, Falla: GC.danger, Información: GC.purple };
 
-const TIPOS_ORDEN = ["Revisión / diagnóstico", "Instalación nueva", "Reconexión", "Punto adicional de TV", "Punto adicional de Internet", "Cotización", "Traslado / cambio de domicilio", "Reubicación de router", "Otro"];
+// ── Tipos de orden — editables desde Panel Admin / Superusuario ─────────────
+const TIPOS_ORDEN_DEFAULT = [
+  "Revisión / diagnóstico",
+  "Instalación nueva",
+  "Reconexión",
+  "Punto adicional de TV",
+  "Punto adicional de Internet",
+  "Cotización",
+  "Traslado / cambio de domicilio",
+  "Reubicación de router",
+  "Otro",
+];
+// Variable mutable — se actualiza desde el panel de configuración
+let TIPOS_ORDEN = (() => {
+  try {
+    const saved = localStorage.getItem("gc_tipos_orden");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [...TIPOS_ORDEN_DEFAULT];
+})();
 
 // Categorías del chat de soporte
 const CATEGORIAS_SOPORTE = [
@@ -631,6 +654,17 @@ const formatCOP = (n) => new Intl.NumberFormat("es-CO", { style: "currency", cur
 const formatDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric" });
 const formatTime = (ts) => new Date(ts).toLocaleString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 const genId = () => Date.now().toString() + Math.random().toString(36).slice(2, 6);
+
+// ── Normalizar texto para búsqueda — elimina acentos y colapsa espacios múltiples ──
+const norm = (str) => {
+  if (!str) return "";
+  return String(str)
+    .toLowerCase()
+    .normalize("NFD")                    // descompone tildes: á → a + ́
+    .replace(/[\u0300-\u036f]/g, "")   // elimina los diacríticos
+    .replace(/\s+/g, " ")               // colapsa 2+ espacios en 1
+    .trim();
+};
 
 // ══════════════════════════════════════════════════════════════
 // WISPRO SYNC — hook + banner
@@ -915,6 +949,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "zonas",        icon: "🗺️", label: "Zonas" },
       { key: "masivo",       icon: "⚡", label: "Asignación masiva" },
       { key: "metodos_pago", icon: "💳", label: "Métodos pago" },
+      { key: "tipos_orden",  icon: "📋", label: "Tipos de orden" },
       { key: "avisos",       icon: "📢", label: "Avisos" },
       { key: "propaganda",  icon: "🎁", label: "Promociones" },
       { key: "facturacion", icon: "🧾", label: "Facturación y Caja" },
@@ -931,6 +966,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "zonas",       icon: "🗺️", label: "Zonas" },
       { key: "masivo",       icon: "⚡", label: "Asignación masiva" },
       { key: "metodos_pago", icon: "💳", label: "Métodos pago" },
+      { key: "tipos_orden",  icon: "📋", label: "Tipos de orden" },
       { key: "avisos",       icon: "📢", label: "Avisos" },
       { key: "propaganda",   icon: "🎁", label: "Promociones" },
       { key: "facturacion",  icon: "🧾", label: "Facturación y Caja" },
@@ -1858,13 +1894,13 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   // Solo clientes de la misma zona
   const clientes = usuarios.filter(u => u.rol === "cliente" && u.zonaId === usuario.zonaId);
   const clientesFiltrados = clientes.filter(c => {
-    const q = busqCliente.toLowerCase().trim();
+    const q = norm(busqCliente);
     const matchQ = !q ||
-      c.nombre?.toLowerCase().includes(q) ||
-      c.cedula?.toLowerCase().includes(q) ||
-      c.usuario?.toLowerCase().includes(q) ||
-      c.telefono?.toLowerCase().includes(q) ||
-      c.direccion?.toLowerCase().includes(q);
+      norm(c.nombre).includes(q) ||
+      norm(c.cedula).includes(q) ||
+      norm(c.usuario).includes(q) ||
+      norm(c.telefono).includes(q) ||
+      norm(c.direccion).includes(q);
     const matchTipo = filtroTipo === "todos" ? true : filtroTipo === "inactivo" ? !c.activo : c.tipo === filtroTipo;
     return matchQ && matchTipo;
   });
@@ -2132,12 +2168,12 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
             )}
           </div>
           {(() => {
-            const q = busqTicket.toLowerCase().trim();
+            const q = norm(busqTicket);
             const filtrar = lista => !q ? lista : lista.filter(t => {
               const cliente = usuarios.find(u => u.id === t.clienteId);
               return (t.id && t.id.toLowerCase().includes(q)) ||
-                     (cliente?.cedula && cliente.cedula.toLowerCase().includes(q)) ||
-                     (t.clienteNombre && t.clienteNombre.toLowerCase().includes(q));
+                     (cliente?.cedula && norm(cliente.cedula).includes(q)) ||
+                     (t.clienteNombre && norm(t.clienteNombre).includes(q));
             });
             return (
               <>
@@ -2477,9 +2513,9 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                     onChange={e => setOrdenManual({ ...ordenManual, _busqExistente: e.target.value, _clienteExistenteDetectado: null })}
                   />
                   {ordenManual._busqExistente && ordenManual._busqExistente.length >= 2 && !ordenManual._clienteExistenteDetectado && (() => {
-                    const q = ordenManual._busqExistente.toLowerCase();
+                    const q = norm(ordenManual._busqExistente);
                     const res = usuarios.filter(u => u.rol === "cliente" && (
-                      u.nombre?.toLowerCase().includes(q) || (u.cedula||"").includes(q)
+                      norm(u.nombre).includes(q) || norm(u.cedula).includes(q)
                     )).slice(0, 5);
                     if (!res.length) return <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>No encontrado — será cliente nuevo</div>;
                     return (
@@ -2768,9 +2804,9 @@ function ClienteBuscador({ clientes, value, onChange, error, placeholder = "🔍
   const seleccionado = clientes.find(c => c.id === value);
   const resultados = busq.length >= 1
     ? clientes.filter(c =>
-        c.nombre?.toLowerCase().includes(busq.toLowerCase()) ||
-        c.cedula?.toLowerCase().includes(busq.toLowerCase()) ||
-        c.telefono?.toLowerCase().includes(busq.toLowerCase())
+        norm(c.nombre).includes(norm(busq)) ||
+        norm(c.cedula).includes(norm(busq)) ||
+        norm(c.telefono).includes(norm(busq))
       ).slice(0, 8)
     : [];
 
@@ -5092,7 +5128,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
               <Inp placeholder="🔍 Nombre o cédula..." value={facturaManual.busqCliente || ""} onChange={e => setFacturaManual({ ...facturaManual, busqCliente: e.target.value, clienteId: "" })} />
               {facturaManual.busqCliente && facturaManual.busqCliente.length >= 2 && !facturaManual.clienteId && (() => {
                 const q = facturaManual.busqCliente.toLowerCase();
-                const res = clientesVisibles.filter(c => c.nombre.toLowerCase().includes(q) || (c.cedula||"").toLowerCase().includes(q)).slice(0,8);
+                const res = clientesVisibles.filter(c => norm(c.nombre).includes(norm(q)) || norm(c.cedula).includes(norm(q))).slice(0,8);
                 return res.length > 0 ? (
                   <div style={{ border: "1px solid " + GC.border, borderRadius: 8, marginTop: 4, overflow: "hidden" }}>
                     {res.map(c => (
@@ -5463,10 +5499,10 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
   const facturasAudit = todasParaBusqueda.filter(f => {
     if (busqActiva) {
       // Solo filtrar por texto — todas las fechas disponibles
-      const q = busq.toLowerCase();
-      const matchNombre = f.clienteNombre?.toLowerCase().includes(q);
-      const matchCedula = f.clienteCedula?.toLowerCase().includes(q);
-      const matchRecibo = String(f.numeroRecibo || "").includes(q);
+      const q = norm(busq);
+      const matchNombre = norm(f.clienteNombre).includes(q);
+      const matchCedula = norm(f.clienteCedula).includes(q);
+      const matchRecibo = String(f.numeroRecibo || "").includes(busq.trim());
       return matchNombre || matchCedula || matchRecibo;
     }
     // Sin búsqueda: filtros normales por fecha
@@ -6605,7 +6641,7 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
   const q = busqTicket.toLowerCase().trim();
   const filtrar = lista => !q ? lista : lista.filter(t => {
     const cliente = usuarios.find(u => u.id === t.clienteId);
-    return (t.id && t.id.toLowerCase().includes(q)) || (cliente?.cedula && cliente.cedula.toLowerCase().includes(q)) || (t.clienteNombre && t.clienteNombre.toLowerCase().includes(q));
+    return (t.id && t.id.toLowerCase().includes(q)) || (cliente?.cedula && norm(cliente.cedula).includes(q)) || (t.clienteNombre && norm(t.clienteNombre).includes(q));
   });
 
   const TicketCard = ({ t }) => {
@@ -6903,17 +6939,17 @@ function AsignacionMasiva({ usuarios, setUsuarios, zonas, planes, perfilesPago }
   const clientes = React.useMemo(() => usuarios.filter(u => u.rol === "cliente"), [usuarios]);
 
   const clientesFiltrados = React.useMemo(() => {
-    const q = busq.toLowerCase().trim();
+    const q = norm(busq);
     return clientes.filter(u => {
       if (filtroZona   && u.zonaId       !== filtroZona)   return false;
       if (filtroPlan   && u.planId       !== filtroPlan)   return false;
       if (filtroPerfil && u.perfilPagoId !== filtroPerfil) return false;
       if (filtroEstado && u.estado       !== filtroEstado) return false;
       if (q && !(
-        u.nombre?.toLowerCase().includes(q) ||
-        u.cedula?.toLowerCase().includes(q) ||
-        u.usuario?.toLowerCase().includes(q) ||
-        u.telefono?.toLowerCase().includes(q)
+        norm(u.nombre).includes(q) ||
+        norm(u.cedula).includes(q) ||
+        norm(u.usuario).includes(q) ||
+        norm(u.telefono).includes(q)
       )) return false;
       return true;
     });
@@ -7878,6 +7914,163 @@ function exportarClientes(usuarios, facturas, zonas, planes, perfilesPago) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// PANEL TIPOS DE ORDEN — Gestión desde admin/superusuario
+// ══════════════════════════════════════════════════════════════
+function PanelTiposOrden() {
+  const [tipos, setTipos] = React.useState(() => {
+    try {
+      const saved = localStorage.getItem("gc_tipos_orden");
+      if (saved) { const p = JSON.parse(saved); if (Array.isArray(p) && p.length > 0) return p; }
+    } catch {}
+    return [...TIPOS_ORDEN_DEFAULT];
+  });
+  const [nuevo, setNuevo] = React.useState("");
+  const [msg, setMsg] = React.useState(null);
+
+  const guardar = (lista) => {
+    try {
+      localStorage.setItem("gc_tipos_orden", JSON.stringify(lista));
+      // Actualizar variable global en tiempo de ejecución
+      TIPOS_ORDEN.length = 0;
+      lista.forEach(t => TIPOS_ORDEN.push(t));
+    } catch {}
+  };
+
+  const mostrarMsg = (ok, txt) => {
+    setMsg({ ok, txt });
+    setTimeout(() => setMsg(null), 2800);
+  };
+
+  const agregar = () => {
+    const t = nuevo.trim();
+    if (!t) { mostrarMsg(false, "Escribe el nombre del tipo de orden."); return; }
+    if (tipos.find(x => x.toLowerCase() === t.toLowerCase())) {
+      mostrarMsg(false, "Ya existe ese tipo de orden."); return;
+    }
+    // Siempre insertar antes de "Otro" si existe, o al final
+    const sinOtro = tipos.filter(x => x !== "Otro");
+    const tieneOtro = tipos.includes("Otro");
+    const nueva = tieneOtro ? [...sinOtro, t, "Otro"] : [...sinOtro, t];
+    setTipos(nueva);
+    guardar(nueva);
+    setNuevo("");
+    mostrarMsg(true, `"${t}" agregado correctamente.`);
+  };
+
+  const eliminar = (tipo) => {
+    if (tipo === "Otro") {
+      if (!window.confirm('"Otro" es el tipo genérico de reserva. ¿Seguro que deseas eliminarlo?')) return;
+    }
+    if (TIPOS_ORDEN_DEFAULT.includes(tipo)) {
+      if (!window.confirm(`"${tipo}" es un tipo predeterminado. ¿Seguro que deseas eliminarlo?`)) return;
+    }
+    const nueva = tipos.filter(x => x !== tipo);
+    if (nueva.length === 0) { mostrarMsg(false, "Debe quedar al menos un tipo de orden."); return; }
+    setTipos(nueva);
+    guardar(nueva);
+  };
+
+  const moverArriba = (idx) => {
+    if (idx === 0) return;
+    const nueva = [...tipos];
+    [nueva[idx-1], nueva[idx]] = [nueva[idx], nueva[idx-1]];
+    setTipos(nueva); guardar(nueva);
+  };
+
+  const moverAbajo = (idx) => {
+    if (idx === tipos.length - 1) return;
+    const nueva = [...tipos];
+    [nueva[idx], nueva[idx+1]] = [nueva[idx+1], nueva[idx]];
+    setTipos(nueva); guardar(nueva);
+  };
+
+  const restaurar = () => {
+    if (!window.confirm("¿Restaurar los tipos de orden predeterminados?")) return;
+    const def = [...TIPOS_ORDEN_DEFAULT];
+    setTipos(def);
+    guardar(def);
+    mostrarMsg(true, "Tipos restaurados a los valores predeterminados.");
+  };
+
+  const esDefault = (t) => TIPOS_ORDEN_DEFAULT.includes(t);
+
+  return (
+    <div>
+      <div style={{ background: GC.bg2, border: "1px solid " + GC.border, borderRadius: 12, padding: "14px 18px", marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14, marginBottom: 4 }}>📋 Tipos de orden de trabajo</div>
+        <div style={{ fontSize: 12, color: GC.ink3, marginBottom: 14 }}>
+          Estos tipos aparecen al crear o editar órdenes de trabajo. Puedes agregar, eliminar y reordenar.
+          <br/><strong style={{ color: GC.warning }}>⚠️ "Otro"</strong> es especial: permite escribir un tipo libre — se recomienda mantenerlo al final.
+        </div>
+
+        {msg && (
+          <div style={{ background: msg.ok ? GC.brandLight : GC.dangerBg, border: "1px solid " + (msg.ok ? GC.brandMid : GC.dangerBdr), borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13, color: msg.ok ? GC.brandText : GC.danger }}>
+            {msg.ok ? "✅" : "⚠️"} {msg.txt}
+          </div>
+        )}
+
+        {/* Lista editable */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+          {tipos.map((t, idx) => (
+            <div key={t} style={{ display: "flex", alignItems: "center", gap: 10, background: "#fff", border: "1px solid " + GC.border, borderRadius: 10, padding: "10px 14px" }}>
+              <span style={{ background: GC.ink, color: "#fff", borderRadius: 6, minWidth: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{idx + 1}</span>
+              <span style={{ flex: 1, fontWeight: t === "Otro" ? 700 : 500, color: t === "Otro" ? GC.ink3 : GC.ink, fontSize: 14 }}>
+                {t}
+                {t === "Otro" && <span style={{ fontSize: 11, color: GC.ink4, marginLeft: 8 }}>(tipo libre)</span>}
+              </span>
+              {esDefault(t) && (
+                <span style={{ fontSize: 10, color: GC.ink4, background: GC.bg3, borderRadius: 6, padding: "1px 7px", whiteSpace: "nowrap" }}>predeterminado</span>
+              )}
+              <div style={{ display: "flex", gap: 4 }}>
+                <button onClick={() => moverArriba(idx)} disabled={idx === 0}
+                  style={{ background: GC.bg3, border: "none", borderRadius: 6, padding: "4px 8px", cursor: idx === 0 ? "not-allowed" : "pointer", opacity: idx === 0 ? 0.3 : 1, fontSize: 13 }}>▲</button>
+                <button onClick={() => moverAbajo(idx)} disabled={idx === tipos.length - 1}
+                  style={{ background: GC.bg3, border: "none", borderRadius: 6, padding: "4px 8px", cursor: idx === tipos.length-1 ? "not-allowed" : "pointer", opacity: idx === tipos.length-1 ? 0.3 : 1, fontSize: 13 }}>▼</button>
+                <button onClick={() => eliminar(t)}
+                  style={{ background: GC.dangerBg, color: GC.danger, border: "none", borderRadius: 6, padding: "4px 9px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>🗑️</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Agregar nuevo */}
+        <div style={{ background: GC.brandLight, border: "1px solid " + GC.brandMid, borderRadius: 12, padding: "14px 16px" }}>
+          <div style={{ fontWeight: 700, color: GC.brandText, fontSize: 13, marginBottom: 10 }}>➕ Agregar tipo de orden</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 11, color: GC.ink3, display: "block", marginBottom: 4 }}>Nombre del tipo</label>
+              <Inp
+                value={nuevo}
+                onChange={e => setNuevo(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && agregar()}
+                placeholder='Ej: Cambio de fibra, Instalación de cámara, Revisión de TV...'
+              />
+            </div>
+            <Btn onClick={agregar} style={{ whiteSpace: "nowrap", flexShrink: 0 }}>Agregar</Btn>
+          </div>
+          <div style={{ fontSize: 11, color: GC.ink3, marginTop: 6 }}>
+            💡 El nuevo tipo se agrega automáticamente antes de "Otro" para mantener ese al final.
+          </div>
+        </div>
+
+        {/* Restaurar */}
+        <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={restaurar}
+            style={{ background: "none", border: "1px solid " + GC.border2, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, color: GC.ink3, fontFamily: "inherit" }}>
+            🔄 Restaurar predeterminados
+          </button>
+        </div>
+      </div>
+
+      {/* Nota */}
+      <div style={{ background: GC.infoBg, border: "1px solid " + GC.infoBdr, borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#1e40af" }}>
+        ℹ️ Los cambios se guardan en este navegador. Si usas múltiples PCs, repite la configuración en cada uno.
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
 // PANEL MÉTODOS DE PAGO — Gestión desde admin/superusuario
 // ══════════════════════════════════════════════════════════════
 function PanelMetodosPago({ onActualizar }) {
@@ -8060,10 +8253,10 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   useEffect(() => { db.getProntoPago().then(setProntoPagos).catch(console.error); }, []);
 
   const usuariosFiltradosAdmin = (() => {
-    const q = busqAdmin.toLowerCase().trim();
+    const q = norm(busqAdmin);
     return usuarios.filter(u => {
       if (u.rol === "superusuario" && sesion.rol !== "superusuario") return false;
-      const matchQ = !q || u.nombre?.toLowerCase().includes(q) || u.cedula?.toLowerCase().includes(q) || u.usuario?.toLowerCase().includes(q) || u.telefono?.toLowerCase().includes(q);
+      const matchQ = !q || norm(u.nombre).includes(q) || norm(u.cedula).includes(q) || norm(u.usuario).includes(q) || norm(u.telefono).includes(q);
       if (!matchQ) return false;
       if (filtroAdminTipo === "cliente_final") { if (!(u.rol === "cliente" && u.tipo === "final")) return false; }
       else if (filtroAdminTipo === "cliente_empresa") { if (!(u.rol === "cliente" && u.tipo === "empresa")) return false; }
@@ -8234,14 +8427,14 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     zonas: zonas.length,
   };
 
-  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["cortes", "✂️ Cortes"], ["impresoras", "🖨️ Impresoras"], ["masivo", "⚡ Asignación masiva"], ["metodos_pago", "💳 Métodos pago"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación y Caja"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
+  const tabsAdmin = [["usuarios", "👥 Usuarios"], ["planes", "📦 Planes"], ["perfiles", "📅 Perfiles pago"], ["zonas", "🗺️ Zonas"], ["cortes", "✂️ Cortes"], ["impresoras", "🖨️ Impresoras"], ["masivo", "⚡ Asignación masiva"], ["metodos_pago", "💳 Métodos pago"], ["tipos_orden", "📋 Tipos de orden"], ["avisos", "📢 Avisos"], ["propaganda", "🎁 Promociones"], ["facturacion", "🧾 Facturación y Caja"], ["resumen", "📊 Resumen"], ["micuenta", "🔐 Mi cuenta"]];
 
   const getNombreZona = (zonaId) => zonas.find(z => z.id === zonaId)?.nombre || "Sin zona";
 
   // Sincronizar tab con el SideNav
 
 
-  const LABEL_TAB = { tickets:"🎫 Tickets", ordenes:"📋 Órdenes", usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", masivo:"⚡ Asignación masiva", metodos_pago:"💳 Métodos de pago", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación y Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta", superusuario:"👑 Superusuario" };
+  const LABEL_TAB = { tickets:"🎫 Tickets", ordenes:"📋 Órdenes", usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", masivo:"⚡ Asignación masiva", metodos_pago:"💳 Métodos de pago", tipos_orden:"📋 Tipos de orden", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación y Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta", superusuario:"👑 Superusuario" };
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px" }}>
@@ -8332,9 +8525,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {/* ── TAB MI CUENTA ── */}
       {tab === "metodos_pago" && (
         <PanelMetodosPago onActualizar={(lista) => {
-          // Forzar re-render del componente para que los selects se actualicen
           setTab("metodos_pago");
         }} />
+      )}
+
+      {tab === "tipos_orden" && (
+        <PanelTiposOrden />
       )}
 
       {tab === "micuenta" && (
