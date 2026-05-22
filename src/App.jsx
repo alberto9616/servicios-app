@@ -290,13 +290,31 @@ const db = {
   async deleteFactura(id) { const { error } = await sb.from("facturas").delete().eq("id", id); if (error) throw error; },
   async buscarFacturasPorNombre(q) {
     if (!q || q.trim().length < 2) return [];
-    // Colapsar espacios múltiples para que "Juan  Lopez" == "Juan Lopez"
     const term = q.trim().replace(/\s+/g, " ");
-    const { data: porNombre } = await sb.from("facturas").select("*").ilike("cliente_nombre", `%${term}%`).order("fecha_emision", { ascending: false }).limit(60);
-    const { data: porCedula } = await sb.from("facturas").select("*").ilike("cliente_cedula", `%${term}%`).order("fecha_emision", { ascending: false }).limit(30);
-    const combined = [...(porNombre || []), ...(porCedula || [])];
+    // Paginar para traer TODAS las facturas sin límite artificial
+    const PAGE = 500;
+    const fetchAll = async (query) => {
+      const all = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await query.range(from, from + PAGE - 1);
+        if (error || !data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+      return all;
+    };
+    const [porNombre, porCedula] = await Promise.all([
+      fetchAll(sb.from("facturas").select("*").ilike("cliente_nombre", `%${term}%`).order("anio", { ascending: false }).order("mes", { ascending: false })),
+      fetchAll(sb.from("facturas").select("*").ilike("cliente_cedula", `%${term}%`).order("anio", { ascending: false }).order("mes", { ascending: false })),
+    ]);
+    const combined = [...porNombre, ...porCedula];
     const seen = new Set();
-    return combined.filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; }).map(mapFactura);
+    return combined
+      .filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; })
+      .map(mapFactura)
+      .sort((a, b) => (b.anio * 12 + b.mes) - (a.anio * 12 + a.mes));
   },
   async getAbonos(facturaId) {
     const { data, error } = await sb.from("abonos").select("*").eq("factura_id", facturaId).order("fecha", { ascending: false });
@@ -4826,9 +4844,8 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
 
     // 🔴 MOROSOS — meses anteriores sin pagar
     { label: "🔴 Morosos", val: morosos + " clientes", color: GC.danger,
-      tooltip: "Clientes con facturas de meses anteriores sin pagar (excluye anuladas).",
+      tooltip: "Clientes con facturas de meses anteriores sin pagar (excluye anuladas). Clic para ver detalle o exportar Excel.",
       getTirilla: () => {
-        // Usa facturasHistoricas (meses anteriores) + facturas actuales pendientes de meses anteriores
         const todas = [...facturasHistoricas, ...facturas].filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i);
         const morososFact = todas.filter(f =>
           f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
@@ -4837,7 +4854,8 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         return {
           titulo: "🔴 Morosos — meses anteriores", subtitulo: "Clientes con facturas de meses anteriores sin pagar",
           total: morososFact.reduce((s,f)=>s+f.saldoPendiente,0), labelTotal: "Deuda morosa", colorTotal: GC.danger,
-          filas: morososFact.map(f=>({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio} · #${f.numeroRecibo||"—"}`, estado: f.estado, monto: f.saldoPendiente }))
+          filas: morososFact.map(f=>({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio} · #${f.numeroRecibo||"—"}`, estado: f.estado, monto: f.saldoPendiente })),
+          esMorosos: true,
         };
       }},
   ];
@@ -4877,10 +4895,22 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
             {label === "🏦 Total en caja" && (
               <div style={{ fontSize: 8, color: GC.ink4, marginTop: 2 }}>se reinicia cada día</div>
             )}
-            <div style={{ fontSize: 9, color: GC.ink4, marginTop: 3 }}>Ver detalle</div>
+            <div style={{ fontSize: 9, color: GC.ink4, marginTop: 3 }}>{label === "🔴 Morosos" ? "Ver detalle · 📊 Excel" : "Ver detalle"}</div>
           </div>
         ))}
       </div>
+
+      {/* Botón rápido exportar morosos */}
+      {morosos > 0 && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <button onClick={() => {
+            const n = exportarMorosos(facturasHistoricas, facturas, usuarios, zonas, new Date().getFullYear(), new Date().getMonth() + 1);
+            if (n) alert(`✅ Excel generado con ${n} clientes morosos.`);
+          }} style={{ background: "#fef2f2", color: GC.danger, border: "1px solid #fecaca", borderRadius: 9, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+            📊 Exportar {morosos} morosos a Excel
+          </button>
+        </div>
+      )}
 
       {/* Filtros lista */}
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
@@ -4945,6 +4975,14 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
                 <div style={{ fontWeight: 800, fontSize: 16, color: GC.ink }}>{tirilla.titulo}</div>
                 <div style={{ display: "flex", gap: 6 }}>
+                  {tirilla.esMorosos && (
+                    <button onClick={() => {
+                      const n = exportarMorosos(facturasHistoricas, facturas, usuarios, zonas, new Date().getFullYear(), new Date().getMonth() + 1);
+                      if (n) alert(`✅ Excel generado con ${n} clientes morosos.`);
+                    }} style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 9, padding: "0 14px", height: 32, cursor: "pointer", fontWeight: 700, fontSize: 13, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+                      📊 Excel morosos
+                    </button>
+                  )}
                   <button onClick={async () => {
                     const fecha = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
                     const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
@@ -5488,30 +5526,42 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
   const egresosDia   = filtroDia?movimientosCaja.filter(m=>m.tipo==="Egreso" &&m.fecha===filtroDia).reduce((s,m)=>s+m.monto,0):0;
   const totalCajaDia = cobradoDia+ingresosDia-egresosDia;
 
-  // Si hay búsqueda por nombre/cédula → ignorar filtros de fecha y buscar en TODAS
+  // Búsqueda directa en Supabase — igual que en Emitidas, trae TODAS las facturas sin límite
+  const [resultadosHistorial, setResultadosHistorial] = useState([]);
+  const [buscandoHistorial, setBuscandoHistorial] = useState(false);
+  const busqTimerHistorial = useRef(null);
+
   const busqActiva = busq.trim().length >= 2;
 
-  // Cuando hay búsqueda activa o filtroDia, incluir también facturas históricas
-  const todasParaBusqueda = (busqActiva || filtroDia)
+  useEffect(() => {
+    const q = busq.trim();
+    if (q.length < 2) { setResultadosHistorial([]); setBuscandoHistorial(false); return; }
+    setBuscandoHistorial(true);
+    clearTimeout(busqTimerHistorial.current);
+    busqTimerHistorial.current = setTimeout(async () => {
+      try {
+        const res = await db.buscarFacturasPorNombre(q);
+        setResultadosHistorial(res);
+      } catch { setResultadosHistorial([]); }
+      finally { setBuscandoHistorial(false); }
+    }, 400);
+    return () => clearTimeout(busqTimerHistorial.current);
+  }, [busq]);
+
+  // Cuando hay búsqueda activa usar resultados de Supabase (completos, sin límite de meses)
+  // Cuando hay filtroDia combinar facturas locales + históricas
+  const todasParaBusqueda = filtroDia
     ? [...facturas, ...facturasHistoricas].filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i)
     : facturas;
 
-  const facturasAudit = todasParaBusqueda.filter(f => {
-    if (busqActiva) {
-      // Solo filtrar por texto — todas las fechas disponibles
-      const q = norm(busq);
-      const matchNombre = norm(f.clienteNombre).includes(q);
-      const matchCedula = norm(f.clienteCedula).includes(q);
-      const matchRecibo = String(f.numeroRecibo || "").includes(busq.trim());
-      return matchNombre || matchCedula || matchRecibo;
-    }
+  const facturasAudit = (busqActiva ? resultadosHistorial : todasParaBusqueda).filter(f => {
+    if (busqActiva) return true; // ya vienen filtradas de Supabase
     // Sin búsqueda: filtros normales por fecha
     if (!filtroDia) {
       if (f.anio !== filtroAnio) return false;
       if (filtroMes > 0 && f.mes !== filtroMes) return false;
     }
     if (filtroDia) {
-      // Mostrar facturas pagadas ese día O creadas ese día (de cualquier mes)
       const pagadaEseDia = f.fechaPago === filtroDia;
       const emitidaEseDia = f.fechaEmision === filtroDia;
       if (!pagadaEseDia && !emitidaEseDia) return false;
@@ -5519,7 +5569,6 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
     return true;
   }).sort((a, b) => {
     if (busqActiva) {
-      // Ordenar por cliente, luego mes más reciente primero
       const nc = (a.clienteNombre||"").localeCompare(b.clienteNombre||"");
       if (nc !== 0) return nc;
       return (b.anio*12+b.mes) - (a.anio*12+a.mes);
@@ -5640,8 +5689,11 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
 
       {/* Banner búsqueda por nombre activa */}
       {busqActiva && (
-        <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#1e40af" }}>
-          🔍 Buscando <strong>"{busq}"</strong> en todas las facturas sin importar el mes o año
+        <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#1e40af", display: "flex", alignItems: "center", gap: 8 }}>
+          {buscandoHistorial
+            ? <><span>⏳</span> Buscando en todas las facturas...</>
+            : <><span>🔍</span> Resultados para <strong>"{busq.trim()}"</strong> en <strong>todos los meses</strong> · {facturasAudit.length} facturas</>
+          }
         </div>
       )}
 
@@ -5781,7 +5833,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
           </thead>
           <tbody>
             {facturasAudit.length === 0 ? (
-              <tr><td colSpan={9} style={{ padding: 30, textAlign: "center", color: GC.ink4 }}>Sin registros para el filtro seleccionado</td></tr>
+              <tr><td colSpan={9} style={{ padding: 30, textAlign: "center", color: GC.ink4 }}>{buscandoHistorial ? "⏳ Buscando..." : busq.trim() ? `Sin facturas para "${busq.trim()}"` : "Sin registros para el filtro seleccionado"}</td></tr>
             ) : facturasAudit.map(f => {
               const verFact = () => {
                 const w = window.open("", "_blank", "width=380,height=640");
@@ -8225,6 +8277,135 @@ function PanelMetodosPago({ onActualizar }) {
       </div>
     </div>
   );
+}
+
+// ══════════════════════════════════════════════════════════════
+// EXPORTAR MOROSOS — genera Excel con datos completos
+// ══════════════════════════════════════════════════════════════
+function exportarMorosos(facturasHistoricas, facturasMes, usuarios, zonas, anioActual, mesActual) {
+  const MESES_N = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+  // Combinar todas las facturas y filtrar morosos (meses anteriores sin pagar)
+  const todas = [...facturasHistoricas, ...facturasMes].filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i);
+  const morosasFact = todas.filter(f =>
+    f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
+    (f.anio < anioActual || (f.anio === anioActual && f.mes < mesActual))
+  );
+
+  if (morosasFact.length === 0) { alert("No hay clientes morosos para exportar."); return; }
+
+  // Agrupar facturas por cliente
+  const porCliente = {};
+  morosasFact.forEach(f => {
+    if (!porCliente[f.clienteId]) {
+      porCliente[f.clienteId] = {
+        clienteId: f.clienteId,
+        nombre: f.clienteNombre || "",
+        cedula: f.clienteCedula || "",
+        facturas: [],
+      };
+    }
+    porCliente[f.clienteId].facturas.push(f);
+  });
+
+  // Enriquecer con datos del usuario (teléfono, dirección, zona)
+  const rows = [];
+  Object.values(porCliente).forEach(c => {
+    const usuario = usuarios.find(u => u.id === c.clienteId);
+    const zona = zonas.find(z => z.id === usuario?.zonaId);
+    const deudaTotal = c.facturas.reduce((s, f) => s + f.saldoPendiente, 0);
+    // Ordenar facturas de más antigua a más reciente
+    const factsOrdenadas = [...c.facturas].sort((a, b) => (a.anio*12+a.mes) - (b.anio*12+b.mes));
+    const mesesDeuda = factsOrdenadas.map(f => `${MESES_N[(f.mes||1)-1]} ${f.anio} ($${(f.saldoPendiente||0).toLocaleString("es-CO")})`).join(" | ");
+    const cantMeses = c.facturas.length;
+
+    rows.push({
+      "Nombre completo":     c.nombre,
+      "Cédula / NIT":        c.cedula,
+      "Teléfono principal":  usuario?.telefono || "",
+      "Teléfono 2":          usuario?.telefono2 || "",
+      "Dirección":           usuario?.direccion || "",
+      "Zona":                zona?.nombre || "",
+      "Meses sin pagar":     cantMeses,
+      "Deuda total ($)":     deudaTotal,
+      "Detalle meses":       mesesDeuda,
+      "Estado servicio":     usuario?.estado || "",
+      "Plan":                usuario?.plan || "",
+      "UUID Wispro":         usuario?.wisproUuid || "",
+    });
+  });
+
+  // Ordenar por deuda descendente
+  rows.sort((a, b) => b["Deuda total ($)"] - a["Deuda total ($)"]);
+
+  if (rows.length === 0) { alert("No hay datos para exportar."); return; }
+
+  // Generar XLSX sin dependencias externas (mismo método que exportarClientes)
+  const headers = Object.keys(rows[0]);
+  const sep = ";";
+  const escCSV = val => {
+    const s = String(val ?? "").replace(/"/g, '""');
+    return s.includes(sep) || s.includes("
+") || s.includes('"') ? `"${s}"` : s;
+  };
+
+  // Construir XML para XLSX
+  const enc = new TextEncoder();
+  const esc = v => String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const cellRef = (r, c) => String.fromCharCode(65 + (c < 26 ? c : 0)) + (c >= 26 ? String.fromCharCode(65 + Math.floor(c/26)-1) + String.fromCharCode(65 + c%26) : "") + (r + 1);
+  const toXmlCell = (val, r, c) => {
+    const ref = String.fromCharCode(65 + c) + (r + 1);
+    if (typeof val === "number") return `<c r="${ref}" t="n"><v>${val}</v></c>`;
+    return `<c r="${ref}" t="inlineStr"><is><t>${esc(String(val ?? ""))}</t></is></c>`;
+  };
+
+  const allRows = [headers, ...rows.map(r => headers.map(h => r[h]))];
+  const sheetData = allRows.map((row, r) =>
+    `<row r="${r+1}">${row.map((v, c) => toXmlCell(v, r, c)).join("")}</row>`
+  ).join("");
+
+  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetData}</sheetData></worksheet>`;
+  const wbXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Morosos" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+  const relsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`;
+  const ctXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`;
+  const pkgRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+
+  const u32 = n => { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n, true); return b; };
+  const u16 = n => { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n, true); return b; };
+  const crc32 = data => {
+    let c = 0xFFFFFFFF;
+    const t = new Uint32Array(256).map((_, i) => { let v = i; for (let j=0;j<8;j++) v = v&1 ? 0xEDB88320^(v>>>1) : v>>>1; return v; });
+    for (const b of data) c = t[(c^b)&0xFF] ^ (c>>>8);
+    return (c^0xFFFFFFFF)>>>0;
+  };
+  const now = new Date();
+  const dosDate = ((now.getFullYear()-1980)<<9|(now.getMonth()+1)<<5|now.getDate())>>>0;
+  const dosTime = (now.getHours()<<11|now.getMinutes()<<5|(now.getSeconds()>>1))>>>0;
+  const files = {
+    "[Content_Types].xml": enc.encode(ctXml),
+    "_rels/.rels": enc.encode(pkgRels),
+    "xl/workbook.xml": enc.encode(wbXml),
+    "xl/_rels/workbook.xml.rels": enc.encode(relsXml),
+    "xl/worksheets/sheet1.xml": enc.encode(sheetXml),
+  };
+  const parts = []; const centralDir = []; let offset = 0;
+  for (const [name, data] of Object.entries(files)) {
+    const nameBytes = enc.encode(name); const crc = crc32(data);
+    const local = new Uint8Array([0x50,0x4B,0x03,0x04,20,0,...u16(0),...u16(0),...u16(dosTime),...u16(dosDate),...u32(crc),...u32(data.length),...u32(data.length),...u16(nameBytes.length),...u16(0),...nameBytes,...data]);
+    const central = new Uint8Array([0x50,0x4B,0x01,0x02,20,0,20,0,...u16(0),...u16(0),...u16(dosTime),...u16(dosDate),...u32(crc),...u32(data.length),...u32(data.length),...u16(nameBytes.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(offset),...nameBytes]);
+    parts.push(local); centralDir.push(central); offset += local.length;
+  }
+  const cdSize = centralDir.reduce((s,c)=>s+c.length,0);
+  const eocd = new Uint8Array([0x50,0x4B,0x05,0x06,...u16(0),...u16(0),...u16(centralDir.length),...u16(centralDir.length),...u32(cdSize),...u32(offset),...u16(0)]);
+  const zip = new Uint8Array([...parts.flatMap(p=>[...p]),...centralDir.flatMap(c=>[...c]),...eocd]);
+
+  const blob = new Blob([zip], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `morosos_gchogar_${fechaLocal()}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  return rows.length;
 }
 
 function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion, tabExterno, setTabExterno }) {
