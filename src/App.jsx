@@ -8342,12 +8342,7 @@ function exportarMorosos(facturasHistoricas, facturasMes, usuarios, zonas, anioA
 
   // Generar XLSX sin dependencias externas (mismo método que exportarClientes)
   const headers = Object.keys(rows[0]);
-  const sep = ";";
-  const escCSV = val => {
-    const s = String(val ?? "").replace(/"/g, '""');
-    return s.includes(sep) || s.includes("
-") || s.includes('"') ? `"${s}"` : s;
-  };
+  // escCSV not used in XLSX export
 
   // Construir XML para XLSX
   const enc = new TextEncoder();
