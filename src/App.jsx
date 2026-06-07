@@ -342,8 +342,15 @@ const db = {
         p_observacion:    a.observacion || "",
         p_registrado_por: regPor,
       });
-      if (!error && data) {
-        // RPC retorna JSON — mapearlo manualmente
+      if (error) {
+        // Si el error es que la función no existe, continuar con fallback
+        // Si es otro error (constraint, etc.), lanzarlo para no crear duplicado
+        const msg = error.message || error.code || "";
+        const esRPCNoExiste = msg.includes("does not exist") || msg.includes("42883") || msg.includes("PGRST");
+        if (!esRPCNoExiste) throw error; // Re-lanzar para evitar doble INSERT
+        // Si RPC no existe, caer al fallback INSERT
+      } else if (data) {
+        // RPC exitosa — mapear y retornar SIN ejecutar el INSERT de abajo
         const r = typeof data === "string" ? JSON.parse(data) : data;
         return {
           id:           r.id,
@@ -360,9 +367,14 @@ const db = {
           numeroRecibo: null,
         };
       }
-    } catch { /* RPC no disponible, usar INSERT directo */ }
+    } catch (rpcErr) {
+      // Solo continuar al fallback si la RPC no existe
+      const msg = String(rpcErr?.message || rpcErr?.code || "");
+      const esRPCNoExiste = msg.includes("does not exist") || msg.includes("42883") || msg.includes("PGRST") || msg === "";
+      if (!esRPCNoExiste) throw rpcErr; // Relanzar — no crear abono duplicado
+    }
 
-    // Fallback: INSERT directo con numero_pago consecutivo
+    // Fallback: INSERT directo con numero_pago consecutivo (solo si RPC no existe)
     let numeroPago = null;
     try { numeroPago = await db.getSiguienteNumeroPago(); } catch {}
     const { data, error } = await sb.from("abonos").insert({
@@ -435,6 +447,11 @@ const db = {
     return { id: data.id, tipo: data.tipo, concepto: data.concepto, monto: Number(data.monto), fecha: data.fecha, registradoPor: data.registrado_por, observacion: data.observacion || "", creadoEn: data.created_at };
   },
   async deleteMovimientoCaja(id) { const { error } = await sb.from("caja_movimientos").delete().eq("id", id); if (error) throw error; },
+  // Eliminar TODOS los abonos de una factura (usado al anular)
+  async deleteAbonosByFactura(facturaId) {
+    const { error } = await sb.from("abonos").delete().eq("factura_id", facturaId);
+    if (error) throw error;
+  },
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -4200,9 +4217,10 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           onCancel={() => setConfirmDelete(null)}
           onConfirm={async () => {
             try {
+              // Eliminar abonos primero para que no queden huérfanos y no sigan sumando
+              await db.deleteAbonosByFactura(confirmDelete.id);
               await db.deleteFactura(confirmDelete.id);
               setFacturas(p => p.filter(x => x.id !== confirmDelete.id));
-              // Quitar abonos de esta factura de abonosHoy para que los contadores bajen de inmediato
               if (agregarAbonoHoyRef?.current?.limpiarFactura) agregarAbonoHoyRef.current.limpiarFactura(confirmDelete.id);
             }
             catch(e) { alert("Error: " + e.message); }
@@ -4211,18 +4229,32 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       )}
       {confirmAnular && (
         <ModalConfirm titulo="¿Anular factura?" icono="🚫"
-          mensaje={`Se marcará como Anulada la factura de ${confirmAnular.nombre}. No sumará en ningún contador.`}
+          mensaje={`Se anulará la factura de ${confirmAnular.nombre} y se eliminarán sus abonos. El contador "Cobrado hoy" se actualizará automáticamente.`}
           onCancel={() => setConfirmAnular(null)}
           onConfirm={async () => {
             try {
-              const facturaReal = facturas.find(f => f.id === confirmAnular.id);
+              const facturaReal = facturas.find(f => f.id === confirmAnular.id) ||
+                                  resultadosBusqueda?.find(f => f.id === confirmAnular.id);
               const montoReal = facturaReal?.monto || 0;
-              // saldo_pendiente = monto -> monto - saldoPendiente = 0 -> no suma en totalGlobal
-              await db.actualizarFactura(confirmAnular.id, { estado: "Anulada", saldo_pendiente: montoReal });
-              setFacturas(p => p.map(f => f.id === confirmAnular.id ? { ...f, estado: "Anulada", saldoPendiente: montoReal } : f));
-              // Quitar abonos de esta factura de abonosHoy
-              if (agregarAbonoHoyRef?.current?.limpiarFactura) agregarAbonoHoyRef.current.limpiarFactura(confirmAnular.id);
-            } catch(e) { alert("Error: " + e.message); }
+              // 1. Eliminar TODOS los abonos de esta factura en Supabase
+              //    para que no sigan sumando en "Cobrado hoy" ni en el historial
+              await db.deleteAbonosByFactura(confirmAnular.id);
+              // 2. Marcar factura como Anulada con saldo = monto (no suma en totalGlobal)
+              await db.actualizarFactura(confirmAnular.id, {
+                estado: "Anulada",
+                saldo_pendiente: montoReal,
+                metodo_pago: null,
+                fecha_pago: null,
+              });
+              setFacturas(p => p.map(f => f.id === confirmAnular.id
+                ? { ...f, estado: "Anulada", saldoPendiente: montoReal, metodoPago: null, fechaPago: null }
+                : f
+              ));
+              // 3. Limpiar del estado local de abonosHoy para actualizar contador inmediatamente
+              if (agregarAbonoHoyRef?.current?.limpiarFactura) {
+                agregarAbonoHoyRef.current.limpiarFactura(confirmAnular.id);
+              }
+            } catch(e) { alert("Error al anular: " + e.message); }
             setConfirmAnular(null);
           }} />
       )}
