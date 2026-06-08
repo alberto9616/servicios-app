@@ -2941,9 +2941,10 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
         tecnico_id: editOrden.tecnicosIds[0],
         tecnicos_ids: editOrden.tecnicosIds,
         direccion: editOrden.direccion,
+        telefono_cliente: editOrden.telefonoCliente || null,
       });
       setOrdenes(prev => prev.map(o => o.id === editOrden.id
-        ? { ...o, tipo: editOrden.tipo, descripcion: editOrden.descripcion, fecha: editOrden.fecha, hora: editOrden.hora, tecnicoId: editOrden.tecnicosIds[0], tecnicosIds: editOrden.tecnicosIds, direccion: editOrden.direccion }
+        ? { ...o, tipo: editOrden.tipo, descripcion: editOrden.descripcion, fecha: editOrden.fecha, hora: editOrden.hora, tecnicoId: editOrden.tecnicosIds[0], tecnicosIds: editOrden.tecnicosIds, direccion: editOrden.direccion, telefonoCliente: editOrden.telefonoCliente || null }
         : o
       ));
       setEditOrden(null);
@@ -2962,51 +2963,108 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
   const otrosList = activas.filter(o => o.fecha !== hoy && o.fecha !== manana);
   const listaActual = subTab === "activas" ? ordenarPorFecha(activas) : subTab === "hoy" ? ordenarPorFecha(hoyList) : subTab === "manana" ? ordenarPorFecha(mananaList) : ordenarPorFecha(completadas);
   const OrdenCardSec = ({ o }) => {
+    const [abierta, setAbierta] = useState(false);
     const tecnicos_asignados = Array.isArray(o.tecnicosIds) && o.tecnicosIds.length > 0
       ? o.tecnicosIds.map(id => usuarios.find(u => u.id === id)).filter(Boolean)
       : (o.tecnicoId ? [usuarios.find(u => u.id === o.tecnicoId)].filter(Boolean) : []);
     const zona = zonas.find(z => z.id === o.zonaId);
     const colorEstado = { Pendiente: "#f59e0b", "En camino": "#0ea5e9", Completada: "#22c55e", Cancelada: "#ef4444" };
+    const esTraslado = o.tipo === "Traslado / cambio de domicilio";
+    const esInstalacion = o.tipo === "Instalación nueva";
+    const telPrincipal = o.telefonoCliente || (o.datosInstalacion?.telefono) || null;
     return (
-      <div style={{ background: "#fff", border: "1px solid " + GC.border, borderLeft: `4px solid ${colorEstado[o.estado] || "#94a3b8"}`, borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: GC.ink }}>{o.tipo} — {o.clienteNombre}</div>
-            <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>📅 {o.fecha} {o.hora} {zona ? `· ${zona.nombre}` : ""}</div>
-            {o.direccion && <div style={{ fontSize: 12, color: GC.ink2, marginTop: 2 }}>📍 {o.direccion}</div>}
-            {tecnicos_asignados.length > 0 && (
-              <div style={{ fontSize: 12, color: GC.purple, marginTop: 4, display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {tecnicos_asignados.map(t => (
-                  <span key={t.id} style={{ background: GC.purpleBg, color: GC.purple, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>🔧 {t.nombre}</span>
-                ))}
-              </div>
-            )}
-            {o.descripcion && <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4, fontStyle: "italic" }}>{o.descripcion}</div>}
-          </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <span style={{ background: colorEstado[o.estado] + "22", color: colorEstado[o.estado], borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{o.estado}</span>
-            <Sel value={o.estado} onChange={async e => {
-              const nuevoEstado = e.target.value;
-              try {
-                await db.actualizarEstadoOrden(o.id, nuevoEstado);
-                setOrdenes(prev => prev.map(x => x.id === o.id ? { ...x, estado: nuevoEstado } : x));
-              } catch(err) {
-                alert("Error al cambiar estado: " + (err.message || "Verifica tu conexión"));
-              }
-            }} style={{ fontSize: 12, padding: "4px 8px", width: "auto" }}>
-              {["Pendiente","En camino","Completada","Cancelada"].map(s => <option key={s} value={s}>{s}</option>)}
-            </Sel>
-            {o.estado !== "Completada" && o.estado !== "Cancelada" && (
-              <button onClick={() => setEditOrden({
-                ...o,
-                tecnicosIds: Array.isArray(o.tecnicosIds) && o.tecnicosIds.length > 0 ? o.tecnicosIds : (o.tecnicoId ? [o.tecnicoId] : [])
-              })}
-                style={{ background: GC.infoBg, color: GC.info, border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                ✏️ Editar
-              </button>
-            )}
+      <div style={{ background: "#fff", border: "1px solid " + GC.border, borderLeft: `4px solid ${colorEstado[o.estado] || "#94a3b8"}`, borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
+        {/* Cabecera — siempre visible */}
+        <div style={{ padding: "14px 16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: GC.ink }}>{o.tipo} — {o.clienteNombre}</div>
+              <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>📅 {o.fecha} {o.hora}{zona ? ` · ${zona.nombre}` : ""}</div>
+
+              {/* Teléfono clickeable */}
+              {telPrincipal && (
+                <div style={{ fontSize: 12, marginTop: 4, fontWeight: 600 }}>
+                  📞 <a href={`tel:${telPrincipal.replace(/\s/g,"")}`} style={{ color: GC.info, textDecoration: "none", borderBottom: "1px dashed " + GC.info }}>{telPrincipal}</a>
+                </div>
+              )}
+
+              {/* Dirección */}
+              {esTraslado ? (
+                <div style={{ background: "#f59e0b11", border: "1px solid #f59e0b33", borderRadius: 8, padding: "7px 10px", marginTop: 6, fontSize: 12 }}>
+                  <div style={{ color: GC.warning, fontWeight: 700, marginBottom: 3 }}>🏠 Traslado de domicilio</div>
+                  {o.direccionAnterior && <div style={{ color: GC.ink2 }}>📍 Anterior: <span style={{ color: GC.ink }}>{o.direccionAnterior}</span></div>}
+                  {o.direccionNueva && <div style={{ color: GC.ink2, marginTop: 2 }}>📍 Nueva: <span style={{ color: GC.brand, fontWeight: 600 }}>{o.direccionNueva}</span></div>}
+                  {!o.direccionNueva && o.direccion && <div style={{ color: GC.ink2 }}>📍 {o.direccion}</div>}
+                </div>
+              ) : (
+                o.direccion && <div style={{ fontSize: 12, color: GC.ink2, marginTop: 3 }}>📍 {o.direccion}</div>
+              )}
+
+              {/* Datos instalación nueva */}
+              {o.datosInstalacion && (
+                <div style={{ background: "#0ea5e911", border: "1px solid #0ea5e922", borderRadius: 8, padding: "7px 10px", marginTop: 5, fontSize: 12 }}>
+                  <div style={{ color: GC.info, fontWeight: 700, marginBottom: 2 }}>📋 Datos instalación nueva</div>
+                  <div style={{ color: GC.ink2 }}>CC: {o.datosInstalacion.cedula} · Tel: <a href={`tel:${(o.datosInstalacion.telefono||"").replace(/\s/g,"")}`} style={{ color: GC.info, textDecoration: "none", borderBottom: "1px dashed " + GC.info }}>{o.datosInstalacion.telefono}</a></div>
+                  {o.datosInstalacion.correo && <div style={{ color: GC.ink2 }}>✉️ {o.datosInstalacion.correo}</div>}
+                  {o.datosInstalacion.direccion && <div style={{ color: GC.ink2 }}>📍 {o.datosInstalacion.direccion}</div>}
+                </div>
+              )}
+
+              {/* Técnicos asignados */}
+              {tecnicos_asignados.length > 0 && (
+                <div style={{ fontSize: 12, marginTop: 5, display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {tecnicos_asignados.map(t => (
+                    <span key={t.id} style={{ background: GC.purpleBg, color: GC.purple, borderRadius: 6, padding: "2px 8px", fontWeight: 600 }}>🔧 {t.nombre}</span>
+                  ))}
+                </div>
+              )}
+
+              {o.descripcion && <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4, fontStyle: "italic" }}>{o.descripcion}</div>}
+            </div>
+
+            {/* Controles: estado + botones */}
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ background: colorEstado[o.estado] + "22", color: colorEstado[o.estado], borderRadius: 8, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{o.estado}</span>
+              <Sel value={o.estado} onChange={async e => {
+                const nuevoEstado = e.target.value;
+                try {
+                  await db.actualizarEstadoOrden(o.id, nuevoEstado);
+                  setOrdenes(prev => prev.map(x => x.id === o.id ? { ...x, estado: nuevoEstado } : x));
+                } catch(err) {
+                  alert("Error al cambiar estado: " + (err.message || "Verifica tu conexión"));
+                }
+              }} style={{ fontSize: 12, padding: "4px 8px", width: "auto" }}>
+                {["Pendiente","En camino","Completada","Cancelada"].map(s => <option key={s} value={s}>{s}</option>)}
+              </Sel>
+              {o.estado !== "Completada" && o.estado !== "Cancelada" && (
+                <button onClick={() => setEditOrden({
+                  ...o,
+                  tecnicosIds: Array.isArray(o.tecnicosIds) && o.tecnicosIds.length > 0 ? o.tecnicosIds : (o.tecnicoId ? [o.tecnicoId] : [])
+                })} style={{ background: GC.infoBg, color: GC.info, border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                  ✏️ Editar
+                </button>
+              )}
+              {/* Toggle notas */}
+              {(o.notas || []).length > 0 && (
+                <button onClick={() => setAbierta(!abierta)} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, color: GC.ink2 }}>
+                  {abierta ? "▲" : "▼"} {o.notas.length} nota{o.notas.length > 1 ? "s" : ""}
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Notas desplegables */}
+        {abierta && (o.notas || []).length > 0 && (
+          <div style={{ borderTop: "1px solid " + GC.border, padding: "10px 16px", background: GC.bg }}>
+            <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Notas de campo</div>
+            {o.notas.map((n, i) => (
+              <div key={i} style={{ background: "#fff", borderRadius: 8, padding: "7px 10px", marginBottom: 6, fontSize: 13, color: GC.ink2, border: "1px solid " + GC.border }}>
+                {n.texto} <span style={{ color: GC.ink3, fontSize: 11 }}>· {formatTime(n.ts)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -3055,6 +3113,10 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
 
               <Field label="Dirección">
                 <Inp value={editOrden.direccion || ""} onChange={e => setEditOrden({ ...editOrden, direccion: e.target.value })} />
+              </Field>
+
+              <Field label="Teléfono del cliente">
+                <Inp type="tel" value={editOrden.telefonoCliente || ""} onChange={e => setEditOrden({ ...editOrden, telefonoCliente: e.target.value })} placeholder="Ej: 3001234567" />
               </Field>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
