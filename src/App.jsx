@@ -5319,6 +5319,11 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
           }
           return !facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio);
         });
+        const conFactura = clientesVisibles.filter(c =>
+          c.monto && !ESTADOS_SIN_FACTURA.has(c.estado) &&
+          facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio)
+        );
+        const yaGenerado = conFactura.length > 0;
         const porPerfil = perfilesPago.map(pf => ({ perfil: pf, clientes: sinFactura.filter(c => c.perfilPagoId === pf.id), venceHoy: diaHoy >= pf.diaInicio && diaHoy <= pf.diaFin })).filter(g => g.clientes.length > 0);
         const sinPerfil = sinFactura.filter(c => !c.perfilPagoId);
         return (
@@ -5332,14 +5337,39 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
                 <button onClick={() => setShowGenerarMasivo(false)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
               </div>
               <div style={{ padding: "16px 24px 24px" }}>
-                <div style={{ background: "#eff6ff", border: "2px solid #bfdbfe", borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
+
+                {/* ── Aviso si el mes ya fue generado parcial o totalmente ── */}
+                {yaGenerado && sinFactura.length === 0 && (
+                  <div style={{ background: "#fef9c3", border: "2px solid #fbbf24", borderRadius: 12, padding: "14px 16px", marginBottom: 16, display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    <span style={{ fontSize: 24 }}>⚠️</span>
+                    <div>
+                      <div style={{ fontWeight: 800, color: "#92400e", fontSize: 14 }}>Facturas ya generadas</div>
+                      <div style={{ fontSize: 13, color: "#b45309", marginTop: 3 }}>
+                        {MESES[filtroMes-1]} {filtroAnio} ya tiene <strong>{conFactura.length} clientes</strong> con factura generada. No hay nuevos clientes pendientes.
+                      </div>
+                      <div style={{ fontSize: 12, color: "#92400e", marginTop: 6, fontStyle: "italic" }}>Si necesitas agregar un cliente específico usa el botón <strong>+ Manual</strong>.</div>
+                    </div>
+                  </div>
+                )}
+                {yaGenerado && sinFactura.length > 0 && (
+                  <div style={{ background: "#fff7ed", border: "2px solid #fed7aa", borderRadius: 12, padding: "12px 16px", marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <span style={{ fontSize: 20 }}>ℹ️</span>
+                    <div style={{ fontSize: 13, color: "#9a3412" }}>
+                      <strong>{conFactura.length} clientes</strong> ya tienen factura de {MESES[filtroMes-1]}. Solo se generarán los <strong>{sinFactura.length} restantes</strong>.
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ background: sinFactura.length === 0 ? "#f8fafc" : "#eff6ff", border: "2px solid " + (sinFactura.length === 0 ? "#e2e8f0" : "#bfdbfe"), borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                     <div>
-                      <div style={{ fontWeight: 700, color: "#1e40af", fontSize: 14 }}>🌐 Todos los clientes</div>
-                      <div style={{ fontSize: 12, color: "#3b82f6", marginTop: 2 }}>{sinFactura.length} sin factura en {MESES[filtroMes-1]}</div>
+                      <div style={{ fontWeight: 700, color: sinFactura.length === 0 ? GC.ink3 : "#1e40af", fontSize: 14 }}>🌐 Todos los clientes</div>
+                      <div style={{ fontSize: 12, color: sinFactura.length === 0 ? GC.ink4 : "#3b82f6", marginTop: 2 }}>
+                        {sinFactura.length === 0 ? "Todos ya tienen factura este mes" : `${sinFactura.length} sin factura en ${MESES[filtroMes-1]}`}
+                      </div>
                     </div>
                     <Btn disabled={generandoMasivo || sinFactura.length === 0} onClick={() => generarFacturasMasivas(null)} style={{ fontSize: 13 }}>
-                      {generandoMasivo ? "Generando..." : "⚡ Generar todos"}
+                      {generandoMasivo ? "Generando..." : sinFactura.length === 0 ? "✓ Ya generado" : "⚡ Generar todos"}
                     </Btn>
                   </div>
                 </div>
