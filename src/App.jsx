@@ -332,6 +332,11 @@ const db = {
     const uuidR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const regPor = a.registradoPor && uuidR.test(a.registradoPor) ? a.registradoPor : null;
 
+    // Validar que facturaId exista (los IDs son texto corto, no UUIDs)
+    if (!a.facturaId) {
+      throw new Error(`ID de factura vacío. Por favor recarga la página e intenta de nuevo.`);
+    }
+
     // Intentar con RPC atómica (retorna JSON, asigna numero_pago consecutivo)
     try {
       const { data, error } = await sb.rpc("registrar_abono_atomico", {
@@ -4064,6 +4069,13 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
     const monto = Number(nuevoAbono.monto);
     if (!monto || monto <= 0) { setErrAbono("Ingresa un monto válido."); return; }
     if (monto > modalAbono.saldoPendiente) { setErrAbono(`Máximo: ${formatCOP(modalAbono.saldoPendiente)}`); return; }
+
+    // Validar que el ID de factura exista (son IDs de texto corto, no UUIDs)
+    if (!modalAbono.id) {
+      setErrAbono(`Error interno: factura sin ID. Cierra este modal y recarga la página.`);
+      return;
+    }
+
     setRegistrandoPago(true);
     try {
       // Verificar si aplica pronto pago
