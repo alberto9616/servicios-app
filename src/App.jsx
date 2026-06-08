@@ -2972,13 +2972,36 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
     const esTraslado = o.tipo === "Traslado / cambio de domicilio";
     const esInstalacion = o.tipo === "Instalación nueva";
     const telPrincipal = o.telefonoCliente || (o.datosInstalacion?.telefono) || null;
+    const sugerenciasNoLeidas = (o.notas || []).filter(n => n.tipo === "sugerencia" && !n.leida);
+
+    // Marcar sugerencias como leídas al abrir
+    const abrirConLectura = async () => {
+      const nuevaAbierta = !abierta;
+      setAbierta(nuevaAbierta);
+      if (nuevaAbierta && sugerenciasNoLeidas.length > 0) {
+        const notasActualizadas = (o.notas || []).map(n =>
+          n.tipo === "sugerencia" && !n.leida ? { ...n, leida: true } : n
+        );
+        try {
+          await db.agregarNotaOrden(o.id, notasActualizadas);
+          setOrdenes(prev => prev.map(x => x.id === o.id ? { ...x, notas: notasActualizadas } : x));
+        } catch {}
+      }
+    };
     return (
       <div style={{ background: "#fff", border: "1px solid " + GC.border, borderLeft: `4px solid ${colorEstado[o.estado] || "#94a3b8"}`, borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
         {/* Cabecera — siempre visible */}
         <div style={{ padding: "14px 16px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: GC.ink }}>{o.tipo} — {o.clienteNombre}</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: GC.ink, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {o.tipo} — {o.clienteNombre}
+              {sugerenciasNoLeidas.length > 0 && (
+                <span style={{ background: "#f59e0b", color: "#fff", borderRadius: 20, padding: "1px 8px", fontSize: 11, fontWeight: 800, animation: "pulse 1.5s infinite" }}>
+                  💬 {sugerenciasNoLeidas.length} sugerencia{sugerenciasNoLeidas.length > 1 ? "s" : ""} nueva{sugerenciasNoLeidas.length > 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
               <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>📅 {o.fecha} {o.hora}{zona ? ` · ${zona.nombre}` : ""}</div>
 
               {/* Teléfono clickeable */}
@@ -3044,9 +3067,9 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
                   ✏️ Editar
                 </button>
               )}
-              {/* Toggle notas */}
+              {/* Toggle notas/sugerencias */}
               {(o.notas || []).length > 0 && (
-                <button onClick={() => setAbierta(!abierta)} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, color: GC.ink2 }}>
+                <button onClick={abrirConLectura} style={{ background: sugerenciasNoLeidas.length > 0 ? "#fef3c7" : GC.bg3, border: sugerenciasNoLeidas.length > 0 ? "1px solid #f59e0b" : "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, color: sugerenciasNoLeidas.length > 0 ? "#92400e" : GC.ink2, fontWeight: sugerenciasNoLeidas.length > 0 ? 700 : 400 }}>
                   {abierta ? "▲" : "▼"} {o.notas.length} nota{o.notas.length > 1 ? "s" : ""}
                 </button>
               )}
@@ -3057,19 +3080,62 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
         {/* Notas desplegables */}
         {abierta && (o.notas || []).length > 0 && (
           <div style={{ borderTop: "1px solid " + GC.border, padding: "10px 16px", background: GC.bg }}>
-            <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Notas de campo</div>
-            {o.notas.map((n, i) => (
-              <div key={i} style={{ background: "#fff", borderRadius: 8, padding: "7px 10px", marginBottom: 6, fontSize: 13, color: GC.ink2, border: "1px solid " + GC.border }}>
-                {n.texto} <span style={{ color: GC.ink3, fontSize: 11 }}>· {formatTime(n.ts)}</span>
+            {/* Sugerencias del técnico — siempre arriba y destacadas */}
+            {(o.notas || []).some(n => n.tipo === "sugerencia") && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#92400e", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>💬 Sugerencias del técnico</div>
+                {o.notas.filter(n => n.tipo === "sugerencia").map((n, i) => (
+                  <div key={i} style={{ background: "#fffbeb", border: "1px solid #f59e0b55", borderLeft: "3px solid #f59e0b", borderRadius: 8, padding: "9px 12px", marginBottom: 6, fontSize: 13 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#b45309" }}>🔧 {n.tecnico || "Técnico"}</span>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <span style={{ fontSize: 11, color: GC.ink3 }}>{formatTime(n.ts)}</span>
+                        {n.leida
+                          ? <span style={{ fontSize: 11, color: GC.brand, fontWeight: 700 }}>✓ Vista</span>
+                          : <span style={{ fontSize: 11, background: "#f59e0b", color: "#fff", borderRadius: 10, padding: "1px 6px", fontWeight: 700 }}>Nueva</span>
+                        }
+                      </div>
+                    </div>
+                    <div style={{ color: GC.ink, fontWeight: 500 }}>{n.texto}</div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
+            {/* Notas normales de campo */}
+            {(o.notas || []).some(n => !n.tipo) && (
+              <div>
+                <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Notas de campo</div>
+                {o.notas.filter(n => !n.tipo).map((n, i) => (
+                  <div key={i} style={{ background: "#fff", borderRadius: 8, padding: "7px 10px", marginBottom: 6, fontSize: 13, color: GC.ink2, border: "1px solid " + GC.border }}>
+                    {n.texto} <span style={{ color: GC.ink3, fontSize: 11 }}>· {formatTime(n.ts)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
     );
   };
+  // Contar sugerencias no leídas en todas las órdenes
+  const totalSugerenciasNoLeidas = ordenes.reduce((acc, o) =>
+    acc + (o.notas || []).filter(n => n.tipo === "sugerencia" && !n.leida).length, 0
+  );
+
   return (
     <div>
+      {/* Banner de sugerencias pendientes */}
+      {totalSugerenciasNoLeidas > 0 && (
+        <div style={{ background: "#fffbeb", border: "1px solid #f59e0b", borderRadius: 10, padding: "10px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 20 }}>💬</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, color: "#92400e", fontSize: 14 }}>
+              {totalSugerenciasNoLeidas} sugerencia{totalSugerenciasNoLeidas > 1 ? "s" : ""} nueva{totalSugerenciasNoLeidas > 1 ? "s" : ""} de técnicos
+            </div>
+            <div style={{ fontSize: 12, color: "#b45309" }}>Abre las órdenes marcadas para ver los detalles y corregir la información.</div>
+          </div>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
         {[["activas","Todas activas"],["hoy","Hoy"],["manana","Mañana"],["historial","Historial"]].map(([k,l]) => (
           <button key={k} onClick={() => setSubTab(k)} style={{ padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer", background: subTab === k ? "#0ea5e9" : "#f1f5f9", color: subTab === k ? "#fff" : "#475569", fontWeight: 600, fontSize: 13 }}>{l}</button>
@@ -3187,6 +3253,7 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
   const OrdenCard = ({ orden }) => {
     const [abierta, setAbierta] = useState(false);
     const [nota, setNota] = useState("");
+    const [sugerencia, setSugerencia] = useState("");
     const esTraslado = orden.tipo === "Traslado / cambio de domicilio";
     const esInstalacion = orden.tipo === "Instalación nueva";
 
@@ -3198,6 +3265,23 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
         setOrdenes(p => p.map(o => o.id === orden.id ? { ...o, notas: nuevasNotas } : o));
         setNota("");
       } catch (err) { console.error("Error agregando nota:", err); }
+    };
+
+    const enviarSugerencia = async () => {
+      if (!sugerencia.trim()) return;
+      const nuevasNotas = [...(orden.notas || []), {
+        texto: sugerencia.trim(),
+        ts: Date.now(),
+        tipo: "sugerencia",
+        tecnico: usuario.nombre,
+        leida: false,
+      }];
+      try {
+        await db.agregarNotaOrden(orden.id, nuevasNotas);
+        setOrdenes(p => p.map(o => o.id === orden.id ? { ...o, notas: nuevasNotas } : o));
+        setSugerencia("");
+        alert("✅ Sugerencia enviada. El secretario la recibirá en la orden.");
+      } catch (err) { alert("Error al enviar: " + err.message); }
     };
     return (
       <div style={{ background: "#ffffff", border: "1px solid " + (orden.prioridad === "alta" ? "#8b5cf633" : "#e2e8f0"), borderLeft: "4px solid " + ORDEN_COLOR[orden.estado], borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
@@ -3248,9 +3332,17 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
               <div style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Notas</div>
                 {orden.notas.map((n, i) => (
-                  <div key={i} style={{ background: GC.bg3, borderRadius: 8, padding: "7px 10px", marginBottom: 6, fontSize: 13, color: GC.ink2 }}>
-                    {n.texto} <span style={{ color: GC.ink3, fontSize: 11 }}>· {formatTime(n.ts)}</span>
-                  </div>
+                  n.tipo === "sugerencia" ? (
+                    <div key={i} style={{ background: "#fef3c711", border: "1px solid #f59e0b44", borderLeft: "3px solid #f59e0b", borderRadius: 8, padding: "7px 10px", marginBottom: 6, fontSize: 13, color: GC.ink2 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#b45309", textTransform: "uppercase", letterSpacing: 0.6 }}>💬 Tu sugerencia · </span>
+                      {n.texto} <span style={{ color: GC.ink3, fontSize: 11 }}>· {formatTime(n.ts)}</span>
+                      {n.leida && <span style={{ marginLeft: 6, fontSize: 11, color: GC.brand, fontWeight: 700 }}>✓ Vista</span>}
+                    </div>
+                  ) : (
+                    <div key={i} style={{ background: GC.bg3, borderRadius: 8, padding: "7px 10px", marginBottom: 6, fontSize: 13, color: GC.ink2 }}>
+                      {n.texto} <span style={{ color: GC.ink3, fontSize: 11 }}>· {formatTime(n.ts)}</span>
+                    </div>
+                  )
                 ))}
               </div>
             )}
@@ -3260,6 +3352,22 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
                   <Inp value={nota} onChange={e => setNota(e.target.value)} onKeyDown={e => e.key === "Enter" && agregarNota()} placeholder="Agregar nota de campo..." />
                   <Btn onClick={agregarNota} style={{ padding: "9px 14px", fontSize: 13 }}>+</Btn>
                 </div>
+
+                {/* ── Buzón de sugerencias ── */}
+                <div style={{ background: "#fffbeb", border: "1px solid #f59e0b44", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", marginBottom: 6 }}>💬 Reportar corrección al secretario</div>
+                  <div style={{ fontSize: 11, color: "#b45309", marginBottom: 8 }}>¿Dirección incorrecta, teléfono equivocado u otro dato a corregir? Envíalo aquí.</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Inp value={sugerencia} onChange={e => setSugerencia(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && enviarSugerencia()}
+                      placeholder="Ej: La dirección correcta es Calle 5 No 3-20..."
+                      style={{ fontSize: 13 }} />
+                    <Btn onClick={enviarSugerencia} style={{ padding: "9px 14px", fontSize: 13, background: "#f59e0b", color: "#fff", border: "none", whiteSpace: "nowrap" }}>
+                      Enviar
+                    </Btn>
+                  </div>
+                </div>
+
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {orden.estado === "Pendiente" && <Btn onClick={() => cambiarEstado(orden.id, "En camino")} variant="primary" style={{ fontSize: 13 }}>🚗 En camino</Btn>}
                   {orden.estado === "En camino" && <Btn onClick={() => cambiarEstado(orden.id, "Completada")} variant="success" style={{ fontSize: 13 }}>✅ Marcar completada</Btn>}
