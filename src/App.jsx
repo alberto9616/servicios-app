@@ -4768,16 +4768,21 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   // 🔴 MOROSOS: clientes con facturas de MESES ANTERIORES sin pagar
   // Busca en TODAS las facturas cargadas, no solo las del mes actual
   // Morosos: clientes con facturas de meses ANTERIORES pendientes (usa histórico)
-  const morosos = [...new Set(
-    facturasHistoricas
+  // Moroso = debe 2 o más meses (incluye mes actual)
+  const _todasPendMorosos = [...new Set(
+    [...facturasHistoricas, ...facturas]
+      .filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i)
       .filter(f =>
-        f.estado !== "Anulada" &&
-        f.estado !== "Pagado" &&
-        f.saldoPendiente > 0 &&
-        (f.anio < anioActual || (f.anio === anioActual && f.mes < mesActual))
+        f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
+        (f.anio < anioActual || (f.anio === anioActual && f.mes <= mesActual))
       )
-      .map(f => f.clienteId)
-  )].length;
+  )];
+  const _mesesPorCliente = {};
+  _todasPendMorosos.forEach(f => {
+    if (!_mesesPorCliente[f.clienteId]) _mesesPorCliente[f.clienteId] = new Set();
+    _mesesPorCliente[f.clienteId].add(`${f.anio}-${f.mes}`);
+  });
+  const morosos = Object.values(_mesesPorCliente).filter(s => s.size >= 2).length;
 
   const WHATSAPP_EDGE_URL = "https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/whatsapp-facturas";
 
@@ -4820,7 +4825,9 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
           const [anioInicio, mesInicio] = c.fechaPrimeraFactura.split("-").map(Number);
           if (filtroAnio < anioInicio || (filtroAnio === anioInicio && filtroMes < mesInicio)) return false;
         }
-        const yaExiste = facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio);
+        // Verificar tanto en estado local como en las recién creadas en esta misma ejecución
+        const yaExiste = facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio)
+                      || clientesCreados.some(x => x.id === c.id);
         if (yaExiste) return false;
         if (perfilFiltro === null) return true;
         if (perfilFiltro === "sin_perfil") return !c.perfilPagoId;
@@ -5058,17 +5065,25 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
           .map(f => ({ nombre: f.clienteNombre, detalle: f.concepto, estado: f.estado, monto: f.saldoPendiente }))
       })},
 
-    // 🔴 MOROSOS — meses anteriores sin pagar
+    // 🔴 MOROSOS — deben 2 o más meses
     { label: "🔴 Morosos", val: morosos + " clientes", color: GC.danger,
-      tooltip: "Clientes con facturas de meses anteriores sin pagar (excluye anuladas). Clic para ver detalle o exportar Excel.",
+      tooltip: "Clientes que deben 2 o más meses (incluye mes actual). Clic para ver detalle o exportar Excel.",
       getTirilla: () => {
         const todas = [...facturasHistoricas, ...facturas].filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i);
-        const morososFact = todas.filter(f =>
+        const pendientes = todas.filter(f =>
           f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
-          (f.anio < anioActual || (f.anio === anioActual && f.mes < mesActual))
-        ).sort((a,b) => (a.anio*12+a.mes) - (b.anio*12+b.mes));
+          (f.anio < anioActual || (f.anio === anioActual && f.mes <= mesActual))
+        );
+        const mesesPorCliente = {};
+        pendientes.forEach(f => {
+          if (!mesesPorCliente[f.clienteId]) mesesPorCliente[f.clienteId] = new Set();
+          mesesPorCliente[f.clienteId].add(`${f.anio}-${f.mes}`);
+        });
+        const morososFact = pendientes
+          .filter(f => mesesPorCliente[f.clienteId]?.size >= 2)
+          .sort((a,b) => (a.anio*12+a.mes) - (b.anio*12+b.mes));
         return {
-          titulo: "🔴 Morosos — meses anteriores", subtitulo: "Clientes con facturas de meses anteriores sin pagar",
+          titulo: "🔴 Morosos — 2+ meses sin pagar", subtitulo: "Clientes que deben 2 o más meses (incluye mes actual)",
           total: morososFact.reduce((s,f)=>s+f.saldoPendiente,0), labelTotal: "Deuda morosa", colorTotal: GC.danger,
           filas: morososFact.map(f=>({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio} · #${f.numeroRecibo||"—"}`, estado: f.estado, monto: f.saldoPendiente })),
           esMorosos: true,
@@ -8112,10 +8127,23 @@ function exportarClientes(usuarios, facturas, zonas, planes, perfilesPago) {
 
   // Para cada cliente calcular deuda total
   const rows = clientes.map(c => {
-    const facturasCliente = facturas.filter(f => f.clienteId === c.id && f.estado !== "Anulada");
+    const facturasClienteRaw = facturas.filter(f => f.clienteId === c.id && f.estado !== "Anulada");
+    // Deduplicar por (mes, anio): si hay dos facturas del mismo mes, sumar los saldos pendientes en una sola entrada
+    const facturasMap = new Map();
+    for (const f of facturasClienteRaw) {
+      const key = `${f.anio}-${String(f.mes).padStart(2,"0")}`;
+      if (!facturasMap.has(key)) {
+        facturasMap.set(key, { ...f });
+      } else {
+        // Hay duplicado — acumular el saldo pendiente real (no duplicar el monto base)
+        const existing = facturasMap.get(key);
+        existing.saldoPendiente = (existing.saldoPendiente || 0) + (f.saldoPendiente || 0);
+      }
+    }
+    const facturasCliente = Array.from(facturasMap.values());
     const deudaTotal = facturasCliente.reduce((s, f) => s + (f.saldoPendiente || 0), 0);
     const facturasPendientes = facturasCliente.filter(f => f.saldoPendiente > 0);
-    const ultimaFactura = facturasCliente.sort((a,b) => (b.anio*12+b.mes) - (a.anio*12+a.mes))[0];
+    const ultimaFactura = [...facturasCliente].sort((a,b) => (b.anio*12+b.mes) - (a.anio*12+a.mes))[0];
 
     const zona = zonas.find(z => z.id === c.zonaId);
     const plan = planes.find(p => p.id === c.planId);
@@ -8503,14 +8531,25 @@ function exportarMorosos(facturasHistoricas, facturasMes, usuarios, zonas, anioA
 
   // Combinar todas las facturas y filtrar morosos (meses anteriores sin pagar)
   const todas = [...facturasHistoricas, ...facturasMes].filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i);
-  const morosasFact = todas.filter(f =>
+  // Todas las facturas pendientes hasta el mes actual (inclusive)
+  const todasPendientes = todas.filter(f =>
     f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
-    (f.anio < anioActual || (f.anio === anioActual && f.mes < mesActual))
+    (f.anio < anioActual || (f.anio === anioActual && f.mes <= mesActual))
   );
 
-  if (morosasFact.length === 0) { alert("No hay clientes morosos para exportar."); return; }
+  // Solo son morosos los clientes que deben 2 o más meses
+  const clientesConDeuda = {};
+  todasPendientes.forEach(f => {
+    if (!clientesConDeuda[f.clienteId]) clientesConDeuda[f.clienteId] = new Set();
+    clientesConDeuda[f.clienteId].add(`${f.anio}-${f.mes}`);
+  });
+  const morosasFact = todasPendientes.filter(f =>
+    clientesConDeuda[f.clienteId] && clientesConDeuda[f.clienteId].size >= 2
+  );
 
-  // Agrupar facturas por cliente
+  if (morosasFact.length === 0) { alert("No hay clientes morosos para exportar (ninguno debe 2 o más meses)."); return; }
+
+  // Agrupar facturas por cliente — deduplicando por (mes, anio) para evitar dobles
   const porCliente = {};
   morosasFact.forEach(f => {
     if (!porCliente[f.clienteId]) {
@@ -8518,11 +8557,20 @@ function exportarMorosos(facturasHistoricas, facturasMes, usuarios, zonas, anioA
         clienteId: f.clienteId,
         nombre: f.clienteNombre || "",
         cedula: f.clienteCedula || "",
-        facturas: [],
+        facturas: new Map(), // key: "anio-mes"
       };
     }
-    porCliente[f.clienteId].facturas.push(f);
+    const key = `${f.anio}-${String(f.mes).padStart(2,"0")}`;
+    const existing = porCliente[f.clienteId].facturas.get(key);
+    if (!existing) {
+      porCliente[f.clienteId].facturas.set(key, { ...f });
+    } else {
+      // Duplicado: acumular saldo pendiente real
+      existing.saldoPendiente = (existing.saldoPendiente || 0) + (f.saldoPendiente || 0);
+    }
   });
+  // Convertir Maps a arrays
+  Object.values(porCliente).forEach(c => { c.facturas = Array.from(c.facturas.values()); });
 
   // Enriquecer con datos del usuario (teléfono, dirección, zona)
   const rows = [];
