@@ -407,19 +407,34 @@ const db = {
     return (data || []).map(mapFactura);
   },
   async getFacturasUltimosMeses(meses = 6) {
-    // Carga TODAS las facturas de los últimos N meses (incluye Pagado para búsqueda)
+    // Carga TODAS las facturas pendientes históricas (sin límite de meses)
+    // para detectar correctamente todos los morosos sin importar cuánto tiempo lleven
     const ahora = new Date();
-    const resultados = [];
-    for (let i = 1; i <= meses; i++) {
-      const d = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
-      try {
-        const { data, error } = await sb.from("facturas").select("*")
-          .eq("mes", d.getMonth() + 1).eq("anio", d.getFullYear())
-          .neq("estado", "Anulada");
-        if (!error && data) resultados.push(...data.map(mapFactura));
-      } catch { /* ignorar errores por mes */ }
+    const mesActual = ahora.getMonth() + 1;
+    const anioActual = ahora.getFullYear();
+    try {
+      const { data, error } = await sb.from("facturas")
+        .select("*")
+        .neq("estado", "Anulada")
+        .neq("estado", "Pagado")
+        .gt("saldo_pendiente", 0)
+        .or(`anio.lt.${anioActual},and(anio.eq.${anioActual},mes.lte.${mesActual})`);
+      if (error) throw error;
+      return (data || []).map(mapFactura);
+    } catch {
+      // Fallback: cargar últimos 12 meses si falla la query optimizada
+      const resultados = [];
+      for (let i = 1; i <= 12; i++) {
+        const d = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
+        try {
+          const { data, error } = await sb.from("facturas").select("*")
+            .eq("mes", d.getMonth() + 1).eq("anio", d.getFullYear())
+            .neq("estado", "Anulada");
+          if (!error && data) resultados.push(...data.map(mapFactura));
+        } catch { /* ignorar errores por mes */ }
+      }
+      return resultados;
     }
-    return resultados;
   },
   async crearFacturaAtomica(f) {
     // Validar que zonaId y clienteId sean UUIDs válidos antes de enviar
@@ -4191,7 +4206,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
 
   // Cargar facturas históricas (meses anteriores pendientes) para morosos y validación de deuda
   useEffect(() => {
-    db.getFacturasUltimosMeses(6)
+    db.getFacturasUltimosMeses()
       .then(data => setFacturasHistoricas(filtrarZona(data)))
       .catch(() => {});
   }, []);
