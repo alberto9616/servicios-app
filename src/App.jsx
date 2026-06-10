@@ -458,9 +458,15 @@ const db = {
   // INGRESOS / EGRESOS (CAJA)
   async getTotalCobradoGlobal() {
     // Suma real de TODOS los abonos históricos para el acumulado global
+    // Usando select con count para no traer todos los registros
     const { data, error } = await sb.from("abonos").select("monto");
-    if (error) throw error;
-    return (data || []).reduce((s, a) => s + Number(a.monto || 0), 0);
+    if (error) {
+      console.warn("getTotalCobradoGlobal error:", error.message);
+      throw error;
+    }
+    const total = (data || []).reduce((s, a) => s + Number(a.monto || 0), 0);
+    console.log("getTotalCobradoGlobal:", total, "abonos:", (data||[]).length);
+    return total;
   },
   async getMovimientosCaja() {
     const { data, error } = await sb.from("caja_movimientos").select("*").order("fecha", { ascending: false }).order("created_at", { ascending: false });
@@ -4726,7 +4732,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   useEffect(() => {
     db.getMovimientosCaja().then(setMovimientosCaja).catch(() => {});
     // Cargar total global cobrado histórico desde abonos (suma real de todos los pagos)
-    db.getTotalCobradoGlobal().then(setTotalCobradoGlobal).catch(() => {});
+    db.getTotalCobradoGlobal().then(setTotalCobradoGlobal).catch(e => console.warn("Error cargando total global:", e?.message));
   }, []);
 
   // Cargar abonos de hoy solo al montar — el ref se encarga de actualizaciones en tiempo real
