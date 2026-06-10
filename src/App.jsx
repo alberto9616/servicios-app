@@ -4162,6 +4162,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   const [subTab, setSubTab] = useState("emitidas");
   const [filtroMes, setFiltroMes]   = useState(new Date().getMonth() + 1);
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
+  const [filtroZona, setFiltroZona] = useState("todas");
 
   // ── estados compartidos ──
   const [modalAbono, setModalAbono] = useState(null);
@@ -4184,7 +4185,12 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   const zonaId = usuario.zonaId;
   const zonaUsuario = zonas.find(z => z.id === zonaId);
   const nombreEmpresa = zonaUsuario?.nombreEmpresa || "GC HOGAR.NET SAS";
-  const clientesVisibles = usuarios.filter(u => u.rol === "cliente" && u.activo && (esAdmin || u.zonaId === zonaId));
+  const clientesVisibles = usuarios.filter(u => {
+    if (u.rol !== "cliente" || !u.activo) return false;
+    if (!esAdmin) return u.zonaId === zonaId; // secretario solo ve su zona
+    if (filtroZona !== "todas") return u.zonaId === filtroZona; // admin filtra por zona
+    return true;
+  });
   const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444", "Anulada": "#94a3b8" };
 
   const filtrarZona = data => esAdmin ? data : data.filter(f => {
@@ -4433,7 +4439,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           onConfirm={async () => {
             try {
               const facturaReal = facturas.find(f => f.id === confirmAnular.id) ||
-                                  resultadosBusqueda?.find(f => f.id === confirmAnular.id);
+                                  facturasHistoricas?.find(f => f.id === confirmAnular.id);
               const montoReal = facturaReal?.monto || 0;
               // 1. Eliminar TODOS los abonos de esta factura en Supabase
               //    para que no sigan sumando en "Cobrado hoy" ni en el historial
@@ -5116,6 +5122,12 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         <Sel value={filtroAnio} onChange={e => setFiltroAnio(Number(e.target.value))} style={{ width: "auto", minWidth: 80 }}>
           {[2024,2025,2026,2027].map(a => <option key={a} value={a}>{a}</option>)}
         </Sel>
+        {esAdmin && zonas.length > 1 && (
+          <Sel value={filtroZona} onChange={e => setFiltroZona(e.target.value)} style={{ width: "auto", minWidth: 120 }}>
+            <option value="todas">🌐 Todas</option>
+            {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
+          </Sel>
+        )}
         <div style={{ flex: 1 }} />
         {esAdmin && <>
           <button onClick={() => setModalExport("mes")} style={{ padding: "7px 11px", borderRadius: 8, border: "1px solid #22c55e", background: GC.brandLight, color: GC.brand, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel mes</button>
@@ -8725,6 +8737,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const [filtroAdminPlan, setFiltroAdminPlan] = useState("");
   const [filtroAdminPerfil, setFiltroAdminPerfil] = useState("");
   const [filtroAdminEstado, setFiltroAdminEstado] = useState("");
+  const [filtroAdminZona, setFiltroAdminZona] = useState("");
   const [formTipo, setFormTipo] = useState(null);
   const [confirmEliminar, setConfirmEliminar] = useState(null);
   // Mi cuenta
@@ -8749,6 +8762,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       if (filtroAdminPlan && u.planId !== filtroAdminPlan) return false;
       if (filtroAdminPerfil && u.perfilPagoId !== filtroAdminPerfil) return false;
       if (filtroAdminEstado && u.estado !== filtroAdminEstado) return false;
+      if (filtroAdminZona && u.zonaId !== filtroAdminZona) return false;
       return true;
     });
   })();
@@ -9455,8 +9469,14 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <option value="">📅 Todos los perfiles</option>
                 {perfilesPago.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </Sel>
-              {(busqAdmin || filtroAdminTipo !== "todos" || filtroAdminEstado || filtroAdminPlan || filtroAdminPerfil) && (
-                <button onClick={() => { setBusqAdmin(""); setFiltroAdminTipo("todos"); setFiltroAdminEstado(""); setFiltroAdminPlan(""); setFiltroAdminPerfil(""); }}
+              {zonas.length > 1 && (
+                <Sel value={filtroAdminZona} onChange={e => setFiltroAdminZona(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
+                  <option value="">🌐 Todas las zonas</option>
+                  {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
+                </Sel>
+              )}
+              {(busqAdmin || filtroAdminTipo !== "todos" || filtroAdminEstado || filtroAdminPlan || filtroAdminPerfil || filtroAdminZona) && (
+                <button onClick={() => { setBusqAdmin(""); setFiltroAdminTipo("todos"); setFiltroAdminEstado(""); setFiltroAdminPlan(""); setFiltroAdminPerfil(""); setFiltroAdminZona(""); }}
                   style={{ background: GC.dangerBg, color: GC.danger, border: "1px solid " + GC.dangerBdr, borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>
                   ✕ Limpiar filtros
                 </button>
