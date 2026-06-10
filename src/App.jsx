@@ -4748,15 +4748,21 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
 
   const facturasFiltradas = (() => {
     const q = busq.trim();
+    // Filtro de zona: si admin seleccionó una zona específica
+    const matchZona = (f) => {
+      if (!filtroZona || filtroZona === "todas") return true;
+      // Buscar el cliente de la factura para ver su zona
+      const cliente = usuarios.find(u => u.id === f.clienteId);
+      return cliente ? cliente.zonaId === filtroZona : f.zonaId === filtroZona;
+    };
     if (q.length >= 2) {
-      // Usar resultados directos de Supabase (todos los meses/años)
       const matchEstado = (f) => filtroEstado === "todos" || f.estado === filtroEstado;
-      return resultadosBusqueda.filter(matchEstado);
+      return resultadosBusqueda.filter(f => matchEstado(f) && matchZona(f));
     }
     // Sin busqueda: solo el mes/año seleccionado
     return facturas.filter(f => {
       const matchEstado = filtroEstado === "todos" || f.estado === filtroEstado;
-      return matchEstado && f.mes === filtroMes && f.anio === filtroAnio;
+      return matchEstado && matchZona(f) && f.mes === filtroMes && f.anio === filtroAnio;
     });
   })();
 
@@ -4770,11 +4776,20 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
 
   // 📅 COBRADO HOY: suma de TODOS los abonos registrados hoy (pagos totales + parciales, no anuladas)
   // Usamos la tabla de abonos porque fechaPago solo existe en facturas totalmente pagadas
+  // Helper: verificar si una factura pertenece a la zona filtrada
+  const facturaEnZona = (facturaId) => {
+    if (!filtroZona || filtroZona === "todas") return true;
+    const factura = facturas.find(f => f.id === facturaId);
+    if (!factura) return true;
+    const cliente = usuarios.find(u => u.id === factura.clienteId);
+    return cliente ? cliente.zonaId === filtroZona : (factura.zonaId === filtroZona);
+  };
+
   const cobradoHoyFacturas = abonosHoy
     .filter(a => {
       // Excluir abonos de facturas anuladas
       const factura = facturas.find(f => f.id === a.facturaId);
-      return !factura || factura.estado !== "Anulada";
+      return (!factura || factura.estado !== "Anulada") && facturaEnZona(a.facturaId);
     })
     .reduce((s, a) => s + a.monto, 0);
   const totalDia = cobradoHoyFacturas;
