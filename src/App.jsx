@@ -457,15 +457,20 @@ const db = {
 
   // INGRESOS / EGRESOS (CAJA)
   async getTotalCobradoGlobal() {
-    // Suma real de TODOS los abonos históricos para el acumulado global
-    // Usando select con count para no traer todos los registros
-    const { data, error } = await sb.from("abonos").select("monto");
-    if (error) {
-      console.warn("getTotalCobradoGlobal error:", error.message);
-      throw error;
+    // Suma real de TODOS los abonos usando paginación para superar el límite de 1000 filas
+    let total = 0;
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data, error } = await sb.from("abonos")
+        .select("monto")
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      total += data.reduce((s, a) => s + Number(a.monto || 0), 0);
+      if (data.length < pageSize) break; // última página
+      from += pageSize;
     }
-    const total = (data || []).reduce((s, a) => s + Number(a.monto || 0), 0);
-    console.log("getTotalCobradoGlobal:", total, "abonos:", (data||[]).length);
     return total;
   },
   async getMovimientosCaja() {
