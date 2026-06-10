@@ -4680,6 +4680,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   const [modalExport, setModalExport] = useState(null);
   const [exportando, setExportando] = useState(false);
   const [movimientosCaja, setMovimientosCaja] = useState([]);
+  const [totalCobradoGlobal, setTotalCobradoGlobal] = useState(null);
   const [abonosHoy, setAbonosHoy] = useState([]);
   const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
   const [buscandoDB, setBuscandoDB] = useState(false);
@@ -4718,6 +4719,10 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
 
   useEffect(() => {
     db.getMovimientosCaja().then(setMovimientosCaja).catch(() => {});
+    // Cargar total global cobrado histórico desde abonos (suma real de todos los pagos)
+    sb.from("abonos").select("monto").then(({ data }) => {
+      if (data) setTotalCobradoGlobal(data.reduce((s, a) => s + Number(a.monto || 0), 0));
+    }).catch(() => {});
   }, []);
 
   // Cargar abonos de hoy solo al montar — el ref se encarga de actualizaciones en tiempo real
@@ -4771,18 +4776,20 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   // Se reinicia cada día igual que "Cobrado hoy"
   const totalCaja = cobradoHoyFacturas + ingresosHoy - egresosHoy;
 
-  // 🌐 TOTAL GLOBAL (acumulado histórico): suma de TODOS los abonos registrados + ingresos caja - egresos caja
-  // Para facturas con pronto pago: lo cobrado = monto - saldoPendiente - descuento_pronto_pago
-  // Total global: combina mes actual + históricos (deduplicados) para acumulado real
-  const todasParaGlobal = [...facturas, ...facturasHistoricas]
-    .filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i);
-  const totalGlobal =
-    todasParaGlobal.filter(f => f.estado !== "Anulada").reduce((s, f) => {
-      const cobrado = f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0);
-      return s + Math.max(0, cobrado);
-    }, 0) +
-    movimientosCaja.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0) -
-    movimientosCaja.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
+  // 🌐 TOTAL GLOBAL (acumulado histórico): suma real de todos los abonos + ingresos - egresos de caja
+  const totalIngresosCaja = movimientosCaja.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
+  const totalEgresosCaja  = movimientosCaja.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
+  const totalGlobal = (totalCobradoGlobal !== null
+    ? totalCobradoGlobal  // valor exacto de todos los abonos en BD
+    : (() => {            // fallback mientras carga: calcular desde facturas en memoria
+        const todasParaGlobal = [...facturas, ...facturasHistoricas]
+          .filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i);
+        return todasParaGlobal.filter(f => f.estado !== "Anulada").reduce((s, f) => {
+          const cobrado = f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0);
+          return s + Math.max(0, cobrado);
+        }, 0);
+      })()
+  ) + totalIngresosCaja - totalEgresosCaja;
 
   // ⏳ PENDIENTES: facturas del mes que NO han sido pagadas (ni anuladas)
   const totalPendiente = facturasActivasMes
@@ -5374,14 +5381,16 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: GC.ink }}>⚡ Generar facturas</h3>
                   <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>{MESES[filtroMes-1]} {filtroAnio} · {sinFactura.length} clientes pendientes</div>
                 </div>
-                {esAdmin && zonas.length > 1 && (
-                  <Sel value={filtroZona} onChange={e => setFiltroZona(e.target.value)}
-                    style={{ fontSize: 12, padding: "5px 8px", marginRight: 8, borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc", minWidth: 110 }}>
-                    <option value="todas">🌐 Todas</option>
-                    {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
-                  </Sel>
-                )}
-                <button onClick={() => setShowGenerarMasivo(false)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  {esAdmin && zonas.length > 1 && (
+                    <Sel value={filtroZona} onChange={e => setFiltroZona(e.target.value)}
+                      style={{ fontSize: 12, padding: "5px 8px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc", minWidth: 110 }}>
+                      <option value="todas">🌐 Todas</option>
+                      {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
+                    </Sel>
+                  )}
+                  <button onClick={() => setShowGenerarMasivo(false)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+                </div>
               </div>
               <div style={{ padding: "16px 24px 24px" }}>
 
