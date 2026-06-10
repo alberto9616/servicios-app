@@ -4840,7 +4840,11 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     let creadas = 0;
     const clientesCreados = [];
     try {
-      const clientesTarget = clientesVisibles.filter(c => {
+      // Base de clientes según zona seleccionada (admin puede filtrar por zona)
+      const clientesBase = (esAdmin && zonas.length > 1 && filtroZona !== "todas")
+        ? usuarios.filter(u => u.rol === "cliente" && u.activo && u.zonaId === filtroZona)
+        : clientesVisibles;
+      const clientesTarget = clientesBase.filter(c => {
         if (!c.monto) return false;
         // DPP, DPS y Cortesía NO generan factura
         if (ESTADOS_SIN_FACTURA.has(c.estado)) return false;
@@ -5339,7 +5343,13 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       {/* Modal generar masivo */}
       {showGenerarMasivo && (() => {
         const hoy = new Date(); const diaHoy = hoy.getDate();
-        const sinFactura = clientesVisibles.filter(c => {
+        // Clientes filtrados por zona dentro del modal (si admin seleccionó zona)
+        const clientesParaGenerar = esAdmin && zonas.length > 1
+          ? (filtroZona === "todas"
+              ? usuarios.filter(u => u.rol === "cliente" && u.activo)
+              : usuarios.filter(u => u.rol === "cliente" && u.activo && u.zonaId === filtroZona))
+          : clientesVisibles;
+        const sinFactura = clientesParaGenerar.filter(c => {
           if (!c.monto) return false;
           // DPP, DPS y Cortesía no generan factura
           if (ESTADOS_SIN_FACTURA.has(c.estado)) return false;
@@ -5349,7 +5359,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
           }
           return !facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio);
         });
-        const conFactura = clientesVisibles.filter(c =>
+        const conFactura = clientesParaGenerar.filter(c =>
           c.monto && !ESTADOS_SIN_FACTURA.has(c.estado) &&
           facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio)
         );
@@ -5360,10 +5370,17 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
           <div style={{ position: "fixed", inset: 0, background: "#00000055", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && setShowGenerarMasivo(false)}>
             <div style={{ background: "#fff", borderRadius: 16, maxWidth: 500, width: "100%", maxHeight: "90vh", overflowY: "auto", position: "relative" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff", zIndex: 1 }}>
-                <div>
+                <div style={{ flex: 1 }}>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: GC.ink }}>⚡ Generar facturas</h3>
                   <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>{MESES[filtroMes-1]} {filtroAnio} · {sinFactura.length} clientes pendientes</div>
                 </div>
+                {esAdmin && zonas.length > 1 && (
+                  <Sel value={filtroZona} onChange={e => setFiltroZona(e.target.value)}
+                    style={{ fontSize: 12, padding: "5px 8px", marginRight: 8, borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc", minWidth: 110 }}>
+                    <option value="todas">🌐 Todas</option>
+                    {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
+                  </Sel>
+                )}
                 <button onClick={() => setShowGenerarMasivo(false)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
               </div>
               <div style={{ padding: "16px 24px 24px" }}>
