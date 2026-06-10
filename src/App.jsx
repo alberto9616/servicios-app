@@ -4616,6 +4616,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           prontoPagos={prontoPagos} setUsuarios={setUsuarios}
           filtroMes={filtroMes} setFiltroMes={setFiltroMes}
           filtroAnio={filtroAnio} setFiltroAnio={setFiltroAnio}
+          filtroZona={filtroZona} setFiltroZona={setFiltroZona}
         />
       )}
 
@@ -4660,12 +4661,14 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
 }
 
 // ── Sección 1: Emitidas ───────────────────────────────────────
-function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = [], cargando, usuarios, zonas, planes, perfilesPago, clientesVisibles, nombreEmpresa, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, agregarAbonoHoyRef, prontoPagos = [], setUsuarios, filtroMes: filtroMesProp, setFiltroMes: setFiltroMesProp, filtroAnio: filtroAnioProp, setFiltroAnio: setFiltroAnioProp }) {
-  // filtroMes/filtroAnio vienen del padre (ModuloFacturacion) para disparar recarga en Supabase
+function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = [], cargando, usuarios, zonas, planes, perfilesPago, clientesVisibles, nombreEmpresa, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, agregarAbonoHoyRef, prontoPagos = [], setUsuarios, filtroMes: filtroMesProp, setFiltroMes: setFiltroMesProp, filtroAnio: filtroAnioProp, setFiltroAnio: setFiltroAnioProp, filtroZona: filtroZonaProp, setFiltroZona: setFiltroZonaProp }) {
+  // filtroMes/filtroAnio/filtroZona vienen del padre (ModuloFacturacion)
   const filtroMes     = filtroMesProp    ?? new Date().getMonth() + 1;
   const setFiltroMes  = setFiltroMesProp ?? (() => {});
   const filtroAnio    = filtroAnioProp   ?? new Date().getFullYear();
   const setFiltroAnio = setFiltroAnioProp ?? (() => {});
+  const filtroZona    = filtroZonaProp   ?? "todas";
+  const setFiltroZona = setFiltroZonaProp ?? (() => {});
   const [busq, setBusq] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("todos");
   const [showGenerarMasivo, setShowGenerarMasivo] = useState(false);
