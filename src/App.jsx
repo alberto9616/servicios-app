@@ -9487,7 +9487,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
             </div>
           </div>
 
-          {(busqAdmin || filtroAdminTipo !== "todos" || filtroAdminEstado || filtroAdminPlan || filtroAdminPerfil) ? (
+          {(busqAdmin || filtroAdminTipo !== "todos" || filtroAdminEstado || filtroAdminPlan || filtroAdminPerfil || filtroAdminZona) ? (
             <div>
               {usuariosFiltradosAdmin.length === 0 ? (
                 <div style={{ textAlign: "center", color: GC.ink3, padding: 30, fontSize: 14 }}>No se encontraron usuarios</div>
