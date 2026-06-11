@@ -458,22 +458,30 @@ const db = {
 
   // INGRESOS / EGRESOS (CAJA)
   async getTotalCobradoPorZona() {
-    // Obtiene el total cobrado agrupado por zona (via join facturas → usuarios)
-    const { data, error } = await sb.from("abonos")
-      .select("monto, facturas(cliente_id)");
-    if (error) throw error;
-    // Necesitamos mapear cliente_id → zona_id
-    const { data: uData } = await sb.from("usuarios").select("id, zona_id").eq("rol", "cliente");
+    // Query paginada: suma abonos por zona usando join facturas→usuarios
+    const { data: uData, error: uErr } = await sb.from("usuarios")
+      .select("id, zona_id").eq("rol", "cliente").eq("activo", true);
+    if (uErr) throw uErr;
     const zonaMap = {};
-    (uData || []).forEach(u => { zonaMap[u.id] = u.zona_id; });
+    (uData || []).forEach(u => { if (u.zona_id) zonaMap[u.id] = u.zona_id; });
+    
     const totales = {};
-    (data || []).forEach(a => {
-      const cid = a.facturas?.cliente_id;
-      const zid = cid ? zonaMap[cid] : null;
-      if (zid) {
-        totales[zid] = (totales[zid] || 0) + Number(a.monto || 0);
-      }
-    });
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      const { data, error } = await sb.from("abonos")
+        .select("monto, facturas(cliente_id)")
+        .range(from, from + pageSize - 1);
+      if (error) break;
+      if (!data || data.length === 0) break;
+      data.forEach(a => {
+        const cid = a.facturas?.cliente_id;
+        const zid = cid ? zonaMap[cid] : null;
+        if (zid) totales[zid] = (totales[zid] || 0) + Number(a.monto || 0);
+      });
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
     return totales;
   },
   async getTotalCobradoGlobal() {
@@ -4813,14 +4821,16 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     .filter(a => {
       const factura = facturas.find(f => f.id === a.facturaId) || facturasHistoricas.find(f => f.id === a.facturaId);
       if (factura?.estado === "Anulada") return false;
-      // Filtrar por zona usando clienteId del abono (viene del join con facturas)
-      if (filtroZona && filtroZona !== "todas") {
-        const cid = a.clienteId || factura?.clienteId;
-        if (!cid) return true; // si no hay info, incluir
-        const cliente = usuarios.find(u => u.id === cid);
-        return cliente ? cliente.zonaId === filtroZona : true;
+      if (!filtroZona || filtroZona === "todas") return true;
+      // Filtrar por zona: usar clienteId del abono o de la factura encontrada
+      const cid = a.clienteId || factura?.clienteId;
+      if (!cid) {
+        // Sin cliente_id: es un abono de factura manual o sin zona asignada
+        // En vista por zona específica, NO incluir (evita que aparezca en Tuluá)
+        return false;
       }
-      return true;
+      const cliente = usuarios.find(u => u.id === cid);
+      return cliente ? cliente.zonaId === filtroZona : false;
     })
     .reduce((s, a) => s + a.monto, 0);
   const totalDia = cobradoHoyFacturas;
@@ -4857,11 +4867,12 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       })();
       return base + totalIngresosCaja - totalEgresosCaja;
     }
-    // Vista por zona: usar total exacto de BD por zona si está disponible
-    if (totalCobradoPorZona[filtroZona] !== undefined) {
-      return totalCobradoPorZona[filtroZona]; // sin egresos: la caja es compartida
+    // Vista por zona: usar total exacto de BD por zona
+    // Si totalCobradoPorZona ya cargó (objeto no vacío), usar ese valor (puede ser 0)
+    if (Object.keys(totalCobradoPorZona).length > 0) {
+      return totalCobradoPorZona[filtroZona] || 0; // 0 si la zona no tiene abonos
     }
-    // Fallback: calcular desde facturas en memoria
+    // Fallback mientras carga: calcular desde facturas en memoria
     const facturasZona = [...facturas, ...facturasHistoricas]
       .filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i)
       .filter(f => clienteEnZona(f.clienteId));
