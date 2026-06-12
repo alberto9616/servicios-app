@@ -4859,20 +4859,20 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   const totalEgresosCaja = movimientosCaja.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
   const totalIngresosCaja = movimientosCaja.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
   const totalGlobal = (() => {
+    // Total global = suma histórica de todos los abonos (lo cobrado real)
+    // Los egresos van en "Total en caja" — no se descuentan del global por zona
     if (esTodasZonas) {
-      // Vista global: usar total exacto de BD (todos los abonos) - egresos
       const base = totalCobradoGlobal !== null ? totalCobradoGlobal : (() => {
         const todas = [...facturas, ...facturasHistoricas].filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i);
         return todas.filter(f => f.estado !== "Anulada").reduce((s,f) => s + Math.max(0, f.monto - f.saldoPendiente - (f.descuento_pronto_pago||0)), 0);
       })();
-      return base + totalIngresosCaja - totalEgresosCaja;
+      return base; // Solo abonos, sin egresos (egresos van en totalCaja)
     }
-    // Vista por zona: usar total exacto de BD por zona
-    // Si totalCobradoPorZona ya cargó (objeto no vacío), usar ese valor (puede ser 0)
+    // Vista por zona: total abonos de esa zona
     if (Object.keys(totalCobradoPorZona).length > 0) {
-      return totalCobradoPorZona[filtroZona] || 0; // 0 si la zona no tiene abonos
+      return totalCobradoPorZona[filtroZona] || 0;
     }
-    // Fallback mientras carga: calcular desde facturas en memoria
+    // Fallback mientras carga
     const facturasZona = [...facturas, ...facturasHistoricas]
       .filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i)
       .filter(f => clienteEnZona(f.clienteId));
