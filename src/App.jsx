@@ -458,30 +458,13 @@ const db = {
 
   // INGRESOS / EGRESOS (CAJA)
   async getTotalCobradoPorZona() {
-    // Query paginada: suma abonos por zona usando join facturas→usuarios
-    const { data: uData, error: uErr } = await sb.from("usuarios")
-      .select("id, zona_id").eq("rol", "cliente").eq("activo", true);
-    if (uErr) throw uErr;
-    const zonaMap = {};
-    (uData || []).forEach(u => { if (u.zona_id) zonaMap[u.id] = u.zona_id; });
-    
+    // Usa RPC en Supabase para sumar abonos por zona sin límite de filas
+    const { data, error } = await sb.rpc("get_total_cobrado_por_zona");
+    if (error) throw error;
     const totales = {};
-    let from = 0;
-    const pageSize = 1000;
-    while (true) {
-      const { data, error } = await sb.from("abonos")
-        .select("monto, facturas(cliente_id)")
-        .range(from, from + pageSize - 1);
-      if (error) break;
-      if (!data || data.length === 0) break;
-      data.forEach(a => {
-        const cid = a.facturas?.cliente_id;
-        const zid = cid ? zonaMap[cid] : null;
-        if (zid) totales[zid] = (totales[zid] || 0) + Number(a.monto || 0);
-      });
-      if (data.length < pageSize) break;
-      from += pageSize;
-    }
+    (data || []).forEach(r => {
+      if (r.zona_id) totales[r.zona_id] = Number(r.total || 0);
+    });
     return totales;
   },
   async getTotalCobradoGlobal() {
@@ -2993,6 +2976,7 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
   const guardarEdicionOrden = async () => {
     if (!editOrden || editOrden.tecnicosIds.length === 0) return;
     try {
+      const esTraslado = editOrden.tipo === "Traslado / cambio de domicilio";
       await db.actualizarOrden(editOrden.id, {
         tipo: editOrden.tipo,
         descripcion: editOrden.descripcion,
@@ -3002,9 +2986,11 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
         tecnicos_ids: editOrden.tecnicosIds,
         direccion: editOrden.direccion,
         telefono_cliente: editOrden.telefonoCliente || null,
+        direccion_nueva: esTraslado ? (editOrden.direccionNueva || null) : undefined,
+        direccion_anterior: esTraslado ? (editOrden.direccionAnterior || null) : undefined,
       });
       setOrdenes(prev => prev.map(o => o.id === editOrden.id
-        ? { ...o, tipo: editOrden.tipo, descripcion: editOrden.descripcion, fecha: editOrden.fecha, hora: editOrden.hora, tecnicoId: editOrden.tecnicosIds[0], tecnicosIds: editOrden.tecnicosIds, direccion: editOrden.direccion, telefonoCliente: editOrden.telefonoCliente || null }
+        ? { ...o, tipo: editOrden.tipo, descripcion: editOrden.descripcion, fecha: editOrden.fecha, hora: editOrden.hora, tecnicoId: editOrden.tecnicosIds[0], tecnicosIds: editOrden.tecnicosIds, direccion: editOrden.direccion, telefonoCliente: editOrden.telefonoCliente || null, direccionNueva: esTraslado ? editOrden.direccionNueva : o.direccionNueva, direccionAnterior: esTraslado ? editOrden.direccionAnterior : o.direccionAnterior }
         : o
       ));
       setEditOrden(null);
@@ -3239,9 +3225,21 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
                   style={{ background: GC.bg, border: "1px solid " + GC.border2, borderRadius: 8, color: GC.ink, padding: "9px 12px", fontSize: 14, width: "100%", boxSizing: "border-box", outline: "none", minHeight: 70, resize: "vertical", fontFamily: "inherit" }} />
               </Field>
 
-              <Field label="Dirección">
+              <Field label="Dirección actual">
                 <Inp value={editOrden.direccion || ""} onChange={e => setEditOrden({ ...editOrden, direccion: e.target.value })} />
               </Field>
+
+              {/* Campos especiales para traslado */}
+              {editOrden.tipo === "Traslado / cambio de domicilio" && (
+                <>
+                  <Field label="📍 Dirección anterior">
+                    <Inp value={editOrden.direccionAnterior || ""} onChange={e => setEditOrden({ ...editOrden, direccionAnterior: e.target.value })} placeholder="Dirección donde está actualmente" />
+                  </Field>
+                  <Field label="🏠 Dirección nueva (destino)">
+                    <Inp value={editOrden.direccionNueva || ""} onChange={e => setEditOrden({ ...editOrden, direccionNueva: e.target.value })} placeholder="Nueva dirección a donde se traslada" style={{ borderColor: "#f59e0b", background: "#fffbeb" }} />
+                  </Field>
+                </>
+              )}
 
               <Field label="Teléfono del cliente">
                 <Inp type="tel" value={editOrden.telefonoCliente || ""} onChange={e => setEditOrden({ ...editOrden, telefonoCliente: e.target.value })} placeholder="Ej: 3001234567" />
@@ -4345,6 +4343,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       await db.actualizarFactura(modalAbono.id, { saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: nuevoAbono.metodoPago, fecha_pago: nuevaFechaPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 });
       const facturaActualizada = { saldoPendiente: nuevoSaldo, estado: nuevoEstado, metodoPago: nuevoAbono.metodoPago, fechaPago: nuevaFechaPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 };
       setFacturas(prev => prev.map(f => f.id === modalAbono.id ? { ...f, ...facturaActualizada } : f));
+      setFacturasHistoricas(prev => prev.map(f => f.id === modalAbono.id ? { ...f, ...facturaActualizada } : f));
       setAbonosModal(prev => [abono, ...prev]);
       if (abono.fecha === hoyStr && agregarAbonoHoyRef.current?.agregar) {
         agregarAbonoHoyRef.current.agregar(abono);
