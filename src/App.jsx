@@ -468,18 +468,20 @@ const db = {
     return totales;
   },
   async getTotalCobradoGlobal() {
-    // Suma real de TODOS los abonos usando paginación para superar el límite de 1000 filas
+    // Suma real de TODOS los abonos excluyendo facturas anuladas
+    // usando paginación para superar el límite de 1000 filas
     let total = 0;
     let from = 0;
     const pageSize = 1000;
     while (true) {
       const { data, error } = await sb.from("abonos")
-        .select("monto")
+        .select("monto, facturas!inner(estado)")
+        .neq("facturas.estado", "Anulada")
         .range(from, from + pageSize - 1);
       if (error) throw error;
       if (!data || data.length === 0) break;
       total += data.reduce((s, a) => s + Number(a.monto || 0), 0);
-      if (data.length < pageSize) break; // última página
+      if (data.length < pageSize) break;
       from += pageSize;
     }
     return total;
@@ -4344,6 +4346,10 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       const facturaActualizada = { saldoPendiente: nuevoSaldo, estado: nuevoEstado, metodoPago: nuevoAbono.metodoPago, fechaPago: nuevaFechaPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 };
       setFacturas(prev => prev.map(f => f.id === modalAbono.id ? { ...f, ...facturaActualizada } : f));
       setFacturasHistoricas(prev => prev.map(f => f.id === modalAbono.id ? { ...f, ...facturaActualizada } : f));
+      // También actualizar resultadosBusqueda si está activo en SeccionEmitidas
+      if (agregarAbonoHoyRef.current?.actualizarFactura) {
+        agregarAbonoHoyRef.current.actualizarFactura(modalAbono.id, facturaActualizada);
+      }
       setAbonosModal(prev => [abono, ...prev]);
       if (abono.fecha === hoyStr && agregarAbonoHoyRef.current?.agregar) {
         agregarAbonoHoyRef.current.agregar(abono);
@@ -4757,6 +4763,10 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         agregar: (abono) => setAbonosHoy(prev => [abono, ...prev]),
         // Quitar todos los abonos de una factura (al eliminar o anular)
         limpiarFactura: (facturaId) => setAbonosHoy(prev => prev.filter(a => a.facturaId !== facturaId)),
+        // Actualizar estado de factura en resultadosBusqueda (para que el cambio se vea sin recargar)
+        actualizarFactura: (facturaId, cambios) => {
+          setResultadosBusqueda(prev => prev.map(f => f.id === facturaId ? { ...f, ...cambios } : f));
+        },
       };
     }
     return () => { if (agregarAbonoHoyRef) agregarAbonoHoyRef.current = null; };
@@ -4788,6 +4798,12 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     if (q.length >= 2) {
       const matchEstado = (f) => filtroEstado === "todos" || f.estado === filtroEstado;
       return resultadosBusqueda.filter(f => matchEstado(f) && matchZona(f));
+    }
+    // Si filtra por Anulada: buscar en todos los meses cargados (facturas + históricas)
+    if (filtroEstado === "Anulada") {
+      const todas = [...facturas, ...facturasHistoricas]
+        .filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i);
+      return todas.filter(f => f.estado === "Anulada" && matchZona(f));
     }
     // Sin busqueda: solo el mes/año seleccionado
     return facturas.filter(f => {
