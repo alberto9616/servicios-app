@@ -407,6 +407,15 @@ const db = {
     if (error) throw error;
     return (data || []).map(mapFactura);
   },
+  async getFacturasAnuladas() {
+    // Carga TODAS las facturas anuladas históricas para mostrarlas en el filtro
+    const { data, error } = await sb.from("facturas")
+      .select("*")
+      .eq("estado", "Anulada")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapFactura);
+  },
   async getFacturasUltimosMeses(meses = 6) {
     // Carga TODAS las facturas pendientes históricas (sin límite de meses)
     // para detectar correctamente todos los morosos sin importar cuánto tiempo lleven
@@ -4203,6 +4212,7 @@ function SeccionProntoPagoReporte({ facturas, usuarios, zonas }) {
 function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perfilesPago = [], prontoPagos = [] }) {
   const [facturas, setFacturas] = useState([]);
   const [facturasHistoricas, setFacturasHistoricas] = useState([]); // meses anteriores pendientes
+  const [facturasAnuladas, setFacturasAnuladas] = useState([]); // todas las anuladas históricas
   const [cargando, setCargando] = useState(true);
   const [subTab, setSubTab] = useState("emitidas");
   const [filtroMes, setFiltroMes]   = useState(new Date().getMonth() + 1);
@@ -4259,6 +4269,9 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   useEffect(() => {
     db.getFacturasUltimosMeses()
       .then(data => setFacturasHistoricas(filtrarZona(data)))
+      .catch(() => {});
+    db.getFacturasAnuladas()
+      .then(data => setFacturasAnuladas(filtrarZona(data)))
       .catch(() => {});
   }, []);
 
@@ -4656,7 +4669,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       {subTab === "emitidas" && (
         <SeccionEmitidas
           usuario={usuario} facturas={facturas} setFacturas={setFacturas}
-          facturasHistoricas={facturasHistoricas}
+          facturasHistoricas={facturasHistoricas} facturasAnuladas={facturasAnuladas}
           cargando={cargando} usuarios={usuarios} zonas={zonas}
           planes={planes} perfilesPago={perfilesPago}
           clientesVisibles={clientesVisibles} nombreEmpresa={nombreEmpresa}
@@ -4711,7 +4724,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
 }
 
 // ── Sección 1: Emitidas ───────────────────────────────────────
-function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = [], cargando, usuarios, zonas, planes, perfilesPago, clientesVisibles, nombreEmpresa, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, agregarAbonoHoyRef, prontoPagos = [], setUsuarios, filtroMes: filtroMesProp, setFiltroMes: setFiltroMesProp, filtroAnio: filtroAnioProp, setFiltroAnio: setFiltroAnioProp, filtroZona: filtroZonaProp, setFiltroZona: setFiltroZonaProp }) {
+function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = [], facturasAnuladas = [], cargando, usuarios, zonas, planes, perfilesPago, clientesVisibles, nombreEmpresa, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, agregarAbonoHoyRef, prontoPagos = [], setUsuarios, filtroMes: filtroMesProp, setFiltroMes: setFiltroMesProp, filtroAnio: filtroAnioProp, setFiltroAnio: setFiltroAnioProp, filtroZona: filtroZonaProp, setFiltroZona: setFiltroZonaProp }) {
   // filtroMes/filtroAnio/filtroZona vienen del padre (ModuloFacturacion)
   const filtroMes     = filtroMesProp    ?? new Date().getMonth() + 1;
   const setFiltroMes  = setFiltroMesProp ?? (() => {});
@@ -4799,11 +4812,11 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       const matchEstado = (f) => filtroEstado === "todos" || f.estado === filtroEstado;
       return resultadosBusqueda.filter(f => matchEstado(f) && matchZona(f));
     }
-    // Si filtra por Anulada: buscar en todos los meses cargados (facturas + históricas)
+    // Si filtra por Anulada: usar facturasAnuladas que contiene todas las anuladas históricas
     if (filtroEstado === "Anulada") {
-      const todas = [...facturas, ...facturasHistoricas]
+      const todasAnuladas = [...facturas.filter(f => f.estado === "Anulada"), ...facturasAnuladas]
         .filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i);
-      return todas.filter(f => f.estado === "Anulada" && matchZona(f));
+      return todasAnuladas.filter(f => matchZona(f));
     }
     // Sin busqueda: solo el mes/año seleccionado
     return facturas.filter(f => {
