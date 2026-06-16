@@ -408,11 +408,12 @@ const db = {
     return (data || []).map(mapFactura);
   },
   async getFacturasAnuladas() {
-    // Carga TODAS las facturas anuladas históricas para mostrarlas en el filtro
+    // Carga facturas anuladas históricas (máx 500 más recientes)
     const { data, error } = await sb.from("facturas")
       .select("*")
       .eq("estado", "Anulada")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(500);
     if (error) throw error;
     return (data || []).map(mapFactura);
   },
@@ -4271,7 +4272,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       .then(data => setFacturasHistoricas(filtrarZona(data)))
       .catch(() => {});
     db.getFacturasAnuladas()
-      .then(data => setFacturasAnuladas(filtrarZona(data)))
+      .then(data => setFacturasAnuladas(data)) // sin filtrarZona — las anuladas se muestran sin filtro de zona
       .catch(() => {});
   }, []);
 
@@ -4489,7 +4490,10 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
               await db.deleteAbonosByFactura(confirmDelete.id);
               await db.deleteFactura(confirmDelete.id);
               setFacturas(p => p.filter(x => x.id !== confirmDelete.id));
+              setFacturasHistoricas(p => p.filter(x => x.id !== confirmDelete.id));
+              setFacturasAnuladas(p => p.filter(x => x.id !== confirmDelete.id));
               if (agregarAbonoHoyRef?.current?.limpiarFactura) agregarAbonoHoyRef.current.limpiarFactura(confirmDelete.id);
+              if (agregarAbonoHoyRef?.current?.eliminarFactura) agregarAbonoHoyRef.current.eliminarFactura(confirmDelete.id);
             }
             catch(e) { alert("Error: " + e.message); }
             setConfirmDelete(null);
@@ -4779,6 +4783,10 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         // Actualizar estado de factura en resultadosBusqueda (para que el cambio se vea sin recargar)
         actualizarFactura: (facturaId, cambios) => {
           setResultadosBusqueda(prev => prev.map(f => f.id === facturaId ? { ...f, ...cambios } : f));
+        },
+        // Eliminar factura de todos los estados locales
+        eliminarFactura: (facturaId) => {
+          setResultadosBusqueda(prev => prev.filter(f => f.id !== facturaId));
         },
       };
     }
