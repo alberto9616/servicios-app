@@ -460,6 +460,16 @@ const db = {
       return resultados;
     }
   },
+  // Trae facturas específicas por su ID, sin importar estado o mes.
+  // Se usa en el Cierre de Caja para mostrar el mes/estado correcto de facturas
+  // antiguas que ya fueron pagadas (getFacturasUltimosMeses las excluye porque solo trae pendientes).
+  async getFacturasPorIds(ids) {
+    if (!ids || !ids.length) return [];
+    const unicos = [...new Set(ids)];
+    const { data, error } = await sb.from("facturas").select("*").in("id", unicos);
+    if (error) throw error;
+    return (data || []).map(mapFactura);
+  },
   async crearFacturaAtomica(f) {
     // Validar que zonaId y clienteId sean UUIDs válidos antes de enviar
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -4705,7 +4715,8 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       {/* ════════════════════════════════════════════════════ */}
       {subTab === "cierre" && (
         <SeccionCierreCaja
-          usuario={usuario} facturas={facturas} usuarios={usuarios}
+          usuario={usuario} facturas={facturas} facturasHistoricas={facturasHistoricas}
+          usuarios={usuarios}
           zonas={zonas} esAdmin={esAdmin} esSuperusuario={esSuperusuario}
           nombreEmpresa={nombreEmpresa} COLOR_ESTADO={COLOR_ESTADO}
         />
@@ -5756,15 +5767,19 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
 }
 
 // ── Sección 2: Cierre de Caja ─────────────────────────────────
-function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSuperusuario, nombreEmpresa, COLOR_ESTADO }) {
+function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuarios, zonas, esAdmin, esSuperusuario, nombreEmpresa, COLOR_ESTADO }) {
   const hoy=fechaLocal(),primerDiaMes=fechaLocal().slice(0,8)+"01";
   const [fechaInicio,setFechaInicio]=useState(primerDiaMes);
   const [fechaFin,setFechaFin]=useState(hoy);
   const [secretarioFiltro,setSecretarioFiltro]=useState(esAdmin?"todos":usuario.id);
   const [movimientosCaja,setMovimientosCaja]=useState([]);
   const [abonosCierre,setAbonosCierre]=useState([]);
+  const [facturasFaltantes,setFacturasFaltantes]=useState([]); // facturas de abonos que no están en facturas/facturasHistoricas
   const [cargandoCierre,setCargandoCierre]=useState(false);
   const secretarios=usuarios.filter(u=>(u.rol==="secretario"||u.rol==="admin")&&u.activo);
+  // Combina facturas del mes actual + históricas de meses anteriores, para poder encontrar
+  // cualquier factura sin importar a qué mes pertenezca (evita los "—" en la tabla de cobros)
+  const todasLasFacturas=[...facturas,...facturasHistoricas,...facturasFaltantes].filter((f,i,arr)=>arr.findIndex(x=>x.id===f.id)===i);
   useEffect(()=>{db.getMovimientosCaja().then(setMovimientosCaja).catch(()=>{});}, []);
   useEffect(()=>{
     if(!fechaInicio||!fechaFin)return;
@@ -5777,7 +5792,17 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
       }catch{setAbonosCierre([]);}finally{setCargandoCierre(false);}
     };cargar();
   },[fechaInicio,fechaFin]);
-  const facturasCierre=facturas.filter(f=>{
+  // Si algún abono del período pertenece a una factura que no está en facturas/facturasHistoricas
+  // (típicamente facturas de meses anteriores que ya quedaron "Pagado"), las trae puntualmente por ID.
+  useEffect(()=>{
+    if(!abonosCierre.length)return;
+    const idsConocidos=new Set([...facturas,...facturasHistoricas].map(f=>f.id));
+    const idsFaltantes=[...new Set(abonosCierre.map(a=>a.facturaId).filter(id=>id&&!idsConocidos.has(id)))];
+    if(!idsFaltantes.length){setFacturasFaltantes([]);return;}
+    db.getFacturasPorIds(idsFaltantes).then(setFacturasFaltantes).catch(()=>setFacturasFaltantes([]));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[abonosCierre]);
+  const facturasCierre=todasLasFacturas.filter(f=>{
     const fecha=f.fechaPago||f.fechaEmision||"";
     if(!fecha||fecha<fechaInicio||fecha>fechaFin)return false;
     if(secretarioFiltro!=="todos"){const secId=f.creadoPor||usuarios.find(u=>u.id===f.clienteId)?.secretarioId;if(secId!==secretarioFiltro)return false;}
@@ -5792,7 +5817,7 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
   // Lista de abonos (pagos completos y parciales) con los datos de su factura, para la tabla del cierre.
   const abonosConFactura=abonosCierre
     .map(a=>{
-      const f=facturas.find(x=>x.id===a.facturaId); // puede ser undefined si la factura es de un mes ya archivado
+      const f=todasLasFacturas.find(x=>x.id===a.facturaId); // ahora incluye históricas, así no quedan "—" por facturas de meses anteriores
       if(secretarioFiltro!=="todos"){const secId=f?.creadoPor||usuarios.find(u=>u.id===f?.clienteId)?.secretarioId;if(secId!==secretarioFiltro)return null;}
       if(f&&f.estado==="Anulada")return null;
       return{
