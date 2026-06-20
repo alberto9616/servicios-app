@@ -5792,6 +5792,7 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
   const cobradoPeriodo=abonosCierre.filter(a=>{const f=facturas.find(x=>x.id===a.facturaId);return !f||f.estado!=="Anulada";}).reduce((s,a)=>s+a.monto,0);
   const ingresosPeriodo=movimientosCaja.filter(m=>m.tipo==="Ingreso"&&m.fecha>=fechaInicio&&m.fecha<=fechaFin).reduce((s,m)=>s+m.monto,0);
   const egresosPeriodo=movimientosCaja.filter(m=>m.tipo==="Egreso"&&m.fecha>=fechaInicio&&m.fecha<=fechaFin).reduce((s,m)=>s+m.monto,0);
+  const egresosCierre=movimientosCaja.filter(m=>m.tipo==="Egreso"&&m.fecha>=fechaInicio&&m.fecha<=fechaFin).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
   const totalCajaPeriodo=cobradoPeriodo+ingresosPeriodo-egresosPeriodo;
   const esUnDia=fechaInicio===fechaFin;
   const imprimir=()=>{
@@ -5803,7 +5804,12 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
       const mp=getMetodoEmoji(f.metodoPago);
       return `<tr><td>#${f.numeroRecibo||"—"}</td><td>${f.clienteNombre}</td><td>${f.fechaPago||f.fechaEmision||""}</td><td><span style="background:${colorBg};color:${colorTxt};padding:1px 5px;border-radius:3px;font-weight:bold">${f.estado}</span></td><td>${f.metodoPago?mp+" "+f.metodoPago:"—"}</td><td style="text-align:right">${cop(f.monto)}</td><td style="text-align:right;color:${f.saldoPendiente>0?"#dc2626":"#16a34a"}">${cop(f.monto-f.saldoPendiente)}</td></tr>`;
     }).join("");
-    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cierre</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;font-size:10pt}h1{font-size:16pt;margin:0 0 4px}h2{font-size:12pt;margin:0 0 12px;color:#555}.header{text-align:center;margin-bottom:16px;border-bottom:2px solid #000;padding-bottom:10px}.resumen{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}.card{border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;flex:1;min-width:120px}.card-label{font-size:8pt;color:#64748b;text-transform:uppercase}.card-val{font-size:13pt;font-weight:900;margin-top:2px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#f1f5f9;padding:6px 8px;text-align:left;border-bottom:2px solid #e2e8f0}td{padding:5px 8px;border-bottom:1px solid #f1f5f9}.total-row{font-weight:900;font-size:11pt;border-top:2px solid #000}.footer{margin-top:20px;border-top:1px dashed #aaa;padding-top:12px;font-size:9pt}.btn-print{display:block;margin:16px auto;padding:10px 28px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer}@media print{.btn-print{display:none}}</style></head><body><div class="header"><h1>${nombreEmpresa}</h1><h2>CIERRE DE CAJA</h2><div>Período: <strong>${fechaInicio}${fechaInicio!==fechaFin?" → "+fechaFin:""}</strong></div><div>Secretario: <strong>${nombreSec}</strong> · ${new Date().toLocaleString("es-CO")}</div></div><div class="resumen"><div class="card"><div class="card-label">📅 Cobrado</div><div class="card-val" style="color:#7c3aed">${cop(cobradoPeriodo)}</div></div><div class="card"><div class="card-label">🏦 Caja</div><div class="card-val" style="color:#16a34a">${cop(totalCajaPeriodo)}</div></div><div class="card"><div class="card-label">💰 Facturado</div><div class="card-val" style="color:#0ea5e9">${cop(totalFacturado)}</div></div><div class="card"><div class="card-label">✅ Cobrado</div><div class="card-val" style="color:#16a34a">${cop(totalCobrado)}</div></div><div class="card"><div class="card-label">⏳ Pendiente</div><div class="card-val" style="color:#ef4444">${cop(totalPendiente)}</div></div></div><table><thead><tr><th>#Recibo</th><th>Cliente</th><th>Fecha</th><th>Estado</th><th>Método</th><th style="text-align:right">Total</th><th style="text-align:right">Cobrado</th></tr></thead><tbody>${filas}</tbody><tr class="total-row"><td colspan="5">TOTALES</td><td style="text-align:right">${cop(totalFacturado)}</td><td style="text-align:right;color:#16a34a">${cop(totalCobrado)}</td></tr></table><div class="footer"><div>Firma: _______________________________</div></div><button class="btn-print" onclick="window.print()">🖨️ Imprimir</button></body></html>`;
+    const filasEgresos=egresosCierre.map(m=>{
+      const nombreReg=usuarios.find(u=>u.id===m.registradoPor)?.nombre||"—";
+      return `<tr><td>${m.fecha}</td><td>${m.concepto}</td><td>${nombreReg}</td><td>${m.observacion||"—"}</td><td style="text-align:right;color:#dc2626">−${cop(m.monto)}</td></tr>`;
+    }).join("");
+    const tablaEgresos=egresosCierre.length?`<table style="margin-top:18px"><thead><tr><th>Fecha</th><th>Concepto</th><th>Registrado por</th><th>Observación</th><th style="text-align:right">Monto</th></tr></thead><tbody>${filasEgresos}</tbody><tr class="total-row"><td colspan="4">TOTAL EGRESOS</td><td style="text-align:right;color:#dc2626">−${cop(egresosPeriodo)}</td></tr></table>`:"";
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cierre</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;font-size:10pt}h1{font-size:16pt;margin:0 0 4px}h2{font-size:12pt;margin:0 0 12px;color:#555}.header{text-align:center;margin-bottom:16px;border-bottom:2px solid #000;padding-bottom:10px}.resumen{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}.card{border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;flex:1;min-width:120px}.card-label{font-size:8pt;color:#64748b;text-transform:uppercase}.card-val{font-size:13pt;font-weight:900;margin-top:2px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#f1f5f9;padding:6px 8px;text-align:left;border-bottom:2px solid #e2e8f0}td{padding:5px 8px;border-bottom:1px solid #f1f5f9}.total-row{font-weight:900;font-size:11pt;border-top:2px solid #000}.footer{margin-top:20px;border-top:1px dashed #aaa;padding-top:12px;font-size:9pt}.btn-print{display:block;margin:16px auto;padding:10px 28px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer}@media print{.btn-print{display:none}}</style></head><body><div class="header"><h1>${nombreEmpresa}</h1><h2>CIERRE DE CAJA</h2><div>Período: <strong>${fechaInicio}${fechaInicio!==fechaFin?" → "+fechaFin:""}</strong></div><div>Secretario: <strong>${nombreSec}</strong> · ${new Date().toLocaleString("es-CO")}</div></div><div class="resumen"><div class="card"><div class="card-label">📅 Cobrado</div><div class="card-val" style="color:#7c3aed">${cop(cobradoPeriodo)}</div></div><div class="card"><div class="card-label">🏦 Caja</div><div class="card-val" style="color:#16a34a">${cop(totalCajaPeriodo)}</div></div><div class="card"><div class="card-label">📤 Egresos</div><div class="card-val" style="color:#dc2626">${cop(egresosPeriodo)}</div></div><div class="card"><div class="card-label">💰 Facturado</div><div class="card-val" style="color:#0ea5e9">${cop(totalFacturado)}</div></div><div class="card"><div class="card-label">✅ Cobrado</div><div class="card-val" style="color:#16a34a">${cop(totalCobrado)}</div></div><div class="card"><div class="card-label">⏳ Pendiente</div><div class="card-val" style="color:#ef4444">${cop(totalPendiente)}</div></div></div><table><thead><tr><th>#Recibo</th><th>Cliente</th><th>Fecha</th><th>Estado</th><th>Método</th><th style="text-align:right">Total</th><th style="text-align:right">Cobrado</th></tr></thead><tbody>${filas}</tbody><tr class="total-row"><td colspan="5">TOTALES</td><td style="text-align:right">${cop(totalFacturado)}</td><td style="text-align:right;color:#16a34a">${cop(totalCobrado)}</td></tr></table>${tablaEgresos}<div class="footer"><div>Firma: _______________________________</div></div><button class="btn-print" onclick="window.print()">🖨️ Imprimir</button></body></html>`;
     const w=window.open("","_blank","width=900,height=700");w.document.write(html);w.document.close();
   };
   return(<div>
@@ -5874,6 +5880,40 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
             </tbody>
           </table>
         </div>
+
+        {/* ── Egresos del período ── */}
+        {egresosCierre.length > 0 && (
+          <div style={{marginTop:24}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
+              <span style={{fontWeight:700,color:GC.ink,fontSize:13}}>📤 {egresosCierre.length} egresos en el período</span>
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                <thead><tr style={{background:GC.bg2,borderBottom:"2px solid #e2e8f0"}}>
+                  {["Fecha","Concepto","Registrado por","Observación","Monto"].map(h=>(
+                    <th key={h} style={{padding:"8px 10px",textAlign:"left",color:GC.ink3,fontWeight:700,whiteSpace:"nowrap"}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {egresosCierre.map(m=>{
+                    const nombreReg=usuarios.find(u=>u.id===m.registradoPor)?.nombre||"—";
+                    return(<tr key={m.id} style={{borderBottom:"1px solid #f1f5f9"}}>
+                      <td style={{padding:"8px 10px",color:GC.ink2}}>{m.fecha}</td>
+                      <td style={{padding:"8px 10px",fontWeight:600}}>{m.concepto}</td>
+                      <td style={{padding:"8px 10px",color:GC.ink2}}>{nombreReg}</td>
+                      <td style={{padding:"8px 10px",color:GC.ink3,fontSize:11}}>{m.observacion||"—"}</td>
+                      <td style={{padding:"8px 10px",fontWeight:800,color:"#dc2626"}}>−{formatCOP(m.monto)}</td>
+                    </tr>);
+                  })}
+                  <tr style={{borderTop:"2px solid #0f172a",background:GC.bg2}}>
+                    <td colSpan={4} style={{padding:"10px",fontWeight:800,fontSize:13}}>TOTAL EGRESOS</td>
+                    <td style={{padding:"10px",fontWeight:800,fontSize:13,color:"#dc2626"}}>−{formatCOP(egresosPeriodo)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </>
     )}
   </div>);
