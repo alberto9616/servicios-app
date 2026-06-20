@@ -5789,7 +5789,30 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
   const cantPagadas=facturasCierre.filter(f=>f.estado==="Pagado").length;
   const cantParcial=facturasCierre.filter(f=>f.estado==="Abono parcial").length;
   const cantPendiente=facturasCierre.filter(f=>f.estado==="Pendiente"||f.estado==="Vencido").length;
-  const cobradoPeriodo=abonosCierre.filter(a=>{const f=facturas.find(x=>x.id===a.facturaId);return !f||f.estado!=="Anulada";}).reduce((s,a)=>s+a.monto,0);
+  // Lista de abonos (pagos completos y parciales) con los datos de su factura, para la tabla del cierre.
+  const abonosConFactura=abonosCierre
+    .map(a=>{
+      const f=facturas.find(x=>x.id===a.facturaId); // puede ser undefined si la factura es de un mes ya archivado
+      if(secretarioFiltro!=="todos"){const secId=f?.creadoPor||usuarios.find(u=>u.id===f?.clienteId)?.secretarioId;if(secId!==secretarioFiltro)return null;}
+      if(f&&f.estado==="Anulada")return null;
+      return{
+        id:a.id,
+        facturaId:a.facturaId,
+        numeroRecibo:a.numeroRecibo||f?.numeroRecibo,
+        clienteNombre:a.clienteNombre||f?.clienteNombre||"(factura no encontrada)",
+        concepto:a.concepto||f?.concepto||"",
+        mes:f?.mes,anio:f?.anio,
+        fecha:a.fecha,
+        estadoFacturaActual:f?.estado||"—",
+        metodoPago:a.metodoPago,
+        monto:a.monto,
+        observacion:a.observacion||"",
+      };
+    })
+    .filter(Boolean)
+    .sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+  // cobradoPeriodo SIEMPRE se calcula desde la misma lista que se muestra en la tabla — así nunca puede haber descuadre
+  const cobradoPeriodo=abonosConFactura.reduce((s,a)=>s+a.monto,0);
   const ingresosPeriodo=movimientosCaja.filter(m=>m.tipo==="Ingreso"&&m.fecha>=fechaInicio&&m.fecha<=fechaFin).reduce((s,m)=>s+m.monto,0);
   const egresosPeriodo=movimientosCaja.filter(m=>m.tipo==="Egreso"&&m.fecha>=fechaInicio&&m.fecha<=fechaFin).reduce((s,m)=>s+m.monto,0);
   const egresosCierre=movimientosCaja.filter(m=>m.tipo==="Egreso"&&m.fecha>=fechaInicio&&m.fecha<=fechaFin).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
@@ -5798,18 +5821,18 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
   const imprimir=()=>{
     const cop=v=>v.toLocaleString("es-CO",{style:"currency",currency:"COP",minimumFractionDigits:0});
     const nombreSec=secretarioFiltro==="todos"?"Todos":(usuarios.find(u=>u.id===secretarioFiltro)?.nombre||"—");
-    const filas=facturasCierre.map(f=>{
-      const colorBg={"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2"}[f.estado]||"#f1f5f9";
-      const colorTxt={"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c"}[f.estado]||"#555";
-      const mp=getMetodoEmoji(f.metodoPago);
-      return `<tr><td>#${f.numeroRecibo||"—"}</td><td>${f.clienteNombre}</td><td>${f.fechaPago||f.fechaEmision||""}</td><td><span style="background:${colorBg};color:${colorTxt};padding:1px 5px;border-radius:3px;font-weight:bold">${f.estado}</span></td><td>${f.metodoPago?mp+" "+f.metodoPago:"—"}</td><td style="text-align:right">${cop(f.monto)}</td><td style="text-align:right;color:${f.saldoPendiente>0?"#dc2626":"#16a34a"}">${cop(f.monto-f.saldoPendiente)}</td></tr>`;
+    const filas=abonosConFactura.map(a=>{
+      const colorBg={"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2"}[a.estadoFacturaActual]||"#f1f5f9";
+      const colorTxt={"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c"}[a.estadoFacturaActual]||"#555";
+      const mp=getMetodoEmoji(a.metodoPago);
+      return `<tr><td>#${a.numeroRecibo||"—"}</td><td>${a.clienteNombre}</td><td>${a.fecha||""}</td><td><span style="background:${colorBg};color:${colorTxt};padding:1px 5px;border-radius:3px;font-weight:bold">${a.estadoFacturaActual}</span></td><td>${a.metodoPago?mp+" "+a.metodoPago:"—"}</td><td>${a.observacion||"—"}</td><td style="text-align:right;color:#16a34a">${cop(a.monto)}</td></tr>`;
     }).join("");
     const filasEgresos=egresosCierre.map(m=>{
       const nombreReg=usuarios.find(u=>u.id===m.registradoPor)?.nombre||"—";
       return `<tr><td>${m.fecha}</td><td>${m.concepto}</td><td>${nombreReg}</td><td>${m.observacion||"—"}</td><td style="text-align:right;color:#dc2626">−${cop(m.monto)}</td></tr>`;
     }).join("");
     const tablaEgresos=egresosCierre.length?`<table style="margin-top:18px"><thead><tr><th>Fecha</th><th>Concepto</th><th>Registrado por</th><th>Observación</th><th style="text-align:right">Monto</th></tr></thead><tbody>${filasEgresos}</tbody><tr class="total-row"><td colspan="4">TOTAL EGRESOS</td><td style="text-align:right;color:#dc2626">−${cop(egresosPeriodo)}</td></tr></table>`:"";
-    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cierre</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;font-size:10pt}h1{font-size:16pt;margin:0 0 4px}h2{font-size:12pt;margin:0 0 12px;color:#555}.header{text-align:center;margin-bottom:16px;border-bottom:2px solid #000;padding-bottom:10px}.resumen{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}.card{border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;flex:1;min-width:120px}.card-label{font-size:8pt;color:#64748b;text-transform:uppercase}.card-val{font-size:13pt;font-weight:900;margin-top:2px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#f1f5f9;padding:6px 8px;text-align:left;border-bottom:2px solid #e2e8f0}td{padding:5px 8px;border-bottom:1px solid #f1f5f9}.total-row{font-weight:900;font-size:11pt;border-top:2px solid #000}.footer{margin-top:20px;border-top:1px dashed #aaa;padding-top:12px;font-size:9pt}.btn-print{display:block;margin:16px auto;padding:10px 28px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer}@media print{.btn-print{display:none}}</style></head><body><div class="header"><h1>${nombreEmpresa}</h1><h2>CIERRE DE CAJA</h2><div>Período: <strong>${fechaInicio}${fechaInicio!==fechaFin?" → "+fechaFin:""}</strong></div><div>Secretario: <strong>${nombreSec}</strong> · ${new Date().toLocaleString("es-CO")}</div></div><div class="resumen"><div class="card"><div class="card-label">📅 Cobrado</div><div class="card-val" style="color:#7c3aed">${cop(cobradoPeriodo)}</div></div><div class="card"><div class="card-label">🏦 Caja</div><div class="card-val" style="color:#16a34a">${cop(totalCajaPeriodo)}</div></div><div class="card"><div class="card-label">📤 Egresos</div><div class="card-val" style="color:#dc2626">${cop(egresosPeriodo)}</div></div><div class="card"><div class="card-label">💰 Facturado</div><div class="card-val" style="color:#0ea5e9">${cop(totalFacturado)}</div></div><div class="card"><div class="card-label">✅ Cobrado</div><div class="card-val" style="color:#16a34a">${cop(totalCobrado)}</div></div><div class="card"><div class="card-label">⏳ Pendiente</div><div class="card-val" style="color:#ef4444">${cop(totalPendiente)}</div></div></div><table><thead><tr><th>#Recibo</th><th>Cliente</th><th>Fecha</th><th>Estado</th><th>Método</th><th style="text-align:right">Total</th><th style="text-align:right">Cobrado</th></tr></thead><tbody>${filas}</tbody><tr class="total-row"><td colspan="5">TOTALES</td><td style="text-align:right">${cop(totalFacturado)}</td><td style="text-align:right;color:#16a34a">${cop(totalCobrado)}</td></tr></table>${tablaEgresos}<div class="footer"><div>Firma: _______________________________</div></div><button class="btn-print" onclick="window.print()">🖨️ Imprimir</button></body></html>`;
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cierre</title><style>@page{size:A4;margin:15mm}body{font-family:Arial,sans-serif;font-size:10pt}h1{font-size:16pt;margin:0 0 4px}h2{font-size:12pt;margin:0 0 12px;color:#555}.header{text-align:center;margin-bottom:16px;border-bottom:2px solid #000;padding-bottom:10px}.resumen{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}.card{border:1px solid #e2e8f0;border-radius:6px;padding:10px 14px;flex:1;min-width:120px}.card-label{font-size:8pt;color:#64748b;text-transform:uppercase}.card-val{font-size:13pt;font-weight:900;margin-top:2px}table{width:100%;border-collapse:collapse;font-size:9pt}th{background:#f1f5f9;padding:6px 8px;text-align:left;border-bottom:2px solid #e2e8f0}td{padding:5px 8px;border-bottom:1px solid #f1f5f9}.total-row{font-weight:900;font-size:11pt;border-top:2px solid #000}.footer{margin-top:20px;border-top:1px dashed #aaa;padding-top:12px;font-size:9pt}.btn-print{display:block;margin:16px auto;padding:10px 28px;background:#1d4ed8;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer}@media print{.btn-print{display:none}}</style></head><body><div class="header"><h1>${nombreEmpresa}</h1><h2>CIERRE DE CAJA</h2><div>Período: <strong>${fechaInicio}${fechaInicio!==fechaFin?" → "+fechaFin:""}</strong></div><div>Secretario: <strong>${nombreSec}</strong> · ${new Date().toLocaleString("es-CO")}</div></div><div class="resumen"><div class="card"><div class="card-label">📅 Cobrado</div><div class="card-val" style="color:#7c3aed">${cop(cobradoPeriodo)}</div></div><div class="card"><div class="card-label">🏦 Caja</div><div class="card-val" style="color:#16a34a">${cop(totalCajaPeriodo)}</div></div><div class="card"><div class="card-label">📤 Egresos</div><div class="card-val" style="color:#dc2626">${cop(egresosPeriodo)}</div></div><div class="card"><div class="card-label">💰 Facturado</div><div class="card-val" style="color:#0ea5e9">${cop(totalFacturado)}</div></div><div class="card"><div class="card-label">✅ Cobrado</div><div class="card-val" style="color:#16a34a">${cop(totalCobrado)}</div></div><div class="card"><div class="card-label">⏳ Pendiente</div><div class="card-val" style="color:#ef4444">${cop(totalPendiente)}</div></div></div><table><thead><tr><th>#Recibo</th><th>Cliente</th><th>Fecha cobro</th><th>Estado factura</th><th>Método</th><th>Observación</th><th style="text-align:right">Monto cobrado</th></tr></thead><tbody>${filas}</tbody><tr class="total-row"><td colspan="6">TOTAL COBRADO</td><td style="text-align:right;color:#16a34a">${cop(cobradoPeriodo)}</td></tr></table>${tablaEgresos}<div class="footer"><div>Firma: _______________________________</div></div><button class="btn-print" onclick="window.print()">🖨️ Imprimir</button></body></html>`;
     const w=window.open("","_blank","width=900,height=700");w.document.write(html);w.document.close();
   };
   return(<div>
@@ -5829,7 +5852,7 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
         <div style={{background:"#faf5ff",border:"2px solid #a78bfa",borderRadius:10,padding:"10px 14px",minWidth:140,flex:1}}>
           <div style={{fontSize:10,color:"#7c3aed",textTransform:"uppercase",letterSpacing:0.7,fontWeight:700}}>{esUnDia?"📅 Cobrado ese día":"📅 Cobrado período"}</div>
           <div style={{fontWeight:900,color:"#7c3aed",fontSize:18,marginTop:2}}>{formatCOP(cobradoPeriodo)}</div>
-          <div style={{fontSize:10,color:GC.ink3,marginTop:1}}>{abonosCierre.filter(a=>{const f=facturas.find(x=>x.id===a.facturaId);return !f||f.estado!=="Anulada";}).length} cobros · {cantPagadas} pagadas</div>
+          <div style={{fontSize:10,color:GC.ink3,marginTop:1}}>{abonosConFactura.length} cobros · {cantPagadas} pagadas</div>
         </div>
         <div style={{background:GC.brandLight,border:"2px solid #22c55e",borderRadius:10,padding:"10px 14px",minWidth:140,flex:1}}>
           <div style={{fontSize:10,color:GC.brand,textTransform:"uppercase",letterSpacing:0.7,fontWeight:700}}>{esUnDia?"🏦 Total en caja ese día":"🏦 Total en caja"}</div>
@@ -5843,39 +5866,38 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
         </div>
       </div>
     )}
-    {facturasCierre.length===0?(
-      <div style={{textAlign:"center",color:GC.ink4,padding:40}}><div style={{fontSize:32,marginBottom:8}}>💼</div><div>Sin facturas en el período</div></div>
+    {abonosConFactura.length===0?(
+      <div style={{textAlign:"center",color:GC.ink4,padding:40}}><div style={{fontSize:32,marginBottom:8}}>💼</div><div>Sin cobros en el período</div></div>
     ):(
       <>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
-          <span style={{fontWeight:700,color:GC.ink,fontSize:13}}>{facturasCierre.length} facturas en el período</span>
+          <span style={{fontWeight:700,color:GC.ink,fontSize:13}}>{abonosConFactura.length} cobros en el período (incluye abonos parciales)</span>
           <Btn onClick={imprimir} style={{fontSize:13}}>🖨️ Imprimir cierre</Btn>
         </div>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
             <thead><tr style={{background:GC.bg2,borderBottom:"2px solid #e2e8f0"}}>
-              {["#Recibo","Cliente","Fecha","Mes","Estado","Método","Total","Cobrado"].map(h=>(
+              {["#Recibo","Cliente","Fecha cobro","Mes factura","Estado factura","Método","Observación","Monto cobrado"].map(h=>(
                 <th key={h} style={{padding:"8px 10px",textAlign:"left",color:GC.ink3,fontWeight:700,whiteSpace:"nowrap"}}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
-              {facturasCierre.map(f=>{
-                const mp=getMetodoEmoji(f.metodoPago);
-                return(<tr key={f.id} style={{borderBottom:"1px solid #f1f5f9"}}>
-                  <td style={{padding:"8px 10px",color:GC.info,fontWeight:700}}>#{f.numeroRecibo||f.id?.slice(-6)}</td>
-                  <td style={{padding:"8px 10px",fontWeight:600}}>{f.clienteNombre}</td>
-                  <td style={{padding:"8px 10px",color:GC.ink2}}>{f.fechaPago||f.fechaEmision}</td>
-                  <td style={{padding:"8px 10px",color:GC.ink2}}>{MESES[(f.mes||1)-1]} {f.anio}</td>
-                  <td style={{padding:"8px 10px"}}><span style={{background:(COLOR_ESTADO[f.estado]||"#94a3b8")+"22",color:COLOR_ESTADO[f.estado]||"#64748b",borderRadius:6,padding:"2px 7px",fontWeight:700,fontSize:11}}>{f.estado}</span></td>
-                  <td style={{padding:"8px 10px"}}>{f.metodoPago?<span style={{background:GC.infoBg,color:GC.info,borderRadius:6,padding:"2px 7px",fontSize:11,fontWeight:700}}>{mp} {f.metodoPago}</span>:<span style={{color:GC.ink4,fontSize:11}}>—</span>}</td>
-                  <td style={{padding:"8px 10px",fontWeight:700}}>{formatCOP(f.monto)}</td>
-                  <td style={{padding:"8px 10px",fontWeight:800,color:f.saldoPendiente>0?GC.warning:GC.brand}}>{formatCOP(f.monto-f.saldoPendiente-(f.descuento_pronto_pago||0))}</td>
+              {abonosConFactura.map(a=>{
+                const mp=getMetodoEmoji(a.metodoPago);
+                return(<tr key={a.id} style={{borderBottom:"1px solid #f1f5f9"}}>
+                  <td style={{padding:"8px 10px",color:GC.info,fontWeight:700}}>#{a.numeroRecibo||a.facturaId?.slice(-6)}</td>
+                  <td style={{padding:"8px 10px",fontWeight:600}}>{a.clienteNombre}</td>
+                  <td style={{padding:"8px 10px",color:GC.ink2}}>{a.fecha}</td>
+                  <td style={{padding:"8px 10px",color:GC.ink2}}>{a.mes?`${MESES[(a.mes||1)-1]} ${a.anio}`:"—"}</td>
+                  <td style={{padding:"8px 10px"}}><span style={{background:(COLOR_ESTADO[a.estadoFacturaActual]||"#94a3b8")+"22",color:COLOR_ESTADO[a.estadoFacturaActual]||"#64748b",borderRadius:6,padding:"2px 7px",fontWeight:700,fontSize:11}}>{a.estadoFacturaActual}</span></td>
+                  <td style={{padding:"8px 10px"}}>{a.metodoPago?<span style={{background:GC.infoBg,color:GC.info,borderRadius:6,padding:"2px 7px",fontSize:11,fontWeight:700}}>{mp} {a.metodoPago}</span>:<span style={{color:GC.ink4,fontSize:11}}>—</span>}</td>
+                  <td style={{padding:"8px 10px",color:"#9a3412",fontSize:11,maxWidth:160}}>{a.observacion?`📝 ${a.observacion}`:<span style={{color:GC.ink4}}>—</span>}</td>
+                  <td style={{padding:"8px 10px",fontWeight:800,color:GC.brand}}>{formatCOP(a.monto)}</td>
                 </tr>);
               })}
               <tr style={{borderTop:"2px solid #0f172a",background:GC.bg2}}>
-                <td colSpan={6} style={{padding:"10px",fontWeight:800,fontSize:13}}>TOTALES</td>
-                <td style={{padding:"10px",fontWeight:800,fontSize:13}}>{formatCOP(totalFacturado)}</td>
-                <td style={{padding:"10px",fontWeight:800,fontSize:13,color:GC.brand}}>{formatCOP(totalCobrado)}</td>
+                <td colSpan={7} style={{padding:"10px",fontWeight:800,fontSize:13}}>TOTAL COBRADO</td>
+                <td style={{padding:"10px",fontWeight:800,fontSize:13,color:GC.brand}}>{formatCOP(cobradoPeriodo)}</td>
               </tr>
             </tbody>
           </table>
