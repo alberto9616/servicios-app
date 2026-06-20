@@ -4952,17 +4952,21 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   // 🌐 TOTAL GLOBAL (acumulado histórico)
   const totalEgresosCaja = movimientosCaja.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
   const totalIngresosCaja = movimientosCaja.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
+  // Saldo base se guarda localmente (igual que en la pestaña Caja) — es el dinero con que se inicia la caja.
+  const saldoBaseGlobal = (() => { try { return Number(localStorage.getItem("caja_saldo_base") || 0); } catch { return 0; } })();
+  const ingresosCajaGlobal = movimientosCaja.filter(m => m.tipo === "Ingreso").reduce((s,m) => s + m.monto, 0);
+  const egresosCajaGlobal = movimientosCaja.filter(m => m.tipo === "Egreso").reduce((s,m) => s + m.monto, 0);
   const totalGlobal = (() => {
-    // Total global = suma histórica de todos los abonos (lo cobrado real)
-    // Los egresos van en "Total en caja" — no se descuentan del global por zona
+    // Total global = PLATA REAL DISPONIBLE para retirar: saldo base + todo lo cobrado históricamente
+    // en facturas + ingresos de caja − egresos de caja. Si se registra un egreso, este número baja de inmediato.
     if (esTodasZonas) {
-      const base = totalCobradoGlobal !== null ? totalCobradoGlobal : (() => {
+      const cobradoFacturas = totalCobradoGlobal !== null ? totalCobradoGlobal : (() => {
         const todas = [...facturas, ...facturasHistoricas].filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i);
         return todas.filter(f => f.estado !== "Anulada").reduce((s,f) => s + Math.max(0, f.monto - f.saldoPendiente - (f.descuento_pronto_pago||0)), 0);
       })();
-      return base; // Solo abonos, sin egresos (egresos van en totalCaja)
+      return saldoBaseGlobal + cobradoFacturas + ingresosCajaGlobal - egresosCajaGlobal;
     }
-    // Vista por zona: total abonos de esa zona
+    // Vista por zona: total abonos de esa zona (no se mezcla con saldo base/ingresos/egresos, que son globales de la oficina)
     if (Object.keys(totalCobradoPorZona).length > 0) {
       return totalCobradoPorZona[filtroZona] || 0;
     }
@@ -5262,11 +5266,11 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
 
     // 🌐 TOTAL GLOBAL — acumulado histórico, nunca vuelve a cero
     { label: "🌐 Total global", val: formatCOP(totalGlobal), color: "#0891b2",
-      tooltip: "Suma histórica de todo lo cobrado en facturas + ingresos de caja − egresos de caja. Nunca se reinicia.",
+      tooltip: "Plata real disponible para retirar: saldo base + todo lo cobrado históricamente en facturas + ingresos de caja − egresos de caja. Si se registra un egreso, baja de inmediato.",
       getTirilla: () => {
         const fPagadas = facturas.filter(f => f.estado !== "Anulada" && (f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)) > 0);
-        return { titulo: "🌐 Total global — Histórico", subtitulo: "Todo lo cobrado + ingresos caja − egresos caja (histórico)",
-          total: totalGlobal, labelTotal: "Total acumulado", colorTotal: "#0891b2",
+        return { titulo: "🌐 Total global — Plata disponible", subtitulo: "Saldo base + cobrado en facturas + ingresos caja − egresos caja",
+          total: totalGlobal, labelTotal: "Disponible para retirar", colorTotal: "#0891b2",
           filas: fPagadas.map(f => ({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio}`, estado: f.estado, monto: (f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)) })) };
       }},
 
@@ -6921,9 +6925,19 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
       .finally(() => setCargando(false));
   }, []);
 
+  // Total histórico cobrado en facturas (todos los abonos, todos los meses) — necesario para
+  // que el Saldo total refleje la plata REAL disponible, no solo los movimientos manuales.
+  const [cobradoFacturasHistorico, setCobradoFacturasHistorico] = useState(null);
+  useEffect(() => {
+    db.getTotalCobradoGlobal().then(setCobradoFacturasHistorico).catch(() => setCobradoFacturasHistorico(0));
+  }, []);
+
   const totalIngresos = movimientos.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
   const totalEgresos = movimientos.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
-  const saldo = saldoBase + totalIngresos - totalEgresos;
+  // Saldo real disponible = base + TODO lo cobrado en facturas históricamente + ingresos manuales − egresos manuales.
+  // Si alguien registra un egreso por esa plata, este número baja de inmediato — así tu jefe siempre
+  // puede ver cuánto puede retirar de la oficina, sin sumar nada a mano.
+  const saldo = saldoBase + (cobradoFacturasHistorico||0) + totalIngresos - totalEgresos;
 
   const guardar = async () => {
     setErrMsg("");
@@ -6980,9 +6994,10 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px,1fr))", gap: 10, marginBottom: 18 }}>
         {[
           ["💵 Saldo base", formatCOP(saldoBase), "#64748b"],
+          ["🧾 Cobrado en facturas", formatCOP(cobradoFacturasHistorico||0), "#0891b2"],
           ["💚 Ingresos", formatCOP(totalIngresos), "#22c55e"],
           ["🔴 Egresos", formatCOP(totalEgresos), "#ef4444"],
-          ["💼 Saldo total", formatCOP(saldo), saldo >= 0 ? "#0ea5e9" : "#ef4444"],
+          ["💼 Saldo total (disponible)", formatCOP(saldo), saldo >= 0 ? "#0ea5e9" : "#ef4444"],
         ].map(([label, val, color]) => (
           <div key={label} style={{ background: "#fff", border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 12, padding: "14px 16px" }}>
             <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4 }}>{label}</div>
