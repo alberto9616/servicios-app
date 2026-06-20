@@ -329,6 +329,19 @@ const db = {
     if (error) throw error;
     return data.map(mapAbono);
   },
+  // Trae los abonos CON observación para un grupo de facturas (sin importar el día).
+  // Se usa para mostrar la "novedad" de cada factura en la lista, incluso de meses pasados.
+  async getAbonosConObservacionPorFacturas(facturaIds) {
+    if (!facturaIds || !facturaIds.length) return [];
+    const { data, error } = await sb.from("abonos")
+      .select("factura_id, observacion, fecha, created_at")
+      .in("factura_id", facturaIds)
+      .not("observacion", "is", null)
+      .neq("observacion", "")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
   async registrarAbono(a) {
     const uuidR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const regPor = a.registradoPor && uuidR.test(a.registradoPor) ? a.registradoPor : null;
@@ -4446,8 +4459,8 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
           title="Anular factura">🚫</button>
       )}
-      {/* Eliminar: solo superusuario */}
-      {esSuperusuario && (
+      {/* Eliminar: admin y superusuario */}
+      {esAdmin && (
         <button onClick={() => setConfirmDelete({ id: f.id, nombre: f.clienteNombre })}
           style={{ background: "#fef2f2", color: GC.danger, border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
           title="Eliminar permanentemente">🗑️</button>
@@ -4710,6 +4723,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           COLOR_ESTADO={COLOR_ESTADO} AccionesFact={AccionesFact}
           nombreEmpresa={nombreEmpresa}
           setConfirmDelete={setConfirmDelete} setConfirmAnular={setConfirmAnular}
+          agregarAbonoHoyRef={agregarAbonoHoyRef}
         />
       )}
 
@@ -4750,6 +4764,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   const [totalCobradoGlobal, setTotalCobradoGlobal] = useState(null);
   const [totalCobradoPorZona, setTotalCobradoPorZona] = useState({});
   const [abonosHoy, setAbonosHoy] = useState([]);
+  const [observacionesPorFactura, setObservacionesPorFactura] = useState({});
   const [resultadosBusqueda, setResultadosBusqueda] = useState([]);
   const [buscandoDB, setBuscandoDB] = useState(false);
   const busqTimerRef = useRef(null);
@@ -4777,9 +4792,22 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     if (agregarAbonoHoyRef) {
       agregarAbonoHoyRef.current = {
         // Agregar un abono nuevo al estado local
-        agregar: (abono) => setAbonosHoy(prev => [abono, ...prev]),
+        agregar: (abono) => {
+          setAbonosHoy(prev => [abono, ...prev]);
+          // Si el abono trae observación, refrescarla de inmediato en la lista (sin esperar a recargar)
+          if (abono?.observacion && abono?.facturaId) {
+            setObservacionesPorFactura(prev => ({ ...prev, [abono.facturaId]: abono.observacion }));
+          }
+        },
         // Quitar todos los abonos de una factura (al eliminar o anular)
-        limpiarFactura: (facturaId) => setAbonosHoy(prev => prev.filter(a => a.facturaId !== facturaId)),
+        limpiarFactura: (facturaId) => {
+          setAbonosHoy(prev => prev.filter(a => a.facturaId !== facturaId));
+          setObservacionesPorFactura(prev => {
+            const copia = { ...prev };
+            delete copia[facturaId];
+            return copia;
+          });
+        },
         // Actualizar estado de factura en resultadosBusqueda (para que el cambio se vea sin recargar)
         actualizarFactura: (facturaId, cambios) => {
           setResultadosBusqueda(prev => prev.map(f => f.id === facturaId ? { ...f, ...cambios } : f));
@@ -4832,6 +4860,25 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       return matchEstado && matchZona(f) && f.mes === filtroMes && f.anio === filtroAnio;
     });
   })();
+
+  // Clave estable con los IDs de las facturas visibles, para evitar recargas innecesarias
+  const idsFacturasVisibles = facturasFiltradas.map(f => f.id).sort().join(",");
+
+  // Cargar observaciones (de cualquier fecha) de las facturas que se están mostrando.
+  // Permite ver la novedad de un pago aunque haya sido hace semanas o meses (útil ante una queja/reclamo).
+  useEffect(() => {
+    const ids = facturasFiltradas.map(f => f.id);
+    if (!ids.length) { setObservacionesPorFactura({}); return; }
+    db.getAbonosConObservacionPorFacturas(ids).then(abs => {
+      const mapa = {};
+      for (const a of abs) {
+        // Como vienen ordenados por created_at desc, el primero que llega por factura es el más reciente
+        if (!mapa[a.factura_id]) mapa[a.factura_id] = a.observacion;
+      }
+      setObservacionesPorFactura(mapa);
+    }).catch(() => setObservacionesPorFactura({}));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsFacturasVisibles]);
 
   // ── Totales ────────────────────────────────────────────────────
   const hoy = new Date();
@@ -5337,7 +5384,10 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {facturasFiltradas.map(f => (
+          {facturasFiltradas.map(f => {
+            // Observación del pago más reciente de esta factura (de cualquier fecha, no solo hoy)
+            const observacionFactura = observacionesPorFactura[f.id] || "";
+            return (
             <div key={f.id} style={{ background: f.estado === "Anulada" ? "#f8fafc" : "#fff", border: "1px solid " + GC.border, borderLeft: "4px solid " + (COLOR_ESTADO[f.estado] || "#e2e8f0"), borderRadius: 12, padding: "12px 16px", opacity: f.estado === "Anulada" ? 0.6 : 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 160 }}>
@@ -5349,6 +5399,13 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
                   {busq.trim() && <div style={{ fontSize: 11, color: GC.purple, fontWeight: 700, marginTop: 2 }}>📅 {MESES[(f.mes||1)-1]} {f.anio}</div>}
                   {f.clienteDireccion && <div style={{ fontSize: 11, color: GC.ink4 }}>📍 {f.clienteDireccion}</div>}
                 </div>
+                {observacionFactura && (
+                  <div style={{ flex: 1, minWidth: 140, maxWidth: 240 }}>
+                    <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "#9a3412" }}>
+                      📝 {observacionFactura}
+                    </div>
+                  </div>
+                )}
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontWeight: 800, color: GC.ink, fontSize: 15 }}>{formatCOP(f.monto)}</div>
                   {f.saldoPendiente > 0 && f.saldoPendiente < f.monto && <div style={{ fontSize: 12, color: GC.warning }}>Saldo: {formatCOP(f.saldoPendiente)}</div>}
@@ -5357,7 +5414,8 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
                 <AccionesFact f={f} />
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -5772,20 +5830,10 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
           <div style={{fontWeight:900,color:GC.brand,fontSize:18,marginTop:2}}>{formatCOP(totalCajaPeriodo)}</div>
           <div style={{fontSize:10,color:GC.ink3,marginTop:1}}>{ingresosPeriodo>0?`+${formatCOP(ingresosPeriodo)} ing. · `:""}{ egresosPeriodo>0?`−${formatCOP(egresosPeriodo)} egr.`:"sin egresos"}</div>
         </div>
-        <div style={{background:"#fff",border:"1px solid #0ea5e933",borderRadius:10,padding:"10px 14px",minWidth:120,flex:1}}>
-          <div style={{fontSize:10,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.7}}>💰 Total facturado</div>
-          <div style={{fontWeight:800,color:"#0ea5e9",fontSize:16,marginTop:2}}>{formatCOP(totalFacturado)}</div>
-          <div style={{fontSize:10,color:GC.ink3,marginTop:1}}>{facturasCierre.length} facturas</div>
-        </div>
-        <div style={{background:"#fff",border:"1px solid #22c55e33",borderRadius:10,padding:"10px 14px",minWidth:120,flex:1}}>
-          <div style={{fontSize:10,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.7}}>✅ Total cobrado</div>
-          <div style={{fontWeight:800,color:"#22c55e",fontSize:16,marginTop:2}}>{formatCOP(totalCobrado)}</div>
-          <div style={{fontSize:10,color:GC.ink3,marginTop:1}}>{cantPagadas} pagadas · {cantParcial} parciales</div>
-        </div>
-        <div style={{background:"#fff",border:"1px solid #ef444433",borderRadius:10,padding:"10px 14px",minWidth:120,flex:1}}>
-          <div style={{fontSize:10,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.7}}>⏳ Saldo pendiente</div>
-          <div style={{fontWeight:800,color:"#ef4444",fontSize:16,marginTop:2}}>{formatCOP(totalPendiente)}</div>
-          <div style={{fontSize:10,color:GC.ink3,marginTop:1}}>{cantPendiente} pendientes</div>
+        <div style={{background:"#fef2f2",border:"1px solid #ef444433",borderRadius:10,padding:"10px 14px",minWidth:120,flex:1}}>
+          <div style={{fontSize:10,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.7}}>📤 Egresos</div>
+          <div style={{fontWeight:800,color:"#dc2626",fontSize:16,marginTop:2}}>{formatCOP(egresosPeriodo)}</div>
+          <div style={{fontSize:10,color:GC.ink3,marginTop:1}}>{movimientosCaja.filter(m=>m.tipo==="Egreso"&&m.fecha>=fechaInicio&&m.fecha<=fechaFin).length} movimientos</div>
         </div>
       </div>
     )}
@@ -5832,7 +5880,7 @@ function SeccionCierreCaja({ usuario, facturas, usuarios, zonas, esAdmin, esSupe
 }
 
 // ── Sección 3: Historial y Auditoría ─────────────────────────
-function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario, setFacturas, hoyStr, dbObj }) {
+function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario, setFacturas, hoyStr, dbObj, agregarAbonoHoyRef }) {
   const [montoAbono, setMontoAbono] = useState("");
   const [metodoPago, setMetodoPago] = useState("Efectivo");
   const [procesando, setProcesando] = useState(false);
@@ -5865,9 +5913,13 @@ function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario
         if (s.pagar <= 0) continue;
         const nuevoEstado = s.nuevaSaldo <= 0 ? "Pagado" : "Abono parcial";
         const nuevaFecha  = s.nuevaSaldo <= 0 ? hoyStr : null;
-        await dbObj.registrarAbono({ facturaId: s.facturaId, monto: s.pagar, metodoPago, observacion: "Abono masivo", fecha: hoyStr, registradoPor: usuario?.id || null });
+        const abono = await dbObj.registrarAbono({ facturaId: s.facturaId, monto: s.pagar, metodoPago, observacion: "Abono masivo", fecha: hoyStr, registradoPor: usuario?.id || null });
         await dbObj.actualizarFactura(s.facturaId, { saldo_pendiente: s.nuevaSaldo, estado: nuevoEstado, metodo_pago: metodoPago, fecha_pago: nuevaFecha });
         setFacturas(prev => prev.map(f => f.id === s.facturaId ? { ...f, saldoPendiente: s.nuevaSaldo, estado: nuevoEstado, metodoPago, fechaPago: nuevaFecha } : f));
+        // Sumar este abono al contador "Cobrado hoy" de Facturación y Caja
+        if (abono && abono.fecha === hoyStr && agregarAbonoHoyRef?.current?.agregar) {
+          agregarAbonoHoyRef.current.agregar(abono);
+        }
       }
       const pagadas = simulacion.filter(s => s.nuevaSaldo <= 0).length;
       const parciales = simulacion.filter(s => s.nuevaSaldo > 0).length;
@@ -5942,7 +5994,7 @@ function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario
   );
 }
 
-function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas = [], usuarios, zonas, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, nombreEmpresa, setConfirmDelete, setConfirmAnular }) {
+function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas = [], usuarios, zonas, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, nombreEmpresa, setConfirmDelete, setConfirmAnular, agregarAbonoHoyRef }) {
   const [busq, setBusq] = useState("");
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
   const [filtroMes, setFiltroMes] = useState(0);
@@ -6161,6 +6213,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
           setFacturas={setFacturas}
           hoyStr={new Date().toISOString().split("T")[0]}
           dbObj={db}
+          agregarAbonoHoyRef={agregarAbonoHoyRef}
         />
       )}
 
