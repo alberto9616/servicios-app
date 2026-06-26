@@ -4975,9 +4975,9 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
 
   // Helper: verificar si un cliente pertenece a la zona filtrada
   const clienteEnZona = (clienteId) => {
-    if (!filtroZona || filtroZona === "todas") return true;
+    if (!zonaFiltroActiva) return true;
     const cliente = usuarios.find(u => u.id === clienteId);
-    return cliente ? cliente.zonaId === filtroZona : true;
+    return cliente ? cliente.zonaId === zonaFiltroActiva : true;
   };
 
   // Movimientos de caja de HOY — para secretario ya vienen filtrados desde el servidor (db.getMovimientosCaja).
@@ -5284,9 +5284,17 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       tooltip: "Suma de todos los abonos registrados hoy (pagos totales y parciales). Se reinicia automáticamente cada día.",
       getTirilla: () => {
         const filasAbonos = abonosHoy
-          .filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; })
+          .filter(a => {
+            const f = facturas.find(x => x.id === a.facturaId) || facturasHistoricas.find(x => x.id === a.facturaId);
+            if (f?.estado === "Anulada") return false;
+            if (!zonaFiltroActiva) return true;
+            const cid = a.clienteId || f?.clienteId;
+            if (!cid) return false;
+            const cliente = usuarios.find(u => u.id === cid);
+            return cliente ? cliente.zonaId === zonaFiltroActiva : false;
+          })
           .map(a => {
-            const f = facturas.find(x => x.id === a.facturaId);
+            const f = facturas.find(x => x.id === a.facturaId) || facturasHistoricas.find(x => x.id === a.facturaId);
             return { nombre: f?.clienteNombre || a.clienteNombre || "—", detalle: `${a.metodoPago} · ${f?.concepto || a.concepto || ""}`, estado: "Cobrado", monto: a.monto };
           });
         return { titulo: `📅 Cobrado hoy — ${hoyStr}`, subtitulo: "Abonos registrados hoy (totales y parciales)",
