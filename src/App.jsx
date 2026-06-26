@@ -4505,6 +4505,23 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
 
   return (
     <div>
+      {/* Banner de zona activa — confirma a dónde se asignan los cobros y facturas nuevas que se creen */}
+      {esAdmin && zonas.length > 1 && (() => {
+        const zonaActiva = filtroZona !== "todas" ? zonas.find(z => z.id === filtroZona) : null;
+        return zonaActiva ? (
+          <div style={{ background: zonaActiva.color + "15", border: "1px solid " + zonaActiva.color + "33", borderRadius: 10, padding: "8px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>📍</span>
+            <span style={{ color: zonaActiva.color, fontSize: 13, fontWeight: 700 }}>Zona activa: {zonaActiva.nombre}</span>
+            <span style={{ color: GC.ink3, fontSize: 12 }}>· Los cobros y facturas nuevas se asignan a esta zona</span>
+          </div>
+        ) : (
+          <div style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 10, padding: "8px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>🌐</span>
+            <span style={{ color: GC.ink2, fontSize: 13, fontWeight: 700 }}>Viendo todas las zonas</span>
+            <span style={{ color: GC.ink3, fontSize: 12 }}>· Selecciona una zona arriba antes de cobrar o crear facturas, para no asignarlas a la zona incorrecta</span>
+          </div>
+        );
+      })()}
       {/* ── Mini menú ── */}
       <div style={{ display: "flex", gap: 4, marginBottom: 20, background: GC.bg3, borderRadius: 12, padding: 4 }}>
         {TABS.map(t => (
