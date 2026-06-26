@@ -4764,6 +4764,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           usuario={usuario} facturas={facturas} facturasHistoricas={facturasHistoricas}
           usuarios={usuarios}
           zonas={zonas} esAdmin={esAdmin} esSuperusuario={esSuperusuario}
+          filtroZona={filtroZona}
           nombreEmpresa={nombreEmpresa} COLOR_ESTADO={COLOR_ESTADO}
         />
       )}
@@ -4793,7 +4794,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       {/* TAB CAJA — movimientos + saldo base admin            */}
       {/* ════════════════════════════════════════════════════ */}
       {subTab === "caja" && (
-        <ModuloCaja usuario={usuario} esAdmin={esAdmin || esSuperusuario} facturas={facturas} nombreEmpresa={nombreEmpresa} zonas={zonas} />
+        <ModuloCaja usuario={usuario} esAdmin={esAdmin || esSuperusuario} facturas={facturas} nombreEmpresa={nombreEmpresa} zonas={zonas} filtroZona={filtroZona} />
       )}
     </div>
   );
@@ -5856,7 +5857,9 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
 }
 
 // ── Sección 2: Cierre de Caja ─────────────────────────────────
-function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuarios, zonas, esAdmin, esSuperusuario, nombreEmpresa, COLOR_ESTADO }) {
+function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuarios, zonas, esAdmin, esSuperusuario, filtroZona = "todas", nombreEmpresa, COLOR_ESTADO }) {
+  // Secretario: SIEMPRE su propia zona. Admin: respeta la zona activa del filtro visual (o todas).
+  const zonaFiltroActiva = !esAdmin ? usuario?.zonaId : (filtroZona !== "todas" ? filtroZona : null);
   const hoy=fechaLocal(),primerDiaMes=fechaLocal().slice(0,8)+"01";
   const [fechaInicio,setFechaInicio]=useState(primerDiaMes);
   const [fechaFin,setFechaFin]=useState(hoy);
@@ -5869,14 +5872,14 @@ function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuario
   // Combina facturas del mes actual + históricas de meses anteriores, para poder encontrar
   // cualquier factura sin importar a qué mes pertenezca (evita los "—" en la tabla de cobros)
   const todasLasFacturas=[...facturas,...facturasHistoricas,...facturasFaltantes].filter((f,i,arr)=>arr.findIndex(x=>x.id===f.id)===i);
-  useEffect(()=>{db.getMovimientosCaja(esAdmin?null:usuario?.zonaId).then(setMovimientosCaja).catch(()=>{});}, [esAdmin, usuario?.zonaId]);
+  useEffect(()=>{db.getMovimientosCaja(zonaFiltroActiva).then(setMovimientosCaja).catch(()=>{});}, [zonaFiltroActiva]);
   useEffect(()=>{
     if(!fechaInicio||!fechaFin)return;
     setCargandoCierre(true);
     const cargar=async()=>{
       try{const dias=[];let cur=new Date(fechaInicio+"T12:00:00");const fin=new Date(fechaFin+"T12:00:00");
         while(cur<=fin){dias.push(cur.toISOString().split("T")[0]);cur.setDate(cur.getDate()+1);}
-        const results=await Promise.all(dias.map(d=>db.getAbonosByFecha(d, esAdmin?null:usuario?.zonaId).catch(()=>[])));
+        const results=await Promise.all(dias.map(d=>db.getAbonosByFecha(d, zonaFiltroActiva).catch(()=>[])));
         setAbonosCierre(results.flat());
       }catch{setAbonosCierre([]);}finally{setCargandoCierre(false);}
     };cargar();
@@ -5891,9 +5894,15 @@ function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuario
     db.getFacturasPorIds(idsFaltantes).then(setFacturasFaltantes).catch(()=>setFacturasFaltantes([]));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[abonosCierre]);
+  const matchZonaCierre = (f) => {
+    if (!zonaFiltroActiva) return true;
+    const cliente = usuarios.find(u => u.id === f.clienteId);
+    return cliente ? cliente.zonaId === zonaFiltroActiva : f.zonaId === zonaFiltroActiva;
+  };
   const facturasCierre=todasLasFacturas.filter(f=>{
     const fecha=f.fechaPago||f.fechaEmision||"";
     if(!fecha||fecha<fechaInicio||fecha>fechaFin)return false;
+    if(!matchZonaCierre(f))return false;
     if(secretarioFiltro!=="todos"){const secId=f.creadoPor||usuarios.find(u=>u.id===f.clienteId)?.secretarioId;if(secId!==secretarioFiltro)return false;}
     return f.estado!=="Anulada";
   });
@@ -5907,6 +5916,7 @@ function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuario
   const abonosConFactura=abonosCierre
     .map(a=>{
       const f=todasLasFacturas.find(x=>x.id===a.facturaId); // ahora incluye históricas, así no quedan "—" por facturas de meses anteriores
+      if(!matchZonaCierre(f||{clienteId:a.clienteId,zonaId:a.facturaZonaId}))return null;
       if(secretarioFiltro!=="todos"){const secId=f?.creadoPor||usuarios.find(u=>u.id===f?.clienteId)?.secretarioId;if(secId!==secretarioFiltro)return null;}
       if(f&&f.estado==="Anulada")return null;
       return{
@@ -6872,9 +6882,9 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
 // ══════════════════════════════════════════════════════════════
 // MÓDULO CAJA — Ingresos y Egresos
 // ══════════════════════════════════════════════════════════════
-function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "GC HOGAR.NET SAS", zonas = [] }) {
-  // Un secretario SIEMPRE queda fijo a su zona. Un admin sin zona ve todas combinadas.
-  const zonaUsuario = usuario?.zonaId || null;
+function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "GC HOGAR.NET SAS", zonas = [], filtroZona = "todas" }) {
+  // Secretario: SIEMPRE queda fijo a su propia zona. Admin: respeta la zona activa del filtro visual (o todas si no eligió ninguna).
+  const zonaUsuario = !esAdmin ? (usuario?.zonaId || null) : (filtroZona !== "todas" ? filtroZona : null);
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState(false);
