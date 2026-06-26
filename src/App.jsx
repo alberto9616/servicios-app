@@ -105,6 +105,8 @@ const mapAbono = r => r ? ({
   concepto:      r.facturas?.concepto       || null,
   numeroRecibo:  r.facturas?.numero_recibo  || null,
   numeroPago:    r.numero_pago              || null,
+  facturaEstado: r.facturas?.estado         || null,
+  facturaZonaId: r.facturas?.zona_id        || null,
 }) : null;
 
 // ──────────────────────────────────────────────────────────
@@ -330,10 +332,12 @@ const db = {
     if (error) throw error;
     return data.map(mapAbono);
   },
-  async getAbonosByFecha(fecha) {
-    const { data, error } = await sb.from("abonos")
-      .select("*, facturas(cliente_id, cliente_nombre, concepto, numero_recibo)")
-      .eq("fecha", fecha).order("created_at", { ascending: false });
+  async getAbonosByFecha(fecha, zonaId = null) {
+    let query = sb.from("abonos")
+      .select("*, facturas!inner(cliente_id, cliente_nombre, concepto, numero_recibo, zona_id, estado)")
+      .eq("fecha", fecha);
+    if (zonaId) query = query.eq("facturas.zona_id", zonaId);
+    const { data, error } = await query.order("created_at", { ascending: false });
     if (error) throw error;
     return data.map(mapAbono);
   },
@@ -4347,7 +4351,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       .subscribe();
     const canalAbonos = sb.channel("realtime-abonos")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "abonos" }, () => {
-        db.getAbonosByFecha(fechaLocal()).then(data => {
+        db.getAbonosByFecha(fechaLocal(), !esAdmin ? usuario?.zonaId : null).then(data => {
           if (agregarAbonoHoyRef?.current?.recargar) agregarAbonoHoyRef.current.recargar(data);
         }).catch(() => {});
       }).subscribe();
@@ -4880,8 +4884,9 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   }, [esAdmin, usuario?.zonaId]);
 
   // Cargar abonos de hoy solo al montar — el ref se encarga de actualizaciones en tiempo real
+  // Secretario: filtra por su zona en el servidor (defensa en profundidad). Admin: trae todo, se filtra en cliente según el desplegable.
   useEffect(() => {
-    db.getAbonosByFecha(hoyStr).then(setAbonosHoy).catch(() => {});
+    db.getAbonosByFecha(hoyStr, !esAdmin ? usuario?.zonaId : null).then(setAbonosHoy).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Solo al montar — hoyStr no cambia dentro de una sesión del día
 
@@ -5862,7 +5867,7 @@ function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuario
     const cargar=async()=>{
       try{const dias=[];let cur=new Date(fechaInicio+"T12:00:00");const fin=new Date(fechaFin+"T12:00:00");
         while(cur<=fin){dias.push(cur.toISOString().split("T")[0]);cur.setDate(cur.getDate()+1);}
-        const results=await Promise.all(dias.map(d=>db.getAbonosByFecha(d).catch(()=>[])));
+        const results=await Promise.all(dias.map(d=>db.getAbonosByFecha(d, esAdmin?null:usuario?.zonaId).catch(()=>[])));
         setAbonosCierre(results.flat());
       }catch{setAbonosCierre([]);}finally{setCargandoCierre(false);}
     };cargar();
@@ -6173,7 +6178,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
   useEffect(()=>{
     if (!filtroDia){setAbonosDia([]);return;}
     setCargandoDia(true);
-    db.getAbonosByFecha(filtroDia).then(d=>setAbonosDia(d||[])).catch(()=>setAbonosDia([])).finally(()=>setCargandoDia(false));
+    db.getAbonosByFecha(filtroDia, esAdmin?null:usuario?.zonaId).then(d=>setAbonosDia(d||[])).catch(()=>setAbonosDia([])).finally(()=>setCargandoDia(false));
   },[filtroDia]);
   const cobradoDia   = filtroDia?abonosDia.filter(a=>{const f=facturas.find(x=>x.id===a.facturaId);return !f||f.estado!=="Anulada";}).reduce((s,a)=>s+a.monto,0):0;
   const ingresosDia  = filtroDia?movimientosCaja.filter(m=>m.tipo==="Ingreso"&&m.fecha===filtroDia).reduce((s,m)=>s+m.monto,0):0;
@@ -6895,11 +6900,8 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
 
     // Ingresos del día = abonos de facturas del día (no anuladas) + movimientos ingreso del día
     let abonosDia = [];
-    try { abonosDia = await db.getAbonosByFecha(fechaInforme); } catch {}
-    const abonosDiaValidos = abonosDia.filter(a => {
-      const f = facturas.find(x => x.id === a.facturaId);
-      return !f || f.estado !== "Anulada";
-    });
+    try { abonosDia = await db.getAbonosByFecha(fechaInforme, zonaUsuario); } catch {}
+    const abonosDiaValidos = abonosDia.filter(a => a.facturaEstado !== "Anulada");
     const totalAbonosDia = abonosDiaValidos.reduce((s, a) => s + a.monto, 0);
     const movsDia = movimientos.filter(m => m.fecha === fechaInforme);
     const ingresosCajaDia = movsDia.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
