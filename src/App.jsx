@@ -289,7 +289,7 @@ const db = {
   },
   async actualizarFactura(id, campos) { const { error } = await sb.from("facturas").update(campos).eq("id", id); if (error) throw error; },
   async deleteFactura(id) { const { error } = await sb.from("facturas").delete().eq("id", id); if (error) throw error; },
-  async buscarFacturasPorNombre(q) {
+  async buscarFacturasPorNombre(q, zonaId = null) {
     if (!q || q.trim().length < 2) return [];
     const term = q.trim().replace(/\s+/g, " ");
     // Paginar para traer TODAS las facturas sin límite artificial
@@ -306,9 +306,13 @@ const db = {
       }
       return all;
     };
+    // Si se pasa zonaId (usuario no-admin, o admin con una zona específica seleccionada),
+    // se filtra DIRECTO en el servidor por zona_id — así nunca se traen datos de otra zona,
+    // sin depender de un filtro posterior en el cliente.
+    const aplicarZona = (query) => zonaId ? query.eq("zona_id", zonaId) : query;
     const [porNombre, porCedula] = await Promise.all([
-      fetchAll(sb.from("facturas").select("*").ilike("cliente_nombre", `%${term}%`).order("anio", { ascending: false }).order("mes", { ascending: false })),
-      fetchAll(sb.from("facturas").select("*").ilike("cliente_cedula", `%${term}%`).order("anio", { ascending: false }).order("mes", { ascending: false })),
+      fetchAll(aplicarZona(sb.from("facturas").select("*").ilike("cliente_nombre", `%${term}%`)).order("anio", { ascending: false }).order("mes", { ascending: false })),
+      fetchAll(aplicarZona(sb.from("facturas").select("*").ilike("cliente_cedula", `%${term}%`)).order("anio", { ascending: false }).order("mes", { ascending: false })),
     ]);
     const combined = [...porNombre, ...porCedula];
     const seen = new Set();
@@ -343,8 +347,8 @@ const db = {
     return data || [];
   },
   async registrarAbono(a) {
-    const uuidR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const regPor = a.registradoPor && uuidR.test(a.registradoPor) ? a.registradoPor : null;
+    // IDs en este sistema pueden ser UUIDs o cortos tipo "u4463d9bd" — solo se valida que no esté vacío.
+    const regPor = (a.registradoPor && String(a.registradoPor).trim()) ? String(a.registradoPor).trim() : null;
 
     // Validar que facturaId exista (los IDs son texto corto, no UUIDs)
     if (!a.facturaId) {
@@ -471,11 +475,13 @@ const db = {
     return (data || []).map(mapFactura);
   },
   async crearFacturaAtomica(f) {
-    // Validar que zonaId y clienteId sean UUIDs válidos antes de enviar
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const zonaIdVal    = f.zonaId    && uuidRegex.test(f.zonaId)    ? f.zonaId    : null;
-    const clienteIdVal = f.clienteId && uuidRegex.test(f.clienteId) ? f.clienteId : null;
-    const creadoPorVal = f.creadoPor && uuidRegex.test(f.creadoPor) ? f.creadoPor : null;
+    // Las columnas son tipo TEXT (no uuid), y los IDs en este sistema vienen en dos formatos:
+    // UUIDs reales (clientes antiguos) e IDs cortos tipo "zcbc7f6c6" (zonas y clientes nuevos).
+    // Solo se valida que no estén vacíos — exigir formato UUID descartaba silenciosamente
+    // zonaId en casi todas las facturas nuevas, dejándolas sin zona asignada.
+    const zonaIdVal    = (f.zonaId    && String(f.zonaId).trim())    ? String(f.zonaId).trim()    : null;
+    const clienteIdVal = (f.clienteId && String(f.clienteId).trim()) ? String(f.clienteId).trim() : null;
+    const creadoPorVal = (f.creadoPor && String(f.creadoPor).trim()) ? String(f.creadoPor).trim() : null;
     const { data, error } = await sb.rpc("crear_factura_atomica", {
       p_cliente_id: clienteIdVal, p_cliente_nombre: f.clienteNombre,
       p_cliente_cedula: f.clienteCedula||"", p_cliente_direccion: f.clienteDireccion||"",
@@ -3033,6 +3039,9 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
   };
   const ordenarPorFecha = arr => [...arr].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "") || (a.hora || "").localeCompare(b.hora || ""));
   const ordenesFiltradas = ordenes.filter(o => {
+    // Si sesion tiene zonaId (secretario o técnico), solo ve órdenes de su propia zona.
+    // Admin/superusuario no tienen zonaId fijo de este tipo, así que ven todas.
+    if (sesion?.zonaId && o.zonaId !== sesion.zonaId) return false;
     if (filtroFecha && o.fecha !== filtroFecha) return false;
     if (filtroTecnico && o.tecnicoId !== filtroTecnico) return false;
     return true;
@@ -4790,13 +4799,16 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     clearTimeout(busqTimerRef.current);
     busqTimerRef.current = setTimeout(async () => {
       try {
-        const res = await db.buscarFacturasPorNombre(q);
+        // Un secretario (no admin) SIEMPRE busca solo en su propia zona — nunca puede ver la otra.
+        // Un admin busca en la zona que tenga seleccionada en el filtro, o en todas si eligió "Todas".
+        const zonaParaBuscar = !esAdmin ? usuario?.zonaId : (filtroZona !== "todas" ? filtroZona : null);
+        const res = await db.buscarFacturasPorNombre(q, zonaParaBuscar);
         setResultadosBusqueda(res);
       } catch { setResultadosBusqueda([]); }
       finally { setBuscandoDB(false); }
     }, 400);
     return () => clearTimeout(busqTimerRef.current);
-  }, [busq]);
+  }, [busq, esAdmin, filtroZona, usuario?.zonaId]);
 
   // Exponer funciones para que ModuloFacturacion pueda modificar abonosHoy sin prop drilling
   useEffect(() => {
@@ -4848,12 +4860,15 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
 
   const facturasFiltradas = (() => {
     const q = busq.trim();
-    // Filtro de zona: si admin seleccionó una zona específica
+    // Filtro de zona — doble capa de seguridad:
+    // 1. Si el usuario es secretario (no admin), SIEMPRE se restringe a su propia zona, sin excepción.
+    // 2. Si es admin, se respeta el filtro visual que haya elegido (o "todas" para ver todo).
+    const zonaObligatoria = !esAdmin ? usuario?.zonaId : (filtroZona !== "todas" ? filtroZona : null);
     const matchZona = (f) => {
-      if (!filtroZona || filtroZona === "todas") return true;
-      // Buscar el cliente de la factura para ver su zona
+      if (!zonaObligatoria) return true;
+      // Buscar el cliente de la factura para ver su zona (fuente más confiable)
       const cliente = usuarios.find(u => u.id === f.clienteId);
-      return cliente ? cliente.zonaId === filtroZona : f.zonaId === filtroZona;
+      return cliente ? cliente.zonaId === zonaObligatoria : f.zonaId === zonaObligatoria;
     };
     if (q.length >= 2) {
       const matchEstado = (f) => filtroEstado === "todos" || f.estado === filtroEstado;
@@ -6123,13 +6138,15 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
     clearTimeout(busqTimerHistorial.current);
     busqTimerHistorial.current = setTimeout(async () => {
       try {
-        const res = await db.buscarFacturasPorNombre(q);
+        // Un secretario (no admin) SIEMPRE busca solo en su propia zona — nunca puede ver la otra.
+        const zonaParaBuscar = !esAdmin ? usuario?.zonaId : null;
+        const res = await db.buscarFacturasPorNombre(q, zonaParaBuscar);
         setResultadosHistorial(res);
       } catch { setResultadosHistorial([]); }
       finally { setBuscandoHistorial(false); }
     }, 400);
     return () => clearTimeout(busqTimerHistorial.current);
-  }, [busq]);
+  }, [busq, esAdmin, usuario?.zonaId]);
 
   // Cuando hay búsqueda activa usar resultados de Supabase (completos, sin límite de meses)
   // Cuando hay filtroDia combinar facturas locales + históricas
