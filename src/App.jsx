@@ -4944,22 +4944,22 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   // 📅 COBRADO HOY: suma de TODOS los abonos registrados hoy (pagos totales + parciales, no anuladas)
   // Usamos la tabla de abonos porque fechaPago solo existe en facturas totalmente pagadas
   // Zona obligatoria: secretario SIEMPRE se restringe a su propia zona; admin respeta el filtro visual (o ninguno si es "todas")
-  const zonaObligatoriaHoy = !esAdmin ? usuario?.zonaId : (filtroZona !== "todas" ? filtroZona : null);
+  const zonaFiltroActiva = !esAdmin ? usuario?.zonaId : (filtroZona !== "todas" ? filtroZona : null);
   // Helper: verificar si una factura/abono pertenece a la zona filtrada
   const facturaEnZona = (facturaId) => {
-    if (!zonaObligatoriaHoy) return true;
+    if (!zonaFiltroActiva) return true;
     // Buscar en facturas del mes actual
     const factura = facturas.find(f => f.id === facturaId) || facturasHistoricas.find(f => f.id === facturaId);
     if (!factura) return true;
     const cliente = usuarios.find(u => u.id === factura.clienteId);
-    return cliente ? cliente.zonaId === zonaObligatoriaHoy : true;
+    return cliente ? cliente.zonaId === zonaFiltroActiva : true;
   };
 
   const cobradoHoyFacturas = abonosHoy
     .filter(a => {
       const factura = facturas.find(f => f.id === a.facturaId) || facturasHistoricas.find(f => f.id === a.facturaId);
       if (factura?.estado === "Anulada") return false;
-      if (!zonaObligatoriaHoy) return true;
+      if (!zonaFiltroActiva) return true;
       // Filtrar por zona: usar clienteId del abono o de la factura encontrada
       const cid = a.clienteId || factura?.clienteId;
       if (!cid) {
@@ -4968,7 +4968,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         return false;
       }
       const cliente = usuarios.find(u => u.id === cid);
-      return cliente ? cliente.zonaId === zonaObligatoriaHoy : false;
+      return cliente ? cliente.zonaId === zonaFiltroActiva : false;
     })
     .reduce((s, a) => s + a.monto, 0);
   const totalDia = cobradoHoyFacturas;
@@ -4980,11 +4980,15 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     return cliente ? cliente.zonaId === filtroZona : true;
   };
 
-  // Movimientos de caja de HOY — ya vienen filtrados por zona desde el servidor (ver db.getMovimientosCaja)
-  const ingresosHoy = movimientosCaja
+  // Movimientos de caja de HOY — para secretario ya vienen filtrados desde el servidor (db.getMovimientosCaja).
+  // Para admin, movimientosCaja trae TODAS las zonas, así que aquí se filtra según la zona activa del desplegable.
+  const movimientosCajaVisibles = zonaFiltroActiva
+    ? movimientosCaja.filter(m => m.zonaId === zonaFiltroActiva)
+    : movimientosCaja;
+  const ingresosHoy = movimientosCajaVisibles
     .filter(m => m.tipo === "Ingreso" && m.fecha === hoyStr)
     .reduce((s, m) => s + m.monto, 0);
-  const egresosHoy = movimientosCaja
+  const egresosHoy = movimientosCajaVisibles
     .filter(m => m.tipo === "Egreso" && m.fecha === hoyStr)
     .reduce((s, m) => s + m.monto, 0);
 
@@ -4993,15 +4997,14 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   const totalCaja = cobradoHoyFacturas + ingresosHoy - egresosHoy;
 
   // 🌐 TOTAL GLOBAL (acumulado histórico)
-  const totalEgresosCaja = movimientosCaja.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
-  const totalIngresosCaja = movimientosCaja.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
   // Saldo base se guarda localmente (igual que en la pestaña Caja) — es el dinero con que se inicia la caja.
   const saldoBaseGlobal = (() => { try { return Number(localStorage.getItem("caja_saldo_base") || 0); } catch { return 0; } })();
-  const ingresosCajaGlobal = movimientosCaja.filter(m => m.tipo === "Ingreso").reduce((s,m) => s + m.monto, 0);
-  const egresosCajaGlobal = movimientosCaja.filter(m => m.tipo === "Egreso").reduce((s,m) => s + m.monto, 0);
+  const ingresosCajaGlobal = movimientosCajaVisibles.filter(m => m.tipo === "Ingreso").reduce((s,m) => s + m.monto, 0);
+  const egresosCajaGlobal = movimientosCajaVisibles.filter(m => m.tipo === "Egreso").reduce((s,m) => s + m.monto, 0);
   const totalGlobal = (() => {
     // Total global = PLATA REAL DISPONIBLE para retirar: saldo base + todo lo cobrado históricamente
     // en facturas + ingresos de caja − egresos de caja. Si se registra un egreso, este número baja de inmediato.
+    // movimientosCajaVisibles ya viene filtrado por la zona activa (o todas, si no hay zona seleccionada).
     if (esTodasZonas) {
       const cobradoFacturas = totalCobradoGlobal !== null ? totalCobradoGlobal : (() => {
         const todas = [...facturas, ...facturasHistoricas].filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i);
@@ -5009,17 +5012,19 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       })();
       return saldoBaseGlobal + cobradoFacturas + ingresosCajaGlobal - egresosCajaGlobal;
     }
-    // Vista por zona: total abonos de esa zona (no se mezcla con saldo base/ingresos/egresos, que son globales de la oficina)
-    if (Object.keys(totalCobradoPorZona).length > 0) {
-      return totalCobradoPorZona[filtroZona] || 0;
-    }
-    // Fallback mientras carga
-    const facturasZona = [...facturas, ...facturasHistoricas]
-      .filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i)
-      .filter(f => clienteEnZona(f.clienteId));
-    return facturasZona
-      .filter(f => f.estado !== "Anulada")
-      .reduce((s,f) => s + Math.max(0, f.monto - f.saldoPendiente - (f.descuento_pronto_pago||0)), 0);
+    // Vista por zona específica: lo cobrado en facturas de esa zona + ingresos/egresos de caja de esa zona.
+    // El saldo base es único de toda la oficina, no se reparte por zona — solo se suma en la vista "Todas".
+    const cobradoFacturasZona = Object.keys(totalCobradoPorZona).length > 0
+      ? (totalCobradoPorZona[filtroZona] || 0)
+      : (() => {
+          const facturasZona = [...facturas, ...facturasHistoricas]
+            .filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i)
+            .filter(f => clienteEnZona(f.clienteId));
+          return facturasZona
+            .filter(f => f.estado !== "Anulada")
+            .reduce((s,f) => s + Math.max(0, f.monto - f.saldoPendiente - (f.descuento_pronto_pago||0)), 0);
+        })();
+    return cobradoFacturasZona + ingresosCajaGlobal - egresosCajaGlobal;
   })();
 
   // ⏳ PENDIENTES: facturas del mes filtradas por zona
@@ -5293,11 +5298,19 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     { label: "🏦 Total en caja", val: formatCOP(totalCaja), color: GC.brand,
       tooltip: "Abonos de hoy (totales + parciales) + ingresos de caja hoy − egresos de caja hoy. Se reinicia cada día.",
       getTirilla: () => {
-        const movHoy = movimientosCaja.filter(m => m.fecha === hoyStr);
+        const movHoy = movimientosCajaVisibles.filter(m => m.fecha === hoyStr);
         const filasAbonos = abonosHoy
-          .filter(a => { const f = facturas.find(x => x.id === a.facturaId); return !f || f.estado !== "Anulada"; })
+          .filter(a => {
+            const f = facturas.find(x => x.id === a.facturaId) || facturasHistoricas.find(x => x.id === a.facturaId);
+            if (f?.estado === "Anulada") return false;
+            if (!zonaFiltroActiva) return true;
+            const cid = a.clienteId || f?.clienteId;
+            if (!cid) return false;
+            const cliente = usuarios.find(u => u.id === cid);
+            return cliente ? cliente.zonaId === zonaFiltroActiva : false;
+          })
           .map(a => {
-            const f = facturas.find(x => x.id === a.facturaId);
+            const f = facturas.find(x => x.id === a.facturaId) || facturasHistoricas.find(x => x.id === a.facturaId);
             return { nombre: f?.clienteNombre || a.clienteNombre || "—", detalle: `Cobro factura · ${a.metodoPago}`, estado: "Cobrado", monto: a.monto };
           });
         const filasIngresos = movHoy.filter(m => m.tipo === "Ingreso").map(m => ({ nombre: m.concepto, detalle: "Ingreso caja", estado: "Ingreso", monto: m.monto }));
@@ -5311,7 +5324,14 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     { label: "🌐 Total global", val: formatCOP(totalGlobal), color: "#0891b2",
       tooltip: "Plata real disponible para retirar: saldo base + todo lo cobrado históricamente en facturas + ingresos de caja − egresos de caja. Si se registra un egreso, baja de inmediato.",
       getTirilla: () => {
-        const fPagadas = facturas.filter(f => f.estado !== "Anulada" && (f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)) > 0);
+        const todas = [...facturas, ...facturasHistoricas].filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i);
+        const fPagadas = todas.filter(f => {
+          if (f.estado === "Anulada") return false;
+          if ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)) <= 0) return false;
+          if (!zonaFiltroActiva) return true;
+          const cliente = usuarios.find(u => u.id === f.clienteId);
+          return cliente ? cliente.zonaId === zonaFiltroActiva : f.zonaId === zonaFiltroActiva;
+        });
         return { titulo: "🌐 Total global — Plata disponible", subtitulo: "Saldo base + cobrado en facturas + ingresos caja − egresos caja",
           total: totalGlobal, labelTotal: "Disponible para retirar", colorTotal: "#0891b2",
           filas: fPagadas.map(f => ({ nombre: f.clienteNombre, detalle: `${MESES[(f.mes||1)-1]} ${f.anio}`, estado: f.estado, monto: (f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)) })) };
