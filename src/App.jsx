@@ -37,7 +37,7 @@ const fechaLocal = (d = new Date()) => {
 // ──────────────────────────────────────────────────────────
 // HELPERS: convierten snake_case (BD) ↔ camelCase (app)
 // ──────────────────────────────────────────────────────────
-const mapZona = r => r ? ({ id: r.id, nombre: r.nombre, color: r.color, activa: r.activa, nombreEmpresa: r.nombre_empresa, wisproActivo: r.wispro_activo !== false }) : null;
+const mapZona = r => r ? ({ id: r.id, nombre: r.nombre, color: r.color, activa: r.activa, nombreEmpresa: r.nombre_empresa, wisproActivo: r.wispro_activo !== false, saldoBase: Number(r.saldo_base || 0) }) : null;
 const mapPlan = r => r ? ({ id: r.id, nombre: r.nombre, precio: r.precio, descripcion: r.descripcion, activo: r.activo }) : null;
 const mapPerfilPago = r => r ? ({ id: r.id, nombre: r.nombre, diaInicio: r.dia_inicio, diaFin: r.dia_fin, diaCorte: r.dia_corte || 20, descripcion: r.descripcion || "", activo: r.activo }) : null;
 const mapUsuario = r => r ? ({
@@ -113,6 +113,10 @@ const mapAbono = r => r ? ({
 const db = {
   // ZONAS
   async getZonas() { const { data, error } = await sb.from("zonas").select("*").order("nombre"); if (error) throw error; return data.map(mapZona); },
+  async actualizarSaldoBaseZona(zonaId, saldoBase) {
+    const { error } = await sb.from("zonas").update({ saldo_base: saldoBase }).eq("id", zonaId);
+    if (error) throw error;
+  },
   async upsertZona(z) { const { data, error } = await sb.from("zonas").upsert({ id: z.id||undefined, nombre: z.nombre, color: z.color, activa: z.activa, nombre_empresa: z.nombreEmpresa||null, wispro_activo: z.wisproActivo !== false }).select().single(); if (error) throw error; return mapZona(data); },
   async toggleWisproZona(id, wisproActivo) { const { error } = await sb.from("zonas").update({ wispro_activo: wisproActivo }).eq("id", id); if (error) throw error; },
   async deleteZona(id) { const { error } = await sb.from("zonas").delete().eq("id", id); if (error) throw error; },
@@ -506,17 +510,18 @@ const db = {
     });
     return totales;
   },
-  async getTotalCobradoGlobal() {
+  async getTotalCobradoGlobal(zonaId = null) {
     // Suma real de TODOS los abonos excluyendo facturas anuladas
     // usando paginación para superar el límite de 1000 filas
     let total = 0;
     let from = 0;
     const pageSize = 1000;
     while (true) {
-      const { data, error } = await sb.from("abonos")
-        .select("monto, facturas!inner(estado)")
-        .neq("facturas.estado", "Anulada")
-        .range(from, from + pageSize - 1);
+      let query = sb.from("abonos")
+        .select("monto, facturas!inner(estado, zona_id)")
+        .neq("facturas.estado", "Anulada");
+      if (zonaId) query = query.eq("facturas.zona_id", zonaId);
+      const { data, error } = await query.range(from, from + pageSize - 1);
       if (error) throw error;
       if (!data || data.length === 0) break;
       total += data.reduce((s, a) => s + Number(a.monto || 0), 0);
@@ -525,15 +530,18 @@ const db = {
     }
     return total;
   },
-  async getMovimientosCaja() {
-    const { data, error } = await sb.from("caja_movimientos").select("*").order("fecha", { ascending: false }).order("created_at", { ascending: false });
+  async getMovimientosCaja(zonaId = null) {
+    let query = sb.from("caja_movimientos").select("*");
+    if (zonaId) query = query.eq("zona_id", zonaId);
+    const { data, error } = await query.order("fecha", { ascending: false }).order("created_at", { ascending: false });
     if (error) throw error;
-    return data.map(r => ({ id: r.id, tipo: r.tipo, concepto: r.concepto, monto: Number(r.monto), fecha: r.fecha, registradoPor: r.registrado_por, observacion: r.observacion || "", creadoEn: r.created_at }));
+    return data.map(r => ({ id: r.id, tipo: r.tipo, concepto: r.concepto, monto: Number(r.monto), fecha: r.fecha, registradoPor: r.registrado_por, observacion: r.observacion || "", creadoEn: r.created_at, zonaId: r.zona_id }));
   },
   async crearMovimientoCaja(m) {
-    const { data, error } = await sb.from("caja_movimientos").insert({ tipo: m.tipo, concepto: m.concepto, monto: m.monto, fecha: m.fecha || fechaLocal(), registrado_por: m.registradoPor || null, observacion: m.observacion || "" }).select().single();
+    const zonaIdVal = (m.zonaId && String(m.zonaId).trim()) ? String(m.zonaId).trim() : null;
+    const { data, error } = await sb.from("caja_movimientos").insert({ tipo: m.tipo, concepto: m.concepto, monto: m.monto, fecha: m.fecha || fechaLocal(), registrado_por: m.registradoPor || null, observacion: m.observacion || "", zona_id: zonaIdVal }).select().single();
     if (error) throw error;
-    return { id: data.id, tipo: data.tipo, concepto: data.concepto, monto: Number(data.monto), fecha: data.fecha, registradoPor: data.registrado_por, observacion: data.observacion || "", creadoEn: data.created_at };
+    return { id: data.id, tipo: data.tipo, concepto: data.concepto, monto: Number(data.monto), fecha: data.fecha, registradoPor: data.registrado_por, observacion: data.observacion || "", creadoEn: data.created_at, zonaId: data.zona_id };
   },
   async deleteMovimientoCaja(id) { const { error } = await sb.from("caja_movimientos").delete().eq("id", id); if (error) throw error; },
   // Eliminar TODOS los abonos de una factura (usado al anular)
@@ -4755,7 +4763,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       {/* TAB CAJA — movimientos + saldo base admin            */}
       {/* ════════════════════════════════════════════════════ */}
       {subTab === "caja" && (
-        <ModuloCaja usuario={usuario} esAdmin={esAdmin || esSuperusuario} facturas={facturas} nombreEmpresa={nombreEmpresa} />
+        <ModuloCaja usuario={usuario} esAdmin={esAdmin || esSuperusuario} facturas={facturas} nombreEmpresa={nombreEmpresa} zonas={zonas} />
       )}
     </div>
   );
@@ -4845,12 +4853,14 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   }, [agregarAbonoHoyRef]);
 
   useEffect(() => {
-    db.getMovimientosCaja().then(setMovimientosCaja).catch(() => {});
+    // Un secretario solo carga/ve la caja y el total de SU zona. Admin ve todo (sin filtro).
+    const zonaPropia = !esAdmin ? usuario?.zonaId : null;
+    db.getMovimientosCaja(zonaPropia).then(setMovimientosCaja).catch(() => {});
     // Cargar total global cobrado histórico desde abonos (suma real de todos los pagos)
-    db.getTotalCobradoGlobal().then(setTotalCobradoGlobal).catch(e => console.warn("Error cargando total global:", e?.message));
+    db.getTotalCobradoGlobal(zonaPropia).then(setTotalCobradoGlobal).catch(e => console.warn("Error cargando total global:", e?.message));
     // Cargar totales por zona para que el global por zona sea preciso
     db.getTotalCobradoPorZona().then(setTotalCobradoPorZona).catch(() => {});
-  }, []);
+  }, [esAdmin, usuario?.zonaId]);
 
   // Cargar abonos de hoy solo al montar — el ref se encarga de actualizaciones en tiempo real
   useEffect(() => {
@@ -5799,7 +5809,7 @@ function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuario
   // Combina facturas del mes actual + históricas de meses anteriores, para poder encontrar
   // cualquier factura sin importar a qué mes pertenezca (evita los "—" en la tabla de cobros)
   const todasLasFacturas=[...facturas,...facturasHistoricas,...facturasFaltantes].filter((f,i,arr)=>arr.findIndex(x=>x.id===f.id)===i);
-  useEffect(()=>{db.getMovimientosCaja().then(setMovimientosCaja).catch(()=>{});}, []);
+  useEffect(()=>{db.getMovimientosCaja(esAdmin?null:usuario?.zonaId).then(setMovimientosCaja).catch(()=>{});}, [esAdmin, usuario?.zonaId]);
   useEffect(()=>{
     if(!fechaInicio||!fechaFin)return;
     setCargandoCierre(true);
@@ -6113,7 +6123,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
   const [abonosDia, setAbonosDia] = useState([]);
   const [cargandoDia, setCargandoDia] = useState(false);
   const [movimientosCaja, setMovimientosCaja] = useState([]);
-  useEffect(()=>{db.getMovimientosCaja().then(setMovimientosCaja).catch(()=>{});}, []);
+  useEffect(()=>{db.getMovimientosCaja(esAdmin?null:usuario?.zonaId).then(setMovimientosCaja).catch(()=>{});}, [esAdmin, usuario?.zonaId]);
   useEffect(()=>{
     if (!filtroDia){setAbonosDia([]);return;}
     setCargandoDia(true);
@@ -6794,7 +6804,9 @@ function SeccionEquiposMorosos({ usuarios, ordenes, setOrdenes, tecnicos, secret
 // ══════════════════════════════════════════════════════════════
 // MÓDULO CAJA — Ingresos y Egresos
 // ══════════════════════════════════════════════════════════════
-function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "GC HOGAR.NET SAS" }) {
+function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "GC HOGAR.NET SAS", zonas = [] }) {
+  // Un secretario SIEMPRE queda fijo a su zona. Un admin sin zona ve todas combinadas.
+  const zonaUsuario = usuario?.zonaId || null;
   const [movimientos, setMovimientos] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState(false);
@@ -6803,17 +6815,31 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
   const [errMsg, setErrMsg] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("todos");
   const [confirmDel, setConfirmDel] = useState(null);
-  const [saldoBase, setSaldoBase] = useState(() => { try { return Number(localStorage.getItem("caja_saldo_base") || 0); } catch { return 0; } });
+  // Saldo base: ahora vive en la BD, por zona (tabla zonas.saldo_base) — ya no en localStorage,
+  // que era compartido entre cualquier zona/computador y no reflejaba la caja real de cada oficina.
+  const saldoBase = zonaUsuario
+    ? (zonas.find(z => z.id === zonaUsuario)?.saldoBase || 0)
+    : zonas.reduce((s, z) => s + (z.saldoBase || 0), 0); // admin sin zona: suma de todas
   const [editandoSaldoBase, setEditandoSaldoBase] = useState(false);
   const [saldoBaseInput, setSaldoBaseInput] = useState("");
   const [fechaInforme, setFechaInforme] = useState(fechaLocal());
 
-  const guardarSaldoBase = () => {
+  const guardarSaldoBase = async () => {
     const v = Number(saldoBaseInput);
     if (isNaN(v) || v < 0) return;
-    setSaldoBase(v);
-    try { localStorage.setItem("caja_saldo_base", String(v)); } catch {}
-    setEditandoSaldoBase(false);
+    try {
+      if (zonaUsuario) {
+        await db.actualizarSaldoBaseZona(zonaUsuario, v);
+      } else if (zonas.length === 1) {
+        await db.actualizarSaldoBaseZona(zonas[0].id, v);
+      } else {
+        // Admin viendo todas las zonas combinadas: no hay una sola zona a la que editar.
+        setErrMsg("Selecciona una zona específica para editar su saldo base.");
+        return;
+      }
+      setEditandoSaldoBase(false);
+      window.location.reload(); // recarga simple para reflejar el nuevo saldo_base de zonas
+    } catch (e) { setErrMsg("Error guardando saldo base: " + e.message); }
   };
 
   const generarInformeDiario = async () => {
@@ -6936,18 +6962,19 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
   };
 
   useEffect(() => {
-    db.getMovimientosCaja()
+    // zonaUsuario === null para admin sin zona fija → trae todas (sin filtro). Secretario: solo su zona.
+    db.getMovimientosCaja(zonaUsuario)
       .then(data => { setMovimientos(data); setErrorCarga(false); })
       .catch(e => { console.error("Error cargando caja:", e); setErrorCarga(true); })
       .finally(() => setCargando(false));
-  }, []);
+  }, [zonaUsuario]);
 
   // Total histórico cobrado en facturas (todos los abonos, todos los meses) — necesario para
   // que el Saldo total refleje la plata REAL disponible, no solo los movimientos manuales.
   const [cobradoFacturasHistorico, setCobradoFacturasHistorico] = useState(null);
   useEffect(() => {
-    db.getTotalCobradoGlobal().then(setCobradoFacturasHistorico).catch(() => setCobradoFacturasHistorico(0));
-  }, []);
+    db.getTotalCobradoGlobal(zonaUsuario).then(setCobradoFacturasHistorico).catch(() => setCobradoFacturasHistorico(0));
+  }, [zonaUsuario]);
 
   const totalIngresos = movimientos.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
   const totalEgresos = movimientos.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
@@ -6961,10 +6988,13 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
     if (!nuevoMov.concepto.trim()) { setErrMsg("Ingresa un concepto."); return; }
     const monto = Number(nuevoMov.monto);
     if (!monto || monto <= 0) { setErrMsg("Ingresa un monto válido."); return; }
+    // Un secretario siempre registra en su propia zona. Un admin viendo "todas" debe elegir una zona específica.
+    const zonaParaGuardar = zonaUsuario || nuevoMov.zonaId;
+    if (!zonaParaGuardar) { setErrMsg("Selecciona la zona a la que pertenece este movimiento."); return; }
     try {
-      const guardado = await db.crearMovimientoCaja({ ...nuevoMov, monto, registradoPor: usuario.id });
+      const guardado = await db.crearMovimientoCaja({ ...nuevoMov, monto, registradoPor: usuario.id, zonaId: zonaParaGuardar });
       setMovimientos(prev => [guardado, ...prev]);
-      setNuevoMov({ tipo: "Ingreso", concepto: "", monto: "", fecha: fechaLocal(), observacion: "" });
+      setNuevoMov({ tipo: "Ingreso", concepto: "", monto: "", fecha: fechaLocal(), observacion: "", zonaId: "" });
       setShowForm(false);
     } catch(e) { setErrMsg("Error: " + e.message); }
   };
