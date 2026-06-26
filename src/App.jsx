@@ -4180,16 +4180,24 @@ function OrdenServicio({ cliente, perfilesPago = [], numeroContrato, secretario,
 // ══════════════════════════════════════════════════════════════
 // MÓDULO FACTURACIÓN — Admin y Secretario
 // ══════════════════════════════════════════════════════════════
-function SeccionProntoPagoReporte({ facturas, usuarios, zonas }) {
+function SeccionProntoPagoReporte({ facturas, usuarios, zonas, usuario, esAdmin = false, filtroZona = "todas" }) {
   const [filtroMes,  setFiltroMes]  = useState(new Date().getMonth() + 1);
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
+  // Zona obligatoria: secretario SIEMPRE se restringe a su propia zona; admin respeta el filtro visual
+  const zonaFiltroActiva = !esAdmin ? usuario?.zonaId : (filtroZona !== "todas" ? filtroZona : null);
+  const matchZonaPP = (f) => {
+    if (!zonaFiltroActiva) return true;
+    const cliente = usuarios.find(u => u.id === f.clienteId);
+    return cliente ? cliente.zonaId === zonaFiltroActiva : f.zonaId === zonaFiltroActiva;
+  };
 
   const conDescuento = facturas.filter(f =>
     f.pronto_pago_aplicado &&
     Number(f.descuento_pronto_pago) > 0 &&
     f.mes === filtroMes &&
     f.anio === filtroAnio &&
-    f.estado !== "Anulada"
+    f.estado !== "Anulada" &&
+    matchZonaPP(f)
   );
 
   const totalDescuentos = conDescuento.reduce((s, f) => s + Number(f.descuento_pronto_pago || 0), 0);
@@ -4769,6 +4777,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           facturasHistoricas={facturasHistoricas}
           usuarios={usuarios} zonas={zonas}
           esAdmin={esAdmin} esSuperusuario={esSuperusuario}
+          filtroZona={filtroZona}
           COLOR_ESTADO={COLOR_ESTADO} AccionesFact={AccionesFact}
           nombreEmpresa={nombreEmpresa}
           setConfirmDelete={setConfirmDelete} setConfirmAnular={setConfirmAnular}
@@ -4777,7 +4786,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       )}
 
       {subTab === "prontopago" && (
-        <SeccionProntoPagoReporte facturas={[...facturas, ...facturasHistoricas].filter((f,i,arr)=>arr.findIndex(x=>x.id===f.id)===i)} usuarios={usuarios} zonas={zonas} />
+        <SeccionProntoPagoReporte facturas={[...facturas, ...facturasHistoricas].filter((f,i,arr)=>arr.findIndex(x=>x.id===f.id)===i)} usuarios={usuarios} zonas={zonas} usuario={usuario} esAdmin={esAdmin} filtroZona={filtroZona} />
       )}
 
       {/* ════════════════════════════════════════════════════ */}
@@ -6161,7 +6170,9 @@ function PanelAbonoMasivo({ clienteBuscado, facturasCliente, deudaTotal, usuario
   );
 }
 
-function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas = [], usuarios, zonas, esAdmin, esSuperusuario, COLOR_ESTADO, AccionesFact, nombreEmpresa, setConfirmDelete, setConfirmAnular, agregarAbonoHoyRef }) {
+function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas = [], usuarios, zonas, esAdmin, esSuperusuario, filtroZona = "todas", COLOR_ESTADO, AccionesFact, nombreEmpresa, setConfirmDelete, setConfirmAnular, agregarAbonoHoyRef }) {
+  // Zona obligatoria: secretario SIEMPRE se restringe a su propia zona; admin respeta el filtro visual (o ninguna si es "todas")
+  const zonaFiltroActiva = !esAdmin ? usuario?.zonaId : (filtroZona !== "todas" ? filtroZona : null);
   const [busq, setBusq] = useState("");
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
   const [filtroMes, setFiltroMes] = useState(0);
@@ -6199,15 +6210,14 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
     clearTimeout(busqTimerHistorial.current);
     busqTimerHistorial.current = setTimeout(async () => {
       try {
-        // Un secretario (no admin) SIEMPRE busca solo en su propia zona — nunca puede ver la otra.
-        const zonaParaBuscar = !esAdmin ? usuario?.zonaId : null;
-        const res = await db.buscarFacturasPorNombre(q, zonaParaBuscar);
+        // Secretario: siempre su propia zona. Admin: la zona que tenga activa en el filtro (o todas).
+        const res = await db.buscarFacturasPorNombre(q, zonaFiltroActiva);
         setResultadosHistorial(res);
       } catch { setResultadosHistorial([]); }
       finally { setBuscandoHistorial(false); }
     }, 400);
     return () => clearTimeout(busqTimerHistorial.current);
-  }, [busq, esAdmin, usuario?.zonaId]);
+  }, [busq, zonaFiltroActiva]);
 
   // Cuando hay búsqueda activa usar resultados de Supabase (completos, sin límite de meses)
   // Cuando hay filtroDia combinar facturas locales + históricas
@@ -6215,8 +6225,15 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
     ? [...facturas, ...facturasHistoricas].filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i)
     : facturas;
 
+  const matchZonaHistorial = (f) => {
+    if (!zonaFiltroActiva) return true;
+    const cliente = usuarios.find(u => u.id === f.clienteId);
+    return cliente ? cliente.zonaId === zonaFiltroActiva : f.zonaId === zonaFiltroActiva;
+  };
+
   const facturasAudit = (busqActiva ? resultadosHistorial : todasParaBusqueda).filter(f => {
-    if (busqActiva) return true; // ya vienen filtradas de Supabase
+    if (!matchZonaHistorial(f)) return false;
+    if (busqActiva) return true; // ya vienen filtradas de Supabase (por fecha/nombre) — la zona se valida arriba
     // Sin búsqueda: filtros normales por fecha
     if (!filtroDia) {
       if (f.anio !== filtroAnio) return false;
