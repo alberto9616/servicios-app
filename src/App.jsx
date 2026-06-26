@@ -4926,21 +4926,23 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
 
   // 📅 COBRADO HOY: suma de TODOS los abonos registrados hoy (pagos totales + parciales, no anuladas)
   // Usamos la tabla de abonos porque fechaPago solo existe en facturas totalmente pagadas
+  // Zona obligatoria: secretario SIEMPRE se restringe a su propia zona; admin respeta el filtro visual (o ninguno si es "todas")
+  const zonaObligatoriaHoy = !esAdmin ? usuario?.zonaId : (filtroZona !== "todas" ? filtroZona : null);
   // Helper: verificar si una factura/abono pertenece a la zona filtrada
   const facturaEnZona = (facturaId) => {
-    if (!filtroZona || filtroZona === "todas") return true;
+    if (!zonaObligatoriaHoy) return true;
     // Buscar en facturas del mes actual
     const factura = facturas.find(f => f.id === facturaId) || facturasHistoricas.find(f => f.id === facturaId);
     if (!factura) return true;
     const cliente = usuarios.find(u => u.id === factura.clienteId);
-    return cliente ? cliente.zonaId === filtroZona : true;
+    return cliente ? cliente.zonaId === zonaObligatoriaHoy : true;
   };
 
   const cobradoHoyFacturas = abonosHoy
     .filter(a => {
       const factura = facturas.find(f => f.id === a.facturaId) || facturasHistoricas.find(f => f.id === a.facturaId);
       if (factura?.estado === "Anulada") return false;
-      if (!filtroZona || filtroZona === "todas") return true;
+      if (!zonaObligatoriaHoy) return true;
       // Filtrar por zona: usar clienteId del abono o de la factura encontrada
       const cid = a.clienteId || factura?.clienteId;
       if (!cid) {
@@ -4949,7 +4951,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         return false;
       }
       const cliente = usuarios.find(u => u.id === cid);
-      return cliente ? cliente.zonaId === filtroZona : false;
+      return cliente ? cliente.zonaId === zonaObligatoriaHoy : false;
     })
     .reduce((s, a) => s + a.monto, 0);
   const totalDia = cobradoHoyFacturas;
@@ -4961,7 +4963,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     return cliente ? cliente.zonaId === filtroZona : true;
   };
 
-  // Movimientos de caja de HOY (caja es compartida entre zonas, no tiene zona_id)
+  // Movimientos de caja de HOY — ya vienen filtrados por zona desde el servidor (ver db.getMovimientosCaja)
   const ingresosHoy = movimientosCaja
     .filter(m => m.tipo === "Ingreso" && m.fecha === hoyStr)
     .reduce((s, m) => s + m.monto, 0);
@@ -4970,9 +4972,8 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     .reduce((s, m) => s + m.monto, 0);
 
   // 🏦 TOTAL EN CAJA (del día): cobrado hoy en facturas + ingresos caja hoy - egresos caja hoy
-  // Solo aplica egresos cuando se ve "Todas" — la caja es compartida entre zonas
   const esTodasZonas = !filtroZona || filtroZona === "todas";
-  const totalCaja = cobradoHoyFacturas + ingresosHoy - (esTodasZonas ? egresosHoy : 0);
+  const totalCaja = cobradoHoyFacturas + ingresosHoy - egresosHoy;
 
   // 🌐 TOTAL GLOBAL (acumulado histórico)
   const totalEgresosCaja = movimientosCaja.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
