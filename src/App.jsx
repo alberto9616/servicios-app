@@ -5141,11 +5141,13 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       }
       if (creadas > 0) {
         setShowGenerarMasivo(false);
+        const sinZona = clientesCreados.filter(c => !c.zonaId).length;
+        const avisoZona = sinZona > 0 ? `\n\n⚠️ ${sinZona} factura(s) se generaron con clientes SIN ZONA asignada — revisa esas fichas de cliente para que queden bien contabilizadas.` : "";
         // Preguntar si quiere enviar WhatsApp
         const conTelefono = clientesCreados.filter(c => c.telefono?.trim()).length;
         const sinTelefono = clientesCreados.length - conTelefono;
         const enviar = confirm(
-          `✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.\n\n` +
+          `✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.${avisoZona}\n\n` +
           `📱 ¿Deseas enviar recordatorio por WhatsApp?\n` +
           `• ${conTelefono} clientes con teléfono registrado\n` +
           (sinTelefono > 0 ? `• ${sinTelefono} clientes sin teléfono (se omitirán)\n` : "") +
@@ -5163,6 +5165,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     if (guardandoManual) return; // evitar doble clic
     const cliente = usuarios.find(u => u.id === facturaManual.clienteId);
     if (!cliente) { alert("Selecciona un cliente."); return; }
+    if (!cliente.zonaId) { alert("⚠️ Este cliente no tiene zona asignada. Corrígelo en la ficha del cliente antes de crear la factura, para que quede contabilizada correctamente."); return; }
     if (!facturaManual.items || facturaManual.items.length === 0) { alert("Agrega al menos un servicio."); return; }
     const montoTotal = facturaManual.items.reduce((s, i) => s + (Number(i.monto) || 0), 0);
     if (montoTotal <= 0) { alert("El monto debe ser mayor a 0."); return; }
