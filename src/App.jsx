@@ -7197,6 +7197,14 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
             <Field label="Monto (COP)">
               <Inp type="number" value={nuevoMov.monto} onChange={e => setNuevoMov({ ...nuevoMov, monto: e.target.value })} placeholder="Ej: 150000" />
             </Field>
+            {!zonaUsuario && zonas.length > 0 && (
+              <Field label="Zona">
+                <Sel value={nuevoMov.zonaId} onChange={e => setNuevoMov({ ...nuevoMov, zonaId: e.target.value })}>
+                  <option value="">Selecciona una zona...</option>
+                  {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
+                </Sel>
+              </Field>
+            )}
             <Field label="Fecha">
               <Inp type="date" value={nuevoMov.fecha} onChange={e => setNuevoMov({ ...nuevoMov, fecha: e.target.value })} />
             </Field>
