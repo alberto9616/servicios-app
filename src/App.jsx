@@ -787,6 +787,10 @@ const PASOS = {
 };
 
 const formatCOP = (n) => new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 }).format(n);
+// Traduce el error técnico de PostgreSQL (zona obligatoria) a un mensaje claro para el usuario
+const mensajeErrorAmigable = (e) => e?.message?.includes("zona_id_obligatoria")
+  ? "⚠️ Falta la zona. Selecciona una zona o elige el cliente correcto antes de continuar."
+  : "Error: " + (e?.message || e);
 const formatDate = (d) => new Date(d + "T00:00:00").toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric" });
 const formatTime = (ts) => new Date(ts).toLocaleString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 const genId = () => Date.now().toString() + Math.random().toString(36).slice(2, 6);
@@ -5162,7 +5166,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       } else {
         alert(`✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.`);
       }
-    } catch (e) { alert("Error: " + e.message); }
+    } catch (e) { alert(mensajeErrorAmigable(e)); }
     finally { setGenerandoMasivo(false); }
   };
 
@@ -5188,7 +5192,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       setFacturas(prev => [nueva, ...prev]);
       setShowFormManual(false);
       setFacturaManual({ clienteId: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [] });
-    } catch (e) { alert("Error: " + e.message); }
+    } catch (e) { alert(mensajeErrorAmigable(e)); }
     setGuardandoManual(false);
   };
 
@@ -7093,7 +7097,7 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
       setMovimientos(prev => [guardado, ...prev]);
       setNuevoMov({ tipo: "Ingreso", concepto: "", monto: "", fecha: fechaLocal(), observacion: "", zonaId: "" });
       setShowForm(false);
-    } catch(e) { setErrMsg("Error: " + e.message); }
+    } catch(e) { setErrMsg(mensajeErrorAmigable(e)); }
   };
 
   const eliminar = async (id) => {
