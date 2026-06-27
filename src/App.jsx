@@ -4517,20 +4517,24 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
 
   return (
     <div>
-      {/* Banner de zona activa — confirma a dónde se asignan los cobros y facturas nuevas que se creen */}
+      {/* Selector de zona activa — visible en las 5 pestañas, confirma a dónde se asignan los cobros y facturas nuevas */}
       {esAdmin && zonas.length > 1 && (() => {
         const zonaActiva = filtroZona !== "todas" ? zonas.find(z => z.id === filtroZona) : null;
-        return zonaActiva ? (
-          <div style={{ background: zonaActiva.color + "15", border: "1px solid " + zonaActiva.color + "33", borderRadius: 10, padding: "8px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-            <span>📍</span>
-            <span style={{ color: zonaActiva.color, fontSize: 13, fontWeight: 700 }}>Zona activa: {zonaActiva.nombre}</span>
-            <span style={{ color: GC.ink3, fontSize: 12 }}>· Los cobros y facturas nuevas se asignan a esta zona</span>
-          </div>
-        ) : (
-          <div style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 10, padding: "8px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-            <span>🌐</span>
-            <span style={{ color: GC.ink2, fontSize: 13, fontWeight: 700 }}>Viendo todas las zonas</span>
-            <span style={{ color: GC.ink3, fontSize: 12 }}>· Selecciona una zona arriba antes de cobrar o crear facturas, para no asignarlas a la zona incorrecta</span>
+        const colorBanner = zonaActiva ? zonaActiva.color : "#64748b";
+        return (
+          <div style={{ background: colorBanner + "15", border: "1px solid " + colorBanner + "33", borderRadius: 10, padding: "8px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span>{zonaActiva ? "📍" : "🌐"}</span>
+            <select
+              value={filtroZona}
+              onChange={e => setFiltroZona(e.target.value)}
+              style={{ border: "1px solid " + colorBanner + "55", background: "#fff", color: colorBanner, fontSize: 13, fontWeight: 700, borderRadius: 7, padding: "4px 8px", cursor: "pointer" }}
+            >
+              <option value="todas">🌐 Todas las zonas</option>
+              {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
+            </select>
+            <span style={{ color: GC.ink3, fontSize: 12 }}>
+              {zonaActiva ? "· Los cobros y facturas nuevas se asignan a esta zona" : "· Selecciona una zona para filtrar y no asignar cobros/facturas a la zona incorrecta"}
+            </span>
           </div>
         );
       })()}
