@@ -9396,7 +9396,19 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   // Sincronizar tab con el SideNav
 
 
-  const LABEL_TAB = { tickets:"🎫 Tickets", ordenes:"📋 Órdenes", usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", masivo:"⚡ Asignación masiva", metodos_pago:"💳 Métodos de pago", tipos_orden:"📋 Tipos de orden", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación y Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta", superusuario:"👑 Superusuario" };
+  const LABEL_TAB_BASE = { tickets:"🎫 Tickets", ordenes:"📋 Órdenes", usuarios:"👥 Usuarios", planes:"📦 Planes", perfiles:"📅 Perfiles pago", zonas:"🗺️ Zonas", masivo:"⚡ Asignación masiva", metodos_pago:"💳 Métodos de pago", tipos_orden:"📋 Tipos de orden", avisos:"📢 Avisos", propaganda:"🎁 Promociones", facturacion:"🧾 Facturación y Caja", equipo:"👷 Equipo de trabajo", resumen:"📊 Resumen", micuenta:"🔐 Mi cuenta" };
+  // El título de "Superusuario" solo debe poder mostrarse a quien realmente tiene ese rol —
+  // evita confusión si el navegador quedó con esa pestaña guardada de una sesión anterior de otro usuario.
+  const LABEL_TAB = sesion.rol === "superusuario" ? { ...LABEL_TAB_BASE, superusuario:"👑 Superusuario" } : LABEL_TAB_BASE;
+
+  // Si por cualquier motivo (ej. tab guardado en el navegador de una sesión anterior) un usuario
+  // sin permiso queda apuntando a una pestaña restringida, lo redirige a una pestaña válida.
+  useEffect(() => {
+    if (tab === "superusuario" && sesion.rol !== "superusuario") {
+      setTab("facturacion");
+      try { localStorage.setItem("gc_last_tab", "facturacion"); } catch {}
+    }
+  }, [tab, sesion.rol]);
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "20px 16px" }}>
