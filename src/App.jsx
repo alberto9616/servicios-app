@@ -4814,6 +4814,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   const [showGenerarMasivo, setShowGenerarMasivo] = useState(false);
   const [generandoMasivo, setGenerandoMasivo] = useState(false);
   const [showFormManual, setShowFormManual] = useState(false);
+  const [zonaFiltroManual, setZonaFiltroManual] = useState("todas"); // filtro de zona dentro del modal de factura manual
   const [facturaManual, setFacturaManual] = useState({ clienteId: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [] });
   const [guardandoManual, setGuardandoManual] = useState(false);
   const [tirilla, setTirilla] = useState(null);
@@ -5764,24 +5765,38 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
           <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 480, maxHeight: "92vh", overflowY: "auto", position: "relative" }}>
             <button onClick={() => setShowFormManual(false)} style={{ position: "absolute", top: 14, right: 14, background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
             <h3 style={{ margin: "0 0 16px", color: GC.ink }}>🧾 Nueva factura manual</h3>
+            {esAdmin && zonas.length > 1 && (
+              <Field label="Filtrar búsqueda por zona">
+                <Sel value={zonaFiltroManual} onChange={e => setZonaFiltroManual(e.target.value)}>
+                  <option value="todas">🌐 Todas las zonas</option>
+                  {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
+                </Sel>
+              </Field>
+            )}
             <Field label="Buscar cliente">
               <Inp placeholder="🔍 Nombre o cédula..." value={facturaManual.busqCliente || ""} onChange={e => setFacturaManual({ ...facturaManual, busqCliente: e.target.value, clienteId: "" })} />
               {facturaManual.busqCliente && facturaManual.busqCliente.length >= 2 && !facturaManual.clienteId && (() => {
                 const q = facturaManual.busqCliente.toLowerCase();
-                const res = clientesVisibles.filter(c => norm(c.nombre).includes(norm(q)) || norm(c.cedula).includes(norm(q))).slice(0,8);
+                const res = clientesVisibles
+                  .filter(c => zonaFiltroManual === "todas" || c.zonaId === zonaFiltroManual)
+                  .filter(c => norm(c.nombre).includes(norm(q)) || norm(c.cedula).includes(norm(q))).slice(0,8);
                 return res.length > 0 ? (
                   <div style={{ border: "1px solid " + GC.border, borderRadius: 8, marginTop: 4, overflow: "hidden" }}>
-                    {res.map(c => (
+                    {res.map(c => {
+                      const zonaCliente = zonas.find(z => z.id === c.zonaId);
+                      return (
                       <button key={c.id} onClick={() => {
                         const mn = MESES[facturaManual.mes - 1];
                         const srvs = (c.servicio || "Internet").split("+").map(s => s.trim()).filter(Boolean);
                         const mpp = srvs.length > 1 ? Math.round((c.monto||0) / srvs.length) : (c.monto||0);
                         const items = srvs.map(s => ({ concepto: `${s} ${mn} ${facturaManual.anio}`, monto: mpp }));
                         setFacturaManual({ ...facturaManual, clienteId: c.id, busqCliente: c.nombre, items });
-                      }} style={{ width: "100%", display: "block", padding: "10px 14px", border: "none", borderBottom: "1px solid #f1f5f9", background: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13 }}>
-                        <strong>{c.nombre}</strong> <span style={{ color: GC.ink3 }}>· {c.cedula}</span>
+                      }} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "10px 14px", border: "none", borderBottom: "1px solid #f1f5f9", background: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13 }}>
+                        <span><strong>{c.nombre}</strong> <span style={{ color: GC.ink3 }}>· {c.cedula}</span></span>
+                        {zonaCliente && <span style={{ background: (zonaCliente.color||"#64748b")+"22", color: zonaCliente.color||"#64748b", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>📍 {zonaCliente.nombre}</span>}
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : <div style={{ fontSize: 12, color: GC.ink4, marginTop: 4 }}>Sin resultados</div>;
               })()}
