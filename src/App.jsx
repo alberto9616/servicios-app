@@ -3693,9 +3693,11 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
     // Detalle pago
     if (pagado) {
       if (esPagoParcial) {
-        // Esta factura tuvo más de un abono — distinguir claramente "este pago" del total histórico
-        d += cols("Saldo anterior:", fCOP(totalAbonado - montoEstePago));
-        d += cols("Este pago:", fCOP(montoEstePago));
+        // Esta factura tuvo más de un abono — listar cada uno con su fecha, en orden cronológico
+        const abonosOrden = [...abonos].reverse(); // de más viejo a más reciente
+        abonosOrden.forEach((a, i) => {
+          d += cols(`Abono ${i + 1} (${a.fecha}):`, fCOP(a.monto));
+        });
         if (descuentoPP > 0) d += cols("Desc. pronto pago:", "- " + fCOP(descuentoPP));
         d += SEP_DASH;
         d += BOLD_ON;
@@ -3924,14 +3926,12 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
             <>
               {esPagoParcial ? (
                 <>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
-                    <span>Saldo anterior:</span>
-                    <span>{formatCOP(totalAbonado - montoEstePago)}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
-                    <span>Este pago:</span>
-                    <span>{formatCOP(montoEstePago)}</span>
-                  </div>
+                  {[...abonos].reverse().map((a, i) => (
+                    <div key={a.id || i} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
+                      <span>Abono {i + 1} ({a.fecha}):</span>
+                      <span>{formatCOP(a.monto)}</span>
+                    </div>
+                  ))}
                   {descuentoPP > 0 && (
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
                       <span>Desc. pronto pago:</span>
