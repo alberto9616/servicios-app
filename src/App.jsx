@@ -328,7 +328,7 @@ const db = {
       .sort((a, b) => (b.anio * 12 + b.mes) - (a.anio * 12 + a.mes));
   },
   async getAbonos(facturaId) {
-    const { data, error } = await sb.from("abonos").select("*").eq("factura_id", facturaId).order("fecha", { ascending: false });
+    const { data, error } = await sb.from("abonos").select("*").eq("factura_id", facturaId).order("fecha", { ascending: false }).order("numero_pago", { ascending: false });
     if (error) throw error;
     return data.map(mapAbono);
   },
@@ -3593,10 +3593,15 @@ function ModalConfirm({ titulo, mensaje, icono, onConfirm, onCancel }) {
 }
 
 function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, db, usuario }) {
+  // El abono más reciente (este pago) vs. el total histórico abonado a la factura — son cosas distintas.
+  // abonos viene ordenado por fecha y numeroPago descendente, así que abonos[0] es siempre el más reciente.
+  const ultimoAbono = abonos && abonos.length > 0 ? abonos[0] : null;
+  const montoEstePago = ultimoAbono ? ultimoAbono.monto : 0;
   const totalAbonado = abonos.reduce((s, a) => s + a.monto, 0);
   const descuentoPP  = Number(factura.descuento_pronto_pago || 0);
   const saldo = Math.max(0, factura.monto - totalAbonado - descuentoPP);
   const pagado = saldo <= 0;
+  const esPagoParcial = abonos.length > 1; // hubo abonos anteriores, este es uno más
   const mostrarAbonos = abonos.length > 0 && !pagado;
   const [qzEstado, setQzEstado] = useState("idle"); // idle | conectando | ok | error
   const [impresoras, setImpresoras] = useState([]);
@@ -3687,20 +3692,31 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
 
     // Detalle pago
     if (pagado) {
-      if (descuentoPP > 0) {
-        d += cols("Valor factura:", fCOP(factura.monto));
-        d += cols("Desc. pronto pago:", "- " + fCOP(descuentoPP));
-        d += cols("Valor cancelado:", fCOP(totalAbonado));
+      if (esPagoParcial) {
+        // Esta factura tuvo más de un abono — distinguir claramente "este pago" del total histórico
+        d += cols("Saldo anterior:", fCOP(totalAbonado - montoEstePago));
+        d += cols("Este pago:", fCOP(montoEstePago));
+        if (descuentoPP > 0) d += cols("Desc. pronto pago:", "- " + fCOP(descuentoPP));
         d += SEP_DASH;
+        d += BOLD_ON;
+        d += cols("TOTAL CANCELADO:", fCOP(totalAbonado));
+        d += BOLD_OFF;
+      } else {
+        if (descuentoPP > 0) {
+          d += cols("Valor factura:", fCOP(factura.monto));
+          d += cols("Desc. pronto pago:", "- " + fCOP(descuentoPP));
+          d += cols("Valor cancelado:", fCOP(totalAbonado));
+          d += SEP_DASH;
+        }
+        d += BOLD_ON;
+        d += cols("VALOR PAGADO:", fCOP(montoEstePago));
+        d += BOLD_OFF;
       }
-      d += BOLD_ON;
-      d += cols("VALOR PAGADO:", fCOP(totalAbonado));
-      d += BOLD_OFF;
       d += BOLD_ON + center("*** CANCELADO ***") + BOLD_OFF;
     } else {
       d += cols("Total a pagar:", fCOP(factura.monto));
       if (descuentoPP > 0) d += cols("Desc. pronto pago:", "- " + fCOP(descuentoPP));
-      d += cols("Abono:", "- " + fCOP(totalAbonado));
+      d += cols("Abono:", "- " + fCOP(montoEstePago));
       d += SEP_DASH;
       d += BOLD_ON + cols("SALDO PENDIENTE:", fCOP(saldo)) + BOLD_OFF;
     }
@@ -3906,27 +3922,53 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
           {/* Pago completo o abono */}
           {pagado ? (
             <>
-              {descuentoPP > 0 && (
+              {esPagoParcial ? (
                 <>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
-                    <span>Valor factura:</span>
-                    <span>{formatCOP(factura.monto)}</span>
+                    <span>Saldo anterior:</span>
+                    <span>{formatCOP(totalAbonado - montoEstePago)}</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
-                    <span>Desc. pronto pago:</span>
-                    <span>- {formatCOP(descuentoPP)}</span>
+                    <span>Este pago:</span>
+                    <span>{formatCOP(montoEstePago)}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
-                    <span>Valor cancelado:</span>
-                    <span>{formatCOP(totalAbonado)}</span>
-                  </div>
+                  {descuentoPP > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
+                      <span>Desc. pronto pago:</span>
+                      <span>- {formatCOP(descuentoPP)}</span>
+                    </div>
+                  )}
                   <div style={{ borderTop: "1px solid #000", margin: "3px 0" }} />
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700 }}>
+                    <span>TOTAL CANCELADO:</span>
+                    <span>$ {totalAbonado.toLocaleString("es-CO")}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {descuentoPP > 0 && (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
+                        <span>Valor factura:</span>
+                        <span>{formatCOP(factura.monto)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
+                        <span>Desc. pronto pago:</span>
+                        <span>- {formatCOP(descuentoPP)}</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
+                        <span>Valor cancelado:</span>
+                        <span>{formatCOP(totalAbonado)}</span>
+                      </div>
+                      <div style={{ borderTop: "1px solid #000", margin: "3px 0" }} />
+                    </>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700 }}>
+                    <span>VALOR PAGADO:</span>
+                    <span>$ {montoEstePago.toLocaleString("es-CO")}</span>
+                  </div>
                 </>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700 }}>
-                <span>VALOR PAGADO:</span>
-                <span>$ {totalAbonado.toLocaleString("es-CO")}</span>
-              </div>
               <div style={{ textAlign: "center", fontSize: 12, marginTop: 3, fontWeight: 700 }}>*** CANCELADO ***</div>
             </>
           ) : (
@@ -3943,7 +3985,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
               )}
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
                 <span>Abono:</span>
-                <span>- {formatCOP(totalAbonado)}</span>
+                <span>- {formatCOP(montoEstePago)}</span>
               </div>
               <div style={{ borderTop: "1px solid #000", margin: "3px 0" }} />
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700 }}>
