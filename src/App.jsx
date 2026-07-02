@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ══════════════════════════════════════════════════════════════
-//  holis SUPABASE — configuración hola
+//  holis SUPABASE — configuración hola hola
 // Reemplaza estos valores con los de tu proyecto en
 // https://app.supabase.com -> Project Settings -> API
 // ══════════════════════════════════════════════════════════════
