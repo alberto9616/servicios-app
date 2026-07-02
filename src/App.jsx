@@ -3718,7 +3718,15 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
     } else {
       d += cols("Total a pagar:", fCOP(factura.monto));
       if (descuentoPP > 0) d += cols("Desc. pronto pago:", "- " + fCOP(descuentoPP));
-      d += cols("Abono:", "- " + fCOP(montoEstePago));
+      // Si hay abonos previos además del actual, listar cada uno con su fecha
+      if (abonos.length > 1) {
+        const abonosOrden = [...abonos].reverse();
+        abonosOrden.forEach((a, i) => {
+          d += cols(`Abono ${i + 1} (${a.fecha}):`, "- " + fCOP(a.monto));
+        });
+      } else {
+        d += cols("Abono:", "- " + fCOP(montoEstePago));
+      }
       d += SEP_DASH;
       d += BOLD_ON + cols("SALDO PENDIENTE:", fCOP(saldo)) + BOLD_OFF;
     }
@@ -3983,10 +3991,19 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
                   <span>- {formatCOP(descuentoPP)}</span>
                 </div>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
-                <span>Abono:</span>
-                <span>- {formatCOP(montoEstePago)}</span>
-              </div>
+              {abonos.length > 1 ? (
+                [...abonos].reverse().map((a, i) => (
+                  <div key={a.id || i} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
+                    <span>Abono {i + 1} ({a.fecha}):</span>
+                    <span>- {formatCOP(a.monto)}</span>
+                  </div>
+                ))
+              ) : (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 2 }}>
+                  <span>Abono:</span>
+                  <span>- {formatCOP(montoEstePago)}</span>
+                </div>
+              )}
               <div style={{ borderTop: "1px solid #000", margin: "3px 0" }} />
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700 }}>
                 <span>SALDO PENDIENTE:</span>
@@ -4463,10 +4480,12 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
         agregarAbonoHoyRef.current.actualizarFactura(modalAbono.id, facturaActualizada);
       }
       setAbonosModal(prev => [abono, ...prev]);
+      // Actualizar Total global inmediatamente (sin esperar recarga de página)
+      setTotalCobradoGlobal(prev => prev !== null ? prev + monto : null);
       if (abono.fecha === hoyStr && agregarAbonoHoyRef.current?.agregar) {
         agregarAbonoHoyRef.current.agregar(abono);
       }
-      setModalAbono(prev => ({ ...prev, saldoPendiente: nuevoSaldo, estado: nuevoEstado, fechaPago: nuevaFechaPago, metodoPago: nuevoAbono.metodoPago }));
+      setModalAbono(prev => ({ ...prev, saldoPendiente: nuevoSaldo, estado: nuevoEstado, fechaPago: nuevaFechaPago, metodoPago: nuevoAbono.metodoPago, descuento_pronto_pago: descuentoPP, pronto_pago_aplicado: descuentoPP > 0 }));
       setNuevoAbono({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: fechaLocal() });
       if (descuentoPP > 0 && nuevoSaldo <= 0) {
         alert(`Pago registrado con descuento de pronto pago.\nDescuento aplicado: ${formatCOP(descuentoPP)}`);
