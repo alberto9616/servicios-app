@@ -622,7 +622,17 @@ const initialZonas = [
   { id: "z003", nombre: "La Cumbre", color: "#d97706", activa: true },
 ];
 
+// Datos de la oficina (dirección/teléfono) por zona, para imprimir en las tirillas.
+// La clave se compara sin tildes y en minúsculas, así que "Tulua" o "Tuluá" matchean igual.
+const ZONA_CONTACTO = {
+  "vijes": { direccion: "Calle 7 #2-15 Kennedy", telefono: "318-8255601" },
+  "tulua": { direccion: "Calle 25 # 5-06 Las Americas", telefono: "316 4753169" },
+};
+const normalizarZona = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+const getContactoZona = (nombreZona) => ZONA_CONTACTO[normalizarZona(nombreZona)] || null;
+
 // ══════════════════════════════════════════════════════════════
+
 // PLANES (creados por admin, asignados por secretario)
 // ══════════════════════════════════════════════════════════════
 const initialPlanes = [
@@ -3592,7 +3602,7 @@ function ModalConfirm({ titulo, mensaje, icono, onConfirm, onCancel }) {
   );
 }
 
-function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, db, usuario }) {
+function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, direccion, onClose, db, usuario }) {
   // El abono más reciente (este pago) vs. el total histórico abonado a la factura — son cosas distintas.
   // abonos viene ordenado por fecha y numeroPago descendente, así que abonos[0] es siempre el más reciente.
   const ultimoAbono = abonos && abonos.length > 0 ? abonos[0] : null;
@@ -3656,6 +3666,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
     const empresa  = (nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase();
     const tel1     = "Tel: " + (telefono || "318-8255601");
     const tel2     = "Tel: 315-7613752";
+    const dir1     = direccion || "";
     const recibo   = "#" + String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0");
     const lastAbono = abonos && abonos.length > 0 ? abonos[0] : null;
     const fecha    = lastAbono?.fecha || factura.fechaPago || factura.fechaEmision || new Date().toISOString().split("T")[0];
@@ -3670,6 +3681,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
     d += center(empresa);
     d += BOLD_OFF + center(tel1);
     d += center(tel2);
+    if (dir1) d += center(dir1);
     d += SEP_DASH;
 
     // Recibo, número de pago y fecha
@@ -3885,6 +3897,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, onClose, d
           <div style={{ textAlign: "center", marginBottom: 4 }}>
             <div style={{ fontSize: 13, fontWeight: 700 }}>{(nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase()}</div>
             <div style={{ fontSize: 11 }}>Tel.: {telefono || "318-8255601"}</div>
+            {direccion && <div style={{ fontSize: 11 }}>{direccion}</div>}
           </div>
 
           <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
@@ -4801,11 +4814,18 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       )}
 
       {/* ── Modal recibo ── */}
-      {modalRecibo && (
-        <ReciboImprimible factura={modalRecibo.factura} abonos={modalRecibo.abonos}
-          nombreEmpresa={nombreEmpresa} telefono="318-8255601" onClose={() => setModalRecibo(null)}
-          db={db} usuario={usuario} />
-      )}
+      {modalRecibo && (() => {
+        const facturaZonaId = modalRecibo.factura?.zonaId
+          || usuarios.find(u => u.id === modalRecibo.factura?.clienteId)?.zonaId;
+        const zonaFactura = zonas.find(z => z.id === facturaZonaId);
+        const contactoZona = getContactoZona(zonaFactura?.nombre);
+        return (
+          <ReciboImprimible factura={modalRecibo.factura} abonos={modalRecibo.abonos}
+            nombreEmpresa={nombreEmpresa} telefono={contactoZona?.telefono || "318-8255601"}
+            direccion={contactoZona?.direccion} onClose={() => setModalRecibo(null)}
+            db={db} usuario={usuario} />
+        );
+      })()}
 
       {/* ════════════════════════════════════════════════════ */}
       {/* TAB 1 — EMITIDAS                                    */}
