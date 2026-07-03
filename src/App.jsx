@@ -8686,18 +8686,27 @@ function ExportClientesModal({ usuarios, zonas, planes, perfilesPago, db, onClos
     setCargando(true);
     try {
       const todasFacturas = await db.getFacturas();
+      // Cuenta cuántas facturas pendientes (con saldo > 0) tiene un cliente, agrupando por
+      // mes/año igual que en la exportación final, para no contar duplicados como si fueran
+      // dos facturas distintas.
+      const contarFacturasPendientes = (clienteId) => {
+        const facturasCliente = todasFacturas.filter(f => f.clienteId === clienteId && f.estado !== "Anulada");
+        const porMes = new Map();
+        for (const f of facturasCliente) {
+          const key = `${f.anio}-${String(f.mes).padStart(2, "0")}`;
+          if (!porMes.has(key)) porMes.set(key, { ...f });
+          else { const ex = porMes.get(key); ex.saldoPendiente = (ex.saldoPendiente || 0) + (f.saldoPendiente || 0); }
+        }
+        return Array.from(porMes.values()).filter(f => (f.saldoPendiente || 0) > 0).length;
+      };
       // Aplicar filtro de deuda después de tener las facturas
+      // "Al día" = debe como máximo 1 factura (ej. la del mes actual, que aún no vence).
+      // "Con deuda" = debe 2 o más facturas pendientes.
       let clientesFinal = clientes;
       if (filtros.deuda === "con_deuda") {
-        clientesFinal = clientes.filter(c => {
-          const deuda = todasFacturas.filter(f => f.clienteId === c.id && f.estado !== "Anulada").reduce((s,f) => s + (f.saldoPendiente||0), 0);
-          return deuda > 0;
-        });
+        clientesFinal = clientes.filter(c => contarFacturasPendientes(c.id) > 1);
       } else if (filtros.deuda === "sin_deuda") {
-        clientesFinal = clientes.filter(c => {
-          const deuda = todasFacturas.filter(f => f.clienteId === c.id && f.estado !== "Anulada").reduce((s,f) => s + (f.saldoPendiente||0), 0);
-          return deuda === 0;
-        });
+        clientesFinal = clientes.filter(c => contarFacturasPendientes(c.id) <= 1);
       }
       exportarClientes(clientesFinal, todasFacturas, zonas, planes, perfilesPago);
       onClose();
