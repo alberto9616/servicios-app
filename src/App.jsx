@@ -626,7 +626,7 @@ const initialZonas = [
 // La clave se compara sin tildes y en minúsculas, así que "Tulua" o "Tuluá" matchean igual.
 const ZONA_CONTACTO = {
   "vijes": { direccion: "Calle 7 #2-15 Kennedy", telefono: "318-8255601" },
-  "tulua": { direccion: "Calle 25 # 5-06 Las Americas", telefono: "316 4753169" },
+  "tulua": { direccion: "Calle 25 # 5-06 Las Americas", telefono: "316 4753169", nombreEmpresa: "OFICINA TELECABLE LAS AMERICAS" },
 };
 const normalizarZona = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 const getContactoZona = (nombreZona) => ZONA_CONTACTO[normalizarZona(nombreZona)] || null;
@@ -4821,7 +4821,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
         const contactoZona = getContactoZona(zonaFactura?.nombre);
         return (
           <ReciboImprimible factura={modalRecibo.factura} abonos={modalRecibo.abonos}
-            nombreEmpresa={nombreEmpresa} telefono={contactoZona?.telefono || "318-8255601"}
+            nombreEmpresa={contactoZona?.nombreEmpresa || zonaFactura?.nombreEmpresa || nombreEmpresa} telefono={contactoZona?.telefono || "318-8255601"}
             direccion={contactoZona?.direccion} onClose={() => setModalRecibo(null)}
             db={db} usuario={usuario} />
         );
