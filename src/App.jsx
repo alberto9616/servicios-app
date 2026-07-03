@@ -5137,9 +5137,9 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     if (!zonaFiltroActiva) return true;
     // Buscar en facturas del mes actual
     const factura = facturas.find(f => f.id === facturaId) || facturasHistoricas.find(f => f.id === facturaId);
-    if (!factura) return true;
+    if (!factura) return false;
     const cliente = usuarios.find(u => u.id === factura.clienteId);
-    return cliente ? cliente.zonaId === zonaFiltroActiva : true;
+    return cliente ? cliente.zonaId === zonaFiltroActiva : factura.zonaId === zonaFiltroActiva;
   };
 
   const cobradoHoyFacturas = abonosHoy
@@ -5160,11 +5160,16 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     .reduce((s, a) => s + a.monto, 0);
   const totalDia = cobradoHoyFacturas;
 
-  // Helper: verificar si un cliente pertenece a la zona filtrada
-  const clienteEnZona = (clienteId) => {
+  // Helper: verificar si un cliente pertenece a la zona filtrada.
+  // zonaIdFallback (opcional): zona_id de la propia factura, usada si el cliente no se encuentra.
+  const clienteEnZona = (clienteId, zonaIdFallback = null) => {
     if (!zonaFiltroActiva) return true;
     const cliente = usuarios.find(u => u.id === clienteId);
-    return cliente ? cliente.zonaId === zonaFiltroActiva : true;
+    // Si no se encuentra el cliente, se usa la zona propia de la factura como respaldo.
+    // Antes esto devolvía true por defecto sin verificar nada, inflando los totales de la
+    // zona con facturas de clientes que no se pudieron verificar (ej. clientes eliminados).
+    if (!cliente) return zonaIdFallback ? zonaIdFallback === zonaFiltroActiva : false;
+    return cliente.zonaId === zonaFiltroActiva;
   };
 
   // Movimientos de caja de HOY — para secretario ya vienen filtrados desde el servidor (db.getMovimientosCaja).
@@ -5206,7 +5211,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       : (() => {
           const facturasZona = [...facturas, ...facturasHistoricas]
             .filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i)
-            .filter(f => clienteEnZona(f.clienteId));
+            .filter(f => clienteEnZona(f.clienteId, f.zonaId));
           return facturasZona
             .filter(f => f.estado !== "Anulada")
             .reduce((s,f) => s + Math.max(0, f.monto - f.saldoPendiente - (f.descuento_pronto_pago||0)), 0);
@@ -5219,14 +5224,18 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     .filter(f => f.estado !== "Pagado")
     .reduce((s, f) => s + f.saldoPendiente, 0);
 
-  // 🔴 MOROSOS: clientes con 2+ meses pendientes — filtrado por zona
+  // 🔴 MOROSOS: clientes con 2+ meses pendientes — filtrado por zona.
+  // Solo cuenta clientes activos: un cliente retirado/cancelado con deuda vieja sin cobrar
+  // no es un "moroso" del roster actual (esa cartera se gestiona aparte).
   const _todasPendMorosos = [...facturas, ...facturasHistoricas]
     .filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i)
-    .filter(f =>
-      f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
-      (f.anio < anioActual || (f.anio === anioActual && f.mes <= mesActual)) &&
-      clienteEnZona(f.clienteId)
-    );
+    .filter(f => {
+      const clienteF = usuarios.find(u => u.id === f.clienteId);
+      return f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
+        (f.anio < anioActual || (f.anio === anioActual && f.mes <= mesActual)) &&
+        clienteEnZona(f.clienteId, f.zonaId) &&
+        clienteF?.activo !== false;
+    });
   const _mesesPorCliente = {};
   _todasPendMorosos.forEach(f => {
     if (!_mesesPorCliente[f.clienteId]) _mesesPorCliente[f.clienteId] = new Set();
@@ -5550,11 +5559,13 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       tooltip: "Clientes que deben 2 o más meses (incluye mes actual). Clic para ver detalle o exportar Excel.",
       getTirilla: () => {
         const todas = [...facturasHistoricas, ...facturas].filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i);
-        const pendientes = todas.filter(f =>
-          f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
-          (f.anio < anioActual || (f.anio === anioActual && f.mes <= mesActual)) &&
-          clienteEnZona(f.clienteId)
-        );
+        const pendientes = todas.filter(f => {
+          const clienteF = usuarios.find(u => u.id === f.clienteId);
+          return f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
+            (f.anio < anioActual || (f.anio === anioActual && f.mes <= mesActual)) &&
+            clienteEnZona(f.clienteId, f.zonaId) &&
+            clienteF?.activo !== false;
+        });
         const mesesPorCliente = {};
         pendientes.forEach(f => {
           if (!mesesPorCliente[f.clienteId]) mesesPorCliente[f.clienteId] = new Set();
@@ -5622,7 +5633,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       {morosos > 0 && (
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
           <button onClick={() => {
-            const n = exportarMorosos(facturasHistoricas, facturas, usuarios, zonas, new Date().getFullYear(), new Date().getMonth() + 1);
+            const n = exportarMorosos(facturasHistoricas, facturas, usuarios, zonas, new Date().getFullYear(), new Date().getMonth() + 1, zonaFiltroActiva);
             if (n) alert(`✅ Excel generado con ${n} clientes morosos.`);
           }} style={{ background: "#fef2f2", color: GC.danger, border: "1px solid #fecaca", borderRadius: 9, padding: "8px 16px", cursor: "pointer", fontWeight: 700, fontSize: 13, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
             📊 Exportar {morosos} morosos a Excel
@@ -5706,7 +5717,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
                 <div style={{ display: "flex", gap: 6 }}>
                   {tirilla.esMorosos && (
                     <button onClick={() => {
-                      const n = exportarMorosos(facturasHistoricas, facturas, usuarios, zonas, new Date().getFullYear(), new Date().getMonth() + 1);
+                      const n = exportarMorosos(facturasHistoricas, facturas, usuarios, zonas, new Date().getFullYear(), new Date().getMonth() + 1, zonaFiltroActiva);
                       if (n) alert(`✅ Excel generado con ${n} clientes morosos.`);
                     }} style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 9, padding: "0 14px", height: 32, cursor: "pointer", fontWeight: 700, fontSize: 13, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
                       📊 Excel morosos
@@ -9218,16 +9229,23 @@ function PanelMetodosPago({ onActualizar }) {
 // ══════════════════════════════════════════════════════════════
 // EXPORTAR MOROSOS — genera Excel con datos completos
 // ══════════════════════════════════════════════════════════════
-function exportarMorosos(facturasHistoricas, facturasMes, usuarios, zonas, anioActual, mesActual) {
+function exportarMorosos(facturasHistoricas, facturasMes, usuarios, zonas, anioActual, mesActual, zonaFiltroActiva = null) {
   const MESES_N = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
   // Combinar todas las facturas y filtrar morosos (meses anteriores sin pagar)
   const todas = [...facturasHistoricas, ...facturasMes].filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i);
-  // Todas las facturas pendientes hasta el mes actual (inclusive)
-  const todasPendientes = todas.filter(f =>
-    f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
-    (f.anio < anioActual || (f.anio === anioActual && f.mes <= mesActual))
-  );
+  // Todas las facturas pendientes hasta el mes actual (inclusive), solo de clientes activos
+  // y de la zona filtrada (si hay una zona activa) — igual que la tarjeta "Morosos" del dashboard.
+  const todasPendientes = todas.filter(f => {
+    const clienteF = usuarios.find(u => u.id === f.clienteId);
+    if (zonaFiltroActiva) {
+      const zonaCliente = clienteF ? clienteF.zonaId : f.zonaId;
+      if (zonaCliente !== zonaFiltroActiva) return false;
+    }
+    return f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
+      (f.anio < anioActual || (f.anio === anioActual && f.mes <= mesActual)) &&
+      clienteF?.activo !== false;
+  });
 
   // Solo son morosos los clientes que deben 2 o más meses
   const clientesConDeuda = {};
