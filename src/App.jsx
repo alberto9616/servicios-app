@@ -213,6 +213,7 @@ const db = {
   async deleteUsuario(id) { const { error } = await sb.from("usuarios").delete().eq("id", id); if (error) throw error; },
   async toggleUsuario(id, activo) { const { error } = await sb.from("usuarios").update({ activo }).eq("id", id); if (error) throw error; },
   async updateClaveWifi(id, claveWifi) { const { data, error } = await sb.from("usuarios").update({ clave_wifi: claveWifi }).eq("id", id).select().single(); if (error) throw error; return mapUsuario(data); },
+  async updateDireccionCliente(id, direccion) { const { data, error } = await sb.from("usuarios").update({ direccion }).eq("id", id).select().single(); if (error) throw error; return mapUsuario(data); },
 
   // AVISOS
   async getAvisos() { const { data, error } = await sb.from("avisos").select("*").order("created_at", { ascending: false }); if (error) throw error; return data.map(mapAviso); },
@@ -298,6 +299,7 @@ const db = {
   async buscarFacturasPorNombre(q, zonaId = null) {
     if (!q || q.trim().length < 2) return [];
     const term = q.trim().replace(/\s+/g, " ");
+    const palabras = term.split(" ").filter(w => w.length >= 2);
     // Paginar para traer TODAS las facturas sin límite artificial
     const PAGE = 500;
     const fetchAll = async (query) => {
@@ -316,14 +318,25 @@ const db = {
     // se filtra DIRECTO en el servidor por zona_id — así nunca se traen datos de otra zona,
     // sin depender de un filtro posterior en el cliente.
     const aplicarZona = (query) => zonaId ? query.eq("zona_id", zonaId) : query;
-    const [porNombre, porCedula] = await Promise.all([
-      fetchAll(aplicarZona(sb.from("facturas").select("*").ilike("cliente_nombre", `%${term}%`)).order("anio", { ascending: false }).order("mes", { ascending: false })),
-      fetchAll(aplicarZona(sb.from("facturas").select("*").ilike("cliente_cedula", `%${term}%`)).order("anio", { ascending: false }).order("mes", { ascending: false })),
+    // Búsqueda amplia: se traen candidatos que contengan CUALQUIERA de las palabras escritas
+    // (una consulta ilike por palabra). Esto da buen "recall" aunque el usuario escriba solo
+    // el primer nombre y el apellido, se salte un segundo nombre, o los escriba en otro orden.
+    const palabrasNombre = palabras.length ? palabras : [term];
+    const [porNombreGrupos, porCedula] = await Promise.all([
+      Promise.all(palabrasNombre.map(w =>
+        fetchAll(aplicarZona(sb.from("facturas").select("*").ilike("cliente_nombre", `%${w}%`)))
+      )),
+      fetchAll(aplicarZona(sb.from("facturas").select("*").ilike("cliente_cedula", `%${term.replace(/\s+/g, "")}%`))),
     ]);
+    const porNombre = porNombreGrupos.flat();
     const combined = [...porNombre, ...porCedula];
     const seen = new Set();
-    return combined
-      .filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; })
+    const candidatos = combined.filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; });
+    // Filtro final más estricto en el cliente: exige que TODAS las palabras escritas coincidan
+    // (en cualquier orden, tolerando tildes y pequeños errores de tipeo) contra el nombre,
+    // o que la cédula coincida directamente.
+    return candidatos
+      .filter(r => coincideBusqueda(term, r.cliente_nombre) || norm(r.cliente_cedula || "").includes(norm(term).replace(/\s+/g, "")))
       .map(mapFactura)
       .sort((a, b) => (b.anio * 12 + b.mes) - (a.anio * 12 + a.mes));
   },
@@ -814,6 +827,41 @@ const norm = (str) => {
     .replace(/[\u0300-\u036f]/g, "")   // elimina los diacríticos
     .replace(/\s+/g, " ")               // colapsa 2+ espacios en 1
     .trim();
+};
+
+// ── Distancia de Levenshtein (para tolerar pequeños errores de tipeo, ej: "Peres" vs "Perez") ──
+const levenshtein = (a, b) => {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = a[i - 1] === b[j - 1]
+        ? prev[j - 1]
+        : 1 + Math.min(prev[j - 1], prev[j], cur[j - 1]);
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+};
+
+// ── Búsqueda flexible: cada palabra escrita debe existir (completa, como prefijo, o con
+// pequeños errores de tipeo) en ALGUNA palabra del texto, sin importar el orden ni si
+// faltan otras palabras (ej: "carlos peres" SÍ encuentra a "Carlos Arturo Perez") ──
+const coincideBusqueda = (query, texto) => {
+  const q = norm(query);
+  if (!q) return true;
+  const t = norm(texto);
+  if (!t) return false;
+  const palabrasTexto = t.split(" ").filter(Boolean);
+  const palabrasQuery = q.split(" ").filter(Boolean);
+  return palabrasQuery.every(pq => {
+    if (t.includes(pq)) return true; // substring directo (más rápido, cubre la mayoría de casos)
+    const tolerancia = pq.length <= 4 ? 1 : pq.length <= 8 ? 2 : 3;
+    return palabrasTexto.some(pt => (pt.startsWith(pq) || pq.startsWith(pt)) || levenshtein(pq, pt) <= tolerancia);
+  });
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -2046,7 +2094,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   const clientesFiltrados = clientes.filter(c => {
     const q = norm(busqCliente);
     const matchQ = !q ||
-      norm(c.nombre).includes(q) ||
+      coincideBusqueda(busqCliente, c.nombre) ||
       norm(c.cedula).includes(q) ||
       norm(c.usuario).includes(q) ||
       norm(c.telefono).includes(q) ||
@@ -2323,7 +2371,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
               const cliente = usuarios.find(u => u.id === t.clienteId);
               return (t.id && t.id.toLowerCase().includes(q)) ||
                      (cliente?.cedula && norm(cliente.cedula).includes(q)) ||
-                     (t.clienteNombre && norm(t.clienteNombre).includes(q));
+                     (t.clienteNombre && coincideBusqueda(busqTicket, t.clienteNombre));
             });
             return (
               <>
@@ -2341,7 +2389,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
             <Btn onClick={() => setShowModalOrdenManual(true)} style={{ fontSize: 13 }}>➕ Generar orden</Btn>
           </div>
-          <TabOrdenes ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} zonas={zonas} sesion={usuario} />
+          <TabOrdenes ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} sesion={usuario} />
         </div>
       )}
 
@@ -2663,9 +2711,10 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                     onChange={e => setOrdenManual({ ...ordenManual, _busqExistente: e.target.value, _clienteExistenteDetectado: null })}
                   />
                   {ordenManual._busqExistente && ordenManual._busqExistente.length >= 2 && !ordenManual._clienteExistenteDetectado && (() => {
-                    const q = norm(ordenManual._busqExistente);
+                    const qraw = ordenManual._busqExistente;
+                    const q = norm(qraw);
                     const res = usuarios.filter(u => u.rol === "cliente" && (
-                      norm(u.nombre).includes(q) || norm(u.cedula).includes(q)
+                      coincideBusqueda(qraw, u.nombre) || norm(u.cedula).includes(q)
                     )).slice(0, 5);
                     if (!res.length) return <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>No encontrado — será cliente nuevo</div>;
                     return (
@@ -2954,7 +3003,7 @@ function ClienteBuscador({ clientes, value, onChange, error, placeholder = "🔍
   const seleccionado = clientes.find(c => c.id === value);
   const resultados = busq.length >= 1
     ? clientes.filter(c =>
-        norm(c.nombre).includes(norm(busq)) ||
+        coincideBusqueda(busq, c.nombre) ||
         norm(c.cedula).includes(norm(busq)) ||
         norm(c.telefono).includes(norm(busq))
       ).slice(0, 8)
@@ -3031,7 +3080,7 @@ function ClienteBuscador({ clientes, value, onChange, error, placeholder = "🔍
   );
 }
 
-function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
+function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion }) {
   const hoy = fechaLocal();
   const manana = fechaLocal(new Date(Date.now() + 86400000));
   const [subTab, setSubTab] = useState("activas");
@@ -3173,6 +3222,13 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
               try {
                 await db.actualizarEstadoOrden(o.id, nuevoEstado);
                 setOrdenes(prev => prev.map(x => x.id === o.id ? { ...x, estado: nuevoEstado } : x));
+                // Traslado completado: sincroniza la nueva dirección como la dirección oficial del cliente.
+                if (nuevoEstado === "Completada" && o.tipo === "Traslado / cambio de domicilio" && o.direccionNueva && o.clienteId) {
+                  try {
+                    await db.updateDireccionCliente(o.clienteId, o.direccionNueva);
+                    setUsuarios(prev => prev.map(u => u.id === o.clienteId ? { ...u, direccion: o.direccionNueva } : u));
+                  } catch (err) { console.error("Error actualizando dirección del cliente tras traslado:", err); }
+                }
               } catch(err) {
                 alert("Error al cambiar estado: " + (err.message || "Verifica tu conexión"));
               }
@@ -3350,7 +3406,7 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, zonas, sesion }) {
   );
 }
 
-function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zonas, usuarios, tabExterno, setTabExterno }) {
+function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zonas, usuarios, setUsuarios, tabExterno, setTabExterno }) {
   const [tabLocal, setTabLocal] = useState("hoy"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
 
   const zonaT = zonas.find(z => z.id === usuario.zonaId);
@@ -3374,6 +3430,14 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
         if (orden?.ticketId) {
           await db.actualizarEstadoTicket(orden.ticketId, "Resuelto");
           setTickets(p => p.map(t => t.id === orden.ticketId ? { ...t, estado: "Resuelto" } : t));
+        }
+        // Traslado completado: la nueva dirección pasa a ser la dirección oficial del cliente,
+        // así no se queda con la dirección vieja en el resto del sistema.
+        if (orden?.tipo === "Traslado / cambio de domicilio" && orden.direccionNueva && orden.clienteId) {
+          try {
+            await db.updateDireccionCliente(orden.clienteId, orden.direccionNueva);
+            setUsuarios(p => p.map(u => u.id === orden.clienteId ? { ...u, direccion: orden.direccionNueva } : u));
+          } catch (err) { console.error("Error actualizando dirección del cliente tras traslado:", err); }
         }
       }
     } catch (err) { console.error("Error cambiando estado orden:", err); }
@@ -5874,7 +5938,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
                 const q = facturaManual.busqCliente.toLowerCase();
                 const res = clientesVisibles
                   .filter(c => zonaFiltroManual === "todas" || c.zonaId === zonaFiltroManual)
-                  .filter(c => norm(c.nombre).includes(norm(q)) || norm(c.cedula).includes(norm(q))).slice(0,8);
+                  .filter(c => norm(c.nombre).includes(norm(q)) || norm(c.cedula).includes(norm(q)) || coincideBusqueda(q, c.nombre)).slice(0,8);
                 return res.length > 0 ? (
                   <div style={{ border: "1px solid " + GC.border, borderRadius: 8, marginTop: 4, overflow: "hidden" }}>
                     {res.map(c => {
@@ -7531,7 +7595,7 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
   const q = busqTicket.toLowerCase().trim();
   const filtrar = lista => !q ? lista : lista.filter(t => {
     const cliente = usuarios.find(u => u.id === t.clienteId);
-    return (t.id && t.id.toLowerCase().includes(q)) || (cliente?.cedula && norm(cliente.cedula).includes(q)) || (t.clienteNombre && norm(t.clienteNombre).includes(q));
+    return (t.id && t.id.toLowerCase().includes(q)) || (cliente?.cedula && norm(cliente.cedula).includes(q)) || (t.clienteNombre && coincideBusqueda(busqTicket, t.clienteNombre));
   });
 
   const TicketCard = ({ t }) => {
@@ -7836,7 +7900,7 @@ function AsignacionMasiva({ usuarios, setUsuarios, zonas, planes, perfilesPago }
       if (filtroPerfil && u.perfilPagoId !== filtroPerfil) return false;
       if (filtroEstado && u.estado       !== filtroEstado) return false;
       if (q && !(
-        norm(u.nombre).includes(q) ||
+        coincideBusqueda(busq, u.nombre) ||
         norm(u.cedula).includes(q) ||
         norm(u.usuario).includes(q) ||
         norm(u.telefono).includes(q)
@@ -9304,7 +9368,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     const q = norm(busqAdmin);
     return usuarios.filter(u => {
       if (u.rol === "superusuario" && sesion.rol !== "superusuario") return false;
-      const matchQ = !q || norm(u.nombre).includes(q) || norm(u.cedula).includes(q) || norm(u.usuario).includes(q) || norm(u.telefono).includes(q);
+      const matchQ = !q || coincideBusqueda(busqAdmin, u.nombre) || norm(u.cedula).includes(q) || norm(u.usuario).includes(q) || norm(u.telefono).includes(q);
       if (!matchQ) return false;
       if (filtroAdminTipo === "cliente_final") { if (!(u.rol === "cliente" && u.tipo === "final")) return false; }
       else if (filtroAdminTipo === "cliente_empresa") { if (!(u.rol === "cliente" && u.tipo === "empresa")) return false; }
@@ -9522,7 +9586,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
       {/* ── TAB ÓRDENES (admin ve todas) ── */}
       {tab === "ordenes" && (
-        <TabOrdenes ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} zonas={zonas} sesion={sesion} />
+        <TabOrdenes ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} sesion={sesion} />
       )}
 
       {/* ── TAB SUPERUSUARIO (solo visible para superusuario) ── */}
@@ -10571,7 +10635,7 @@ export default function App() {
         <PortalSecretario usuario={sesion} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} planes={planes} perfilesPago={perfilesPago} zonas={zonas} propaganda={propaganda} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
       {sesion && sesion.rol === "tecnico" && (
-        <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
+        <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} setUsuarios={setUsuarios} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
       {sesion && (sesion.rol === "admin" || sesion.rol === "superusuario") && (
         <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
