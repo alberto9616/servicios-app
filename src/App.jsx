@@ -864,6 +864,18 @@ const coincideBusqueda = (query, texto) => {
   });
 };
 
+// ── El estado "al día, sin deudas" tiene dos valores posibles guardados en la base de datos
+// por razones históricas: "Al día" (formularios nuevos) y "Activo" (formulario genérico de
+// usuarios del panel Superusuario). Se muestran igual en toda la app (ver ESTADO_LABEL), así
+// que cualquier filtro por estado debe tratarlos como el mismo valor, o si no, clientes con
+// estado "Activo" desaparecen de los filtros/exportaciones de "Al día". ──
+const ESTADOS_EQUIVALENTES = { "Al día": ["Al día", "Activo"], "Activo": ["Al día", "Activo"] };
+const matchEstadoServicio = (estadoCliente, estadoFiltro) => {
+  if (!estadoFiltro) return true;
+  const equivalentes = ESTADOS_EQUIVALENTES[estadoFiltro] || [estadoFiltro];
+  return equivalentes.includes(estadoCliente);
+};
+
 // ══════════════════════════════════════════════════════════════
 // WISPRO SYNC — hook + banner
 // ══════════════════════════════════════════════════════════════
@@ -7898,7 +7910,7 @@ function AsignacionMasiva({ usuarios, setUsuarios, zonas, planes, perfilesPago }
       if (filtroZona   && u.zonaId       !== filtroZona)   return false;
       if (filtroPlan   && u.planId       !== filtroPlan)   return false;
       if (filtroPerfil && u.perfilPagoId !== filtroPerfil) return false;
-      if (filtroEstado && u.estado       !== filtroEstado) return false;
+      if (filtroEstado && !matchEstadoServicio(u.estado, filtroEstado)) return false;
       if (q && !(
         coincideBusqueda(busq, u.nombre) ||
         norm(u.cedula).includes(q) ||
@@ -8672,7 +8684,7 @@ function ExportClientesModal({ usuarios, zonas, planes, perfilesPago, db, onClos
   const clientes = usuarios.filter(u => {
     if (u.rol !== "cliente" || !u.activo) return false;
     if (filtros.zona && u.zonaId !== filtros.zona) return false;
-    if (filtros.estado && u.estado !== filtros.estado) return false;
+    if (filtros.estado && !matchEstadoServicio(u.estado, filtros.estado)) return false;
     if (filtros.servicio) {
       const srv = (u.servicio || "Internet").toLowerCase();
       if (filtros.servicio === "Internet" && !srv.includes("internet")) return false;
@@ -9384,13 +9396,13 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       else if (filtroAdminTipo === "inactivo") { if (u.activo) return false; }
       if (filtroAdminPlan && u.planId !== filtroAdminPlan) return false;
       if (filtroAdminPerfil && u.perfilPagoId !== filtroAdminPerfil) return false;
-      if (filtroAdminEstado && u.estado !== filtroAdminEstado) return false;
+      if (filtroAdminEstado && !matchEstadoServicio(u.estado, filtroAdminEstado)) return false;
       if (filtroAdminZona && u.zonaId !== filtroAdminZona) return false;
       return true;
     });
   })();
 
-  const emptyU = { id: "", usuario: "", clave: "", rol: "secretario", nombre: "", tipo: "final", cedula: "", servicio: "Internet", plan: "", monto: "", fechaPago: "", estado: "Activo", activo: true, zonaId: "", zonasIds: [], direccion: "", claveWifi: "", telefono: "", privilegios: [] };
+  const emptyU = { id: "", usuario: "", clave: "", rol: "secretario", nombre: "", tipo: "final", cedula: "", servicio: "Internet", plan: "", monto: "", fechaPago: "", estado: "Al día", activo: true, zonaId: "", zonasIds: [], direccion: "", claveWifi: "", telefono: "", privilegios: [] };
   const emptyA = { id: "", tipo: "Información", titulo: "", mensaje: "", fecha: fechaLocal(), afecta: "Internet", activo: true };
   const emptyPlan = { id: "", nombre: "", precio: "", descripcion: "", activo: true };
   const emptyZona = { id: "", nombre: "", color: GC.info, activa: true };
