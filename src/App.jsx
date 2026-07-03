@@ -4481,7 +4481,9 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       }
       setAbonosModal(prev => [abono, ...prev]);
       // Actualizar Total global inmediatamente (sin esperar recarga de página)
-      setTotalCobradoGlobal(prev => prev !== null ? prev + monto : null);
+      if (agregarAbonoHoyRef.current?.actualizarTotalGlobal) {
+        agregarAbonoHoyRef.current.actualizarTotalGlobal(monto);
+      }
       if (abono.fecha === hoyStr && agregarAbonoHoyRef.current?.agregar) {
         agregarAbonoHoyRef.current.agregar(abono);
       }
@@ -4947,6 +4949,10 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         // Eliminar factura de todos los estados locales
         eliminarFactura: (facturaId) => {
           setResultadosBusqueda(prev => prev.filter(f => f.id !== facturaId));
+        },
+        // Actualizar el total cobrado global inmediatamente (sin esperar recarga)
+        actualizarTotalGlobal: (monto) => {
+          setTotalCobradoGlobal(prev => prev !== null ? prev + monto : null);
         },
       };
     }
