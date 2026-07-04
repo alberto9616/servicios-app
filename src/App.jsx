@@ -38,7 +38,7 @@ const fechaLocal = (d = new Date()) => {
 // HELPERS: convierten snake_case (BD) ↔ camelCase (app)
 // ──────────────────────────────────────────────────────────
 const mapZona = r => r ? ({ id: r.id, nombre: r.nombre, color: r.color, activa: r.activa, nombreEmpresa: r.nombre_empresa, wisproActivo: r.wispro_activo !== false, saldoBase: Number(r.saldo_base || 0) }) : null;
-const mapPlan = r => r ? ({ id: r.id, nombre: r.nombre, precio: r.precio, descripcion: r.descripcion, activo: r.activo }) : null;
+const mapPlan = r => r ? ({ id: r.id, nombre: r.nombre, precio: r.precio, descripcion: r.descripcion, activo: r.activo, zonaId: r.zona_id || null }) : null;
 const mapPerfilPago = r => r ? ({ id: r.id, nombre: r.nombre, diaInicio: r.dia_inicio, diaFin: r.dia_fin, diaCorte: r.dia_corte || 20, descripcion: r.descripcion || "", activo: r.activo }) : null;
 const mapUsuario = r => r ? ({
   id: r.id, usuario: r.usuario, clave: r.clave, rol: r.rol, nombre: r.nombre, activo: r.activo,
@@ -162,7 +162,7 @@ const db = {
 
   // PLANES
   async getPlanes() { const { data, error } = await sb.from("planes").select("*").order("precio"); if (error) throw error; return data.map(mapPlan); },
-  async upsertPlan(p) { const { data, error } = await sb.from("planes").upsert({ id: p.id||undefined, nombre: p.nombre, precio: p.precio, descripcion: p.descripcion, activo: p.activo }).select().single(); if (error) throw error; return mapPlan(data); },
+  async upsertPlan(p) { const { data, error } = await sb.from("planes").upsert({ id: p.id||undefined, nombre: p.nombre, precio: p.precio, descripcion: p.descripcion, activo: p.activo, zona_id: p.zonaId || null }).select().single(); if (error) throw error; return mapPlan(data); },
   async deletePlan(id) { const { error } = await sb.from("planes").delete().eq("id", id); if (error) throw error; },
   async togglePlan(id, activo) { const { error } = await sb.from("planes").update({ activo }).eq("id", id); if (error) throw error; },
 
@@ -706,7 +706,7 @@ const initialPropaganda = [
 // ══════════════════════════════════════════════════════════════
 // CONSTANTES Y UTILIDADES
 // ══════════════════════════════════════════════════════════════
-const ROLES = { superusuario: "Superusuario", admin: "Administrador", secretario: "Secretario/a", tecnico: "Técnico", cliente: "Cliente" };
+const ROLES = { superusuario: "Superusuario", admin: "Administrador", dueno: "Dueño", secretario: "Secretario/a", tecnico: "Técnico", cliente: "Cliente" };
 // ── GC HOGAR Design System — Brand Tokens ──────────────────
 // Verde marca: #16a34a | Negro: #0d0d0d | Superficie: #f9fafb
 const GC = {
@@ -738,9 +738,9 @@ const GC = {
   purpleBdr:   "#e9d5ff",
 };
 
-const ROL_COLOR = { superusuario: GC.danger, admin: GC.brand, secretario: GC.purple, tecnico: GC.warning, cliente: GC.brand };
-const ROL_BG_MAP = { superusuario: GC.dangerBg, admin: GC.brandLight, secretario: GC.purpleBg, tecnico: GC.warningBg, cliente: GC.brandLight };
-const ROL_TEXT_MAP = { superusuario: "#991b1b", admin: GC.brandText, secretario: "#6b21a8", tecnico: "#92400e", cliente: GC.brandText };
+const ROL_COLOR = { superusuario: GC.danger, admin: GC.brand, dueno: "#0891b2", secretario: GC.purple, tecnico: GC.warning, cliente: GC.brand };
+const ROL_BG_MAP = { superusuario: GC.dangerBg, admin: GC.brandLight, dueno: "#cffafe", secretario: GC.purpleBg, tecnico: GC.warningBg, cliente: GC.brandLight };
+const ROL_TEXT_MAP = { superusuario: "#991b1b", admin: GC.brandText, dueno: "#0e7490", secretario: "#6b21a8", tecnico: "#92400e", cliente: GC.brandText };
 const ESTADO_COLOR = { "Al día": GC.brand, "Activo": GC.brand, "DPP": GC.danger, "DPS": GC.info, "Cortesía": GC.purple, "Pendiente": GC.warning, "Vencido": GC.danger };
 const ESTADO_LABEL = { "Al día": "✅ Al día", "Activo": "✅ Al día", "DPP": "🔴 DPP · Desc. por Pago", "DPS": "🔵 DPS · Desc. por Solicitud", "Cortesía": "💜 Cortesía", "Pendiente": "⚠️ Pendiente", "Vencido": "🔴 Vencido" };
 // Estados que NO generan factura mensual
@@ -1136,8 +1136,8 @@ function ChatTicket({ ticket, onSend, autorActual, nombreActual, usuarios }) {
 function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy, extraItems = [] }) {
   const [open, setOpen] = React.useState(false);
 
-  const ROL_ICON = { superusuario: "👑", admin: "🛡️", secretario: "🗂️", tecnico: "🔧" };
-  const ROL_LABEL = { superusuario: "Superusuario", admin: "Administrador", secretario: "Secretario/a", tecnico: "Técnico" };
+  const ROL_ICON = { superusuario: "👑", admin: "🛡️", dueno: "👔", secretario: "🗂️", tecnico: "🔧" };
+  const ROL_LABEL = { superusuario: "Superusuario", admin: "Administrador", dueno: "Dueño", secretario: "Secretario/a", tecnico: "Técnico" };
 
   const MENUS = {
     superusuario: [
@@ -2442,7 +2442,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 <Field label="Plan">
                   <Sel value={planes.find(p => p.nombre === editCliente.plan)?.id || ""} onChange={e => aplicarPlan(e.target.value)}>
                     <option value="">— Seleccionar plan —</option>
-                    {planes.filter(p => p.activo).map(p => (
+                    {planes.filter(p => p.activo && (!p.zonaId || p.zonaId === editCliente.zonaId)).map(p => (
                       <option key={p.id} value={p.id}>{p.nombre} · {formatCOP(p.precio)}</option>
                     ))}
                   </Sel>
@@ -2823,7 +2823,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   <Field label="Plan">
                     <Sel value={planes.find(p => p.nombre === ordenManual.nuevoPlan)?.id || ""} onChange={e => { const plan = planes.find(pl => pl.id === e.target.value); setOrdenManual(prev => ({ ...prev, nuevoPlan: plan?.nombre || "", nuevoPlanId: plan?.id || "", nuevoMonto: plan?.precio || "" })); }}>
                       <option value="">— Seleccionar plan —</option>
-                      {planes.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre} · {formatCOP(p.precio)}</option>)}
+                      {planes.filter(p => p.activo && (!p.zonaId || p.zonaId === usuario.zonaId)).map(p => <option key={p.id} value={p.id}>{p.nombre} · {formatCOP(p.precio)}</option>)}
                     </Sel>
                     {ordenManual.nuevoPlan && <div style={{ fontSize: 11, color: GC.brand, marginTop: 4 }}>✓ {ordenManual.nuevoPlan}</div>}
                   </Field>
@@ -8016,7 +8016,7 @@ function AsignacionMasiva({ usuarios, setUsuarios, zonas, planes, perfilesPago }
                 <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 4 }}>📦 Plan actual</div>
                 <select value={filtroPlan} onChange={e => setFiltroPlan(e.target.value)} style={selStyle(!!filtroPlan, GC.info, GC.infoBg, GC.infoBdr)}>
                   <option value="">Todos los planes</option>
-                  {planes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  {planes.filter(p => !filtroZona || !p.zonaId || p.zonaId === filtroZona).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                 </select>
               </div>
               <div>
@@ -8111,7 +8111,7 @@ function AsignacionMasiva({ usuarios, setUsuarios, zonas, planes, perfilesPago }
               <div style={{ fontSize: 12, color: GC.ink2, fontWeight: 600, marginBottom: 5 }}>📦 Nuevo plan</div>
               <select value={asigPlanId} onChange={e => setAsigPlanId(e.target.value)} style={selStyle(!!asigPlanId, GC.info, GC.infoBg, GC.infoBdr)}>
                 <option value="">— No cambiar plan —</option>
-                {planes.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre} — {formatCOP(p.precio)}</option>)}
+                {planes.filter(p => p.activo && (!asigZonaId || !p.zonaId || p.zonaId === asigZonaId)).map(p => <option key={p.id} value={p.id}>{p.nombre} — {formatCOP(p.precio)}</option>)}
               </select>
             </div>
 
@@ -8646,7 +8646,7 @@ function ProntoPagoPanel({ z, prontoPagos, setProntoPagos, planes, editPP, setEd
           <Field label="Plan (opcional)">
             <Sel value={editPP.planId || ""} onChange={e => { const plan = planes.find(p => p.id === e.target.value); setEditPP({ ...editPP, planId: e.target.value, planNombre: plan ? plan.nombre : "" }); }}>
               <option value="">Todos los planes</option>
-              {planes.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+              {planes.filter(p => p.activo && (!p.zonaId || p.zonaId === z.id)).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </Sel>
           </Field>
           <Field label="Descuento fijo ($)">
@@ -9374,6 +9374,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const [editU, setEditU] = useState(null);
   const [editA, setEditA] = useState(null);
   const [editPlan, setEditPlan] = useState(null);
+  const [filtroZonaPlanes, setFiltroZonaPlanes] = useState("todas");
   const [editZona, setEditZona] = useState(null);
   const [editPropa, setEditPropa] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -9414,7 +9415,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
 
   const emptyU = { id: "", usuario: "", clave: "", rol: "secretario", nombre: "", tipo: "final", cedula: "", servicio: "Internet", plan: "", monto: "", fechaPago: "", estado: "Al día", activo: true, zonaId: "", zonasIds: [], direccion: "", claveWifi: "", telefono: "", privilegios: [] };
   const emptyA = { id: "", tipo: "Información", titulo: "", mensaje: "", fecha: fechaLocal(), afecta: "Internet", activo: true };
-  const emptyPlan = { id: "", nombre: "", precio: "", descripcion: "", activo: true };
+  const emptyPlan = { id: "", nombre: "", precio: "", descripcion: "", activo: true, zonaId: "" };
   const emptyZona = { id: "", nombre: "", color: GC.info, activa: true };
   const emptyPropa = { id: "", categoria: "promocion", titulo: "", descripcion: "", activo: true, fecha: "", imagen: "🎁", color: GC.info };
 
@@ -9504,6 +9505,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   };
 
   const savePlan = async (p) => {
+    if (!p.nombre?.trim()) { alert("El nombre del plan es obligatorio."); return; }
+    if (!p.zonaId) { alert("Selecciona a qué zona pertenece este plan."); return; }
     try {
       const guardado = await db.upsertPlan(p);
       setPlanes(prev => prev.find(x => x.id === guardado.id) ? prev.map(x => x.id === guardado.id ? guardado : x) : [...prev, guardado]);
@@ -9745,9 +9748,15 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {/* ── TAB PLANES ── */}
       {tab === "planes" && (
         <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, gap: 10, flexWrap: "wrap" }}>
             <span style={{ color: GC.ink2, fontSize: 14 }}>{planes.length} planes configurados</span>
-            <Btn onClick={() => { setEditPlan({ ...emptyPlan }); setFormTipo("plan"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nuevo plan</Btn>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <Sel value={filtroZonaPlanes} onChange={e => setFiltroZonaPlanes(e.target.value)} style={{ fontSize: 13 }}>
+                <option value="todas">🌐 Todas las zonas</option>
+                {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
+              </Sel>
+              <Btn onClick={() => { setEditPlan({ ...emptyPlan }); setFormTipo("plan"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nuevo plan</Btn>
+            </div>
           </div>
           {showForm && formTipo === "plan" && editPlan && (
             <div style={{ background: "#ffffff", border: "1px solid " + GC.border2, borderRadius: 14, padding: 20, marginBottom: 16 }}>
@@ -9756,6 +9765,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <Field label="Nombre del plan"><Inp value={editPlan.nombre} onChange={e => setEditPlan({ ...editPlan, nombre: e.target.value })} placeholder="Ej: Premium 100MB" /></Field>
                 <Field label="Precio (COP)"><Inp type="number" value={editPlan.precio} onChange={e => setEditPlan({ ...editPlan, precio: Number(e.target.value) })} placeholder="Ej: 85000" /></Field>
               </div>
+              <Field label="Zona">
+                <Sel value={editPlan.zonaId || ""} onChange={e => setEditPlan({ ...editPlan, zonaId: e.target.value })}>
+                  <option value="">Selecciona una zona...</option>
+                  {zonas.map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+                </Sel>
+              </Field>
               <Field label="Descripción">
                 <Inp value={editPlan.descripcion} onChange={e => setEditPlan({ ...editPlan, descripcion: e.target.value })} placeholder="Descripción del plan" />
               </Field>
@@ -9766,11 +9781,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
             </div>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {planes.map(p => (
+            {planes.filter(p => filtroZonaPlanes === "todas" || p.zonaId === filtroZonaPlanes).map(p => (
               <div key={p.id} style={{ background: "#ffffff", border: "1px solid " + GC.border, borderLeft: "4px solid #0ea5e9", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", opacity: p.activo ? 1 : 0.5 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{p.nombre}</div>
                   <div style={{ fontSize: 12, color: GC.ink3 }}>{p.descripcion}</div>
+                  <div style={{ fontSize: 11, color: GC.info, marginTop: 2 }}>📍 {zonas.find(z => z.id === p.zonaId)?.nombre || "Sin zona asignada"}</div>
                 </div>
                 <div style={{ fontWeight: 800, color: GC.info, fontSize: 16 }}>{formatCOP(p.precio)}</div>
                 <div style={{ display: "flex", gap: 6 }}>
@@ -9930,6 +9946,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
                   {[
                     { val: "admin", emoji: "🛡️", label: "Administrador", desc: "Acceso total al sistema" },
+                    ...(esSuperusuario ? [{ val: "dueno", emoji: "👔", label: "Dueño", desc: "Solo ve estadísticas de todas las zonas" }] : []),
                     { val: "secretario", emoji: "🗂️", label: "Secretario/a", desc: "Gestión de clientes y tickets" },
                     { val: "tecnico", emoji: "🔧", label: "Técnico", desc: "Visualiza y ejecuta órdenes" },
                     { val: "cliente", emoji: "👤", label: "Cliente", desc: "Acceso al portal del cliente" },
@@ -10036,7 +10053,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                     <Field label="Plan">
                       <Sel value={planes.find(p => p.nombre === editU.plan)?.id || ""} onChange={e => { const plan = planes.find(pl => pl.id === e.target.value); if (plan) setEditU(prev => ({ ...prev, plan: plan.nombre, monto: plan.precio })); }}>
                         <option value="">— Seleccionar plan —</option>
-                        {planes.filter(p => p.activo).map(p => <option key={p.id} value={p.id}>{p.nombre} · {formatCOP(p.precio)}</option>)}
+                        {planes.filter(p => p.activo && (!p.zonaId || p.zonaId === editU.zonaId)).map(p => <option key={p.id} value={p.id}>{p.nombre} · {formatCOP(p.precio)}</option>)}
                       </Sel>
                       {editU.plan && <div style={{ fontSize: 11, color: GC.brand, marginTop: 4 }}>✓ {editU.plan}</div>}
                     </Field>
@@ -10120,7 +10137,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
               </Sel>
               <Sel value={filtroAdminPlan} onChange={e => setFiltroAdminPlan(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
                 <option value="">📦 Todos los planes</option>
-                {planes.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                {planes.filter(p => !filtroAdminZona || !p.zonaId || p.zonaId === filtroAdminZona).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </Sel>
               <Sel value={filtroAdminPerfil} onChange={e => setFiltroAdminPerfil(e.target.value)} style={{ flex: 1, minWidth: 140 }}>
                 <option value="">📅 Todos los perfiles</option>
@@ -10365,6 +10382,315 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     </div>
   );
 }
+
+// ══════════════════════════════════════════════════════════════
+// PORTAL DUEÑO — solo lectura, estadísticas de todas las zonas
+// ══════════════════════════════════════════════════════════════
+
+// Gráfico de barras simple en SVG puro (sin librerías externas) para comparar dos series
+function BarChartComparativo({ data, colorA = "#2563eb", colorB = "#f59e0b", labelA = "", labelB = "", formatValor = v => v }) {
+  const max = Math.max(1, ...data.flatMap(d => [d.a || 0, d.b || 0]));
+  const alto = 170, altoBarras = 120, anchoGrupo = 70;
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <svg viewBox={`0 0 ${Math.max(data.length * anchoGrupo, 300)} ${alto}`} style={{ width: "100%", height: alto, minWidth: data.length * anchoGrupo }}>
+        {data.map((d, i) => {
+          const x = i * anchoGrupo;
+          const hA = (Math.max(0, d.a || 0) / max) * altoBarras;
+          const hB = (Math.max(0, d.b || 0) / max) * altoBarras;
+          return (
+            <g key={i}>
+              <rect x={x + 12} y={alto - 24 - hA} width={18} height={hA} fill={colorA} rx={3} />
+              <rect x={x + 36} y={alto - 24 - hB} width={18} height={hB} fill={colorB} rx={3} />
+              <text x={x + 35} y={alto - 8} fontSize="10" textAnchor="middle" fill="#64748b">{d.label}</text>
+            </g>
+          );
+        })}
+      </svg>
+      {(labelA || labelB) && (
+        <div style={{ display: "flex", gap: 16, justifyContent: "center", marginTop: 4, fontSize: 12 }}>
+          {labelA && <div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: colorA, display: "inline-block" }} />{labelA}</div>}
+          {labelB && <div style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: colorB, display: "inline-block" }} />{labelB}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Tarjeta de estadística con comparación vs período anterior
+function StatCardDueno({ label, valor, anterior, esMoneda, invertirColor, icono }) {
+  const delta = anterior === 0 ? (valor > 0 ? 100 : 0) : Math.round(((valor - anterior) / Math.max(1, Math.abs(anterior))) * 100);
+  const subio = valor > anterior;
+  const igual = valor === anterior;
+  let colorDelta = igual ? "#94a3b8" : (subio ? "#16a34a" : "#dc2626");
+  if (invertirColor && !igual) colorDelta = subio ? "#dc2626" : "#16a34a";
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: "16px 18px" }}>
+      <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+        <span>{icono}</span>{label}
+      </div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: "#0f172a" }}>{esMoneda ? formatCOP(valor) : valor.toLocaleString("es-CO")}</div>
+      <div style={{ fontSize: 12, color: colorDelta, fontWeight: 700, marginTop: 4 }}>
+        {igual ? "= sin cambios" : (subio ? "▲ " : "▼ ") + Math.abs(delta) + "% vs mes anterior"}
+      </div>
+    </div>
+  );
+}
+
+function PortalDueno({ zonas }) {
+  const [usuarios, setUsuarios] = useState([]);
+  const [ordenes, setOrdenes] = useState([]);
+  const [facturas, setFacturas] = useState([]);
+  const [movimientos, setMovimientos] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [zonaSel, setZonaSel] = useState("todas");
+  const hoy = new Date();
+  const [mes, setMes] = useState(hoy.getMonth() + 1);
+  const [anio, setAnio] = useState(hoy.getFullYear());
+  // Vista por día específico (mismo criterio que el "Informe Diario" del Superusuario)
+  const [fechaDia, setFechaDia] = useState(fechaLocal());
+  const [abonosDia, setAbonosDia] = useState([]);
+  const [cargandoDia, setCargandoDia] = useState(false);
+
+  useEffect(() => {
+    setCargando(true);
+    Promise.all([db.getUsuarios(), db.getOrdenes(), db.getFacturas(), db.getMovimientosCaja()])
+      .then(([u, o, f, m]) => { setUsuarios(u); setOrdenes(o); setFacturas(f); setMovimientos(m); })
+      .catch(err => console.error("Error cargando estadísticas:", err))
+      .finally(() => setCargando(false));
+  }, []);
+
+  useEffect(() => {
+    setCargandoDia(true);
+    db.getAbonosByFecha(fechaDia, zonaSel === "todas" ? null : zonaSel)
+      .then(setAbonosDia)
+      .catch(err => { console.error("Error cargando abonos del día:", err); setAbonosDia([]); })
+      .finally(() => setCargandoDia(false));
+  }, [fechaDia, zonaSel]);
+
+  // mes/año anterior al seleccionado
+  const mesAnt = mes === 1 ? 12 : mes - 1;
+  const anioAnt = mes === 1 ? anio - 1 : anio;
+
+  // Para timestamps numéricos (ej. ordenes.fechaCreacion)
+  const enRangoFecha = (timestamp, m, a) => {
+    if (!timestamp) return false;
+    const d = new Date(timestamp);
+    return d.getMonth() + 1 === m && d.getFullYear() === a;
+  };
+  // Para strings de fecha simples "YYYY-MM-DD" (ej. movimientos.fecha) — comparación por texto,
+  // para no arrastrar el bug de que new Date("YYYY-MM-DD") se interpreta en UTC y puede
+  // desplazar el día al convertir a la zona horaria local (Colombia UTC-5).
+  const enRangoFechaStr = (fechaStr, m, a) => {
+    if (!fechaStr) return false;
+    const soloFecha = String(fechaStr).slice(0, 10);
+    const partes = soloFecha.split("-");
+    return Number(partes[1]) === m && Number(partes[0]) === a;
+  };
+
+  // Calcula todas las métricas para una zona (o null = todas) y un mes/año dados
+  const calcularStats = (zonaId, m, a) => {
+    const enZona = (zid) => !zonaId || zid === zonaId;
+    const clientes = usuarios.filter(u => u.rol === "cliente" && enZona(u.zonaId));
+    const activos = clientes.filter(c => c.activo !== false).length;
+    const inactivos = clientes.filter(c => c.activo === false).length;
+
+    // Morosos: clientes activos con 2+ meses pendientes hasta el mes/año de referencia
+    const pendientes = facturas.filter(f =>
+      enZona(f.zonaId) && f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
+      (f.anio < a || (f.anio === a && f.mes <= m))
+    );
+    const mesesPorCliente = {};
+    pendientes.forEach(f => {
+      const cliente = usuarios.find(u => u.id === f.clienteId);
+      if (cliente?.activo === false) return;
+      if (!mesesPorCliente[f.clienteId]) mesesPorCliente[f.clienteId] = new Set();
+      mesesPorCliente[f.clienteId].add(`${f.anio}-${f.mes}`);
+    });
+    const morosos = Object.values(mesesPorCliente).filter(s => s.size >= 2).length;
+
+    // Órdenes creadas en el mes/año, e instalaciones dentro de esas órdenes
+    const ordenesPeriodo = ordenes.filter(o => enZona(o.zonaId) && enRangoFecha(o.fechaCreacion, m, a));
+    const totalOrdenes = ordenesPeriodo.length;
+    const instalaciones = ordenesPeriodo.filter(o => o.tipo === "Instalación nueva").length;
+
+    // Ingresos: cobrado de facturas de ese mes/año + ingresos manuales de caja en ese mes/año
+    const facturasDelMes = facturas.filter(f => enZona(f.zonaId) && f.mes === m && f.anio === a && f.estado !== "Anulada");
+    const cobradoFacturas = facturasDelMes.reduce((s, f) => s + Math.max(0, f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)), 0);
+    const movsDelMes = movimientos.filter(mv => enZona(mv.zonaId) && enRangoFechaStr(mv.fecha, m, a));
+    const ingresosManual = movsDelMes.filter(mv => mv.tipo === "Ingreso").reduce((s, mv) => s + mv.monto, 0);
+    const egresos = movsDelMes.filter(mv => mv.tipo === "Egreso").reduce((s, mv) => s + mv.monto, 0);
+    const ingresos = cobradoFacturas + ingresosManual;
+
+    // Total en caja: saldo acumulado a la fecha (no depende del mes filtrado, es el saldo actual real)
+    const saldoBaseZ = zonaId ? (zonas.find(z => z.id === zonaId)?.saldoBase || 0) : zonas.reduce((s, z) => s + (z.saldoBase || 0), 0);
+    const cobradoHistoricoTotal = facturas.filter(f => enZona(f.zonaId) && f.estado !== "Anulada")
+      .reduce((s, f) => s + Math.max(0, f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)), 0);
+    const ingresosManualTotal = movimientos.filter(mv => enZona(mv.zonaId) && mv.tipo === "Ingreso").reduce((s, mv) => s + mv.monto, 0);
+    const egresosTotal = movimientos.filter(mv => enZona(mv.zonaId) && mv.tipo === "Egreso").reduce((s, mv) => s + mv.monto, 0);
+    const totalCaja = saldoBaseZ + cobradoHistoricoTotal + ingresosManualTotal - egresosTotal;
+
+    return { activos, inactivos, morosos, totalOrdenes, instalaciones, ingresos, egresos, totalCaja };
+  };
+
+  const zonaIdSel = zonaSel === "todas" ? null : zonaSel;
+  const actual = React.useMemo(() => calcularStats(zonaIdSel, mes, anio), [usuarios, ordenes, facturas, movimientos, zonaSel, mes, anio]);
+  const anterior = React.useMemo(() => calcularStats(zonaIdSel, mesAnt, anioAnt), [usuarios, ordenes, facturas, movimientos, zonaSel, mes, anio]);
+
+  // Últimos 6 meses (incluyendo el seleccionado) para el gráfico de tendencia
+  const ultimos6 = React.useMemo(() => {
+    const arr = [];
+    for (let i = 5; i >= 0; i--) {
+      let mm = mes - i, aa = anio;
+      while (mm <= 0) { mm += 12; aa -= 1; }
+      const st = calcularStats(zonaIdSel, mm, aa);
+      arr.push({ label: MESES[mm - 1].slice(0, 3), a: st.ingresos, b: st.egresos });
+    }
+    return arr;
+  }, [usuarios, ordenes, facturas, movimientos, zonaSel, mes, anio]);
+
+  // Comparación entre zonas (solo tiene sentido cuando se está viendo "todas")
+  const comparativoZonas = React.useMemo(() => {
+    if (zonaSel !== "todas") return [];
+    return zonas.map(z => {
+      const st = calcularStats(z.id, mes, anio);
+      return { label: z.nombre, a: st.ingresos, b: st.morosos * (st.ingresos > 0 ? st.ingresos / Math.max(1, st.activos) : 0) };
+    });
+  }, [usuarios, ordenes, facturas, movimientos, zonaSel, mes, anio, zonas]);
+
+  // Vista por día específico — misma lógica que el "Informe Diario" del Panel Superusuario:
+  // saldo anterior (todo lo acumulado ANTES del día) + lo del día = saldo con el que cerró la caja ese día.
+  const statsDia = React.useMemo(() => {
+    const enZona = (zid) => zonaSel === "todas" || zid === zonaSel;
+    const saldoBaseZ = zonaSel === "todas" ? zonas.reduce((s, z) => s + (z.saldoBase || 0), 0) : (zonas.find(z => z.id === zonaSel)?.saldoBase || 0);
+
+    const abonosDiaValidos = abonosDia.filter(a => a.facturaEstado !== "Anulada");
+    const totalAbonosDia = abonosDiaValidos.reduce((s, a) => s + a.monto, 0);
+    const movsDia = movimientos.filter(m => enZona(m.zonaId) && m.fecha === fechaDia);
+    const ingresosCajaDia = movsDia.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
+    const egresosCajaDia = movsDia.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
+    const totalIngresosDia = totalAbonosDia + ingresosCajaDia;
+
+    // Todo lo acumulado ANTES de la fecha seleccionada
+    const cobradoAntes = facturas
+      .filter(f => enZona(f.zonaId) && f.estado !== "Anulada" && f.fechaPago && f.fechaPago < fechaDia)
+      .reduce((s, f) => s + (f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)), 0);
+    const ingresosAntes = movimientos.filter(m => enZona(m.zonaId) && m.tipo === "Ingreso" && m.fecha < fechaDia).reduce((s, m) => s + m.monto, 0);
+    const egresosAntes = movimientos.filter(m => enZona(m.zonaId) && m.tipo === "Egreso" && m.fecha < fechaDia).reduce((s, m) => s + m.monto, 0);
+    const saldoAnterior = saldoBaseZ + cobradoAntes + ingresosAntes - egresosAntes;
+    const saldoCierreDia = saldoAnterior + totalIngresosDia - egresosCajaDia;
+
+    return { totalAbonosDia, ingresosCajaDia, egresosCajaDia, totalIngresosDia, saldoAnterior, saldoCierreDia, cantidadAbonos: abonosDiaValidos.length };
+  }, [abonosDia, movimientos, facturas, zonaSel, fechaDia, zonas]);
+
+  if (cargando) {
+    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }}>Cargando estadísticas…</div>;
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f8fafc", padding: "20px 16px 60px" }}>
+      <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+        <h1 style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", margin: "4px 0 16px", display: "flex", alignItems: "center", gap: 8 }}>
+          👔 Panel del Dueño — Estadísticas
+        </h1>
+
+        {/* Filtros */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 14 }}>
+          <select value={zonaSel} onChange={e => setZonaSel(e.target.value)} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "inherit" }}>
+            <option value="todas">🌐 Todas las zonas</option>
+            {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
+          </select>
+          <select value={mes} onChange={e => setMes(Number(e.target.value))} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "inherit" }}>
+            {MESES.map((nm, i) => <option key={i} value={i + 1}>{nm}</option>)}
+          </select>
+          <select value={anio} onChange={e => setAnio(Number(e.target.value))} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "inherit" }}>
+            {[hoy.getFullYear(), hoy.getFullYear() - 1, hoy.getFullYear() - 2].map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <div style={{ fontSize: 12, color: "#94a3b8", alignSelf: "center" }}>Comparado contra {MESES[mesAnt - 1]} {anioAnt}</div>
+        </div>
+
+        {/* Tarjetas de clientes */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
+          <StatCardDueno label="Clientes activos" valor={actual.activos} anterior={anterior.activos} icono="✅" />
+          <StatCardDueno label="Clientes inactivos" valor={actual.inactivos} anterior={anterior.inactivos} icono="🚫" invertirColor />
+          <StatCardDueno label="Morosos" valor={actual.morosos} anterior={anterior.morosos} icono="🔴" invertirColor />
+        </div>
+
+        {/* Tarjetas de operación */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
+          <StatCardDueno label="Órdenes creadas" valor={actual.totalOrdenes} anterior={anterior.totalOrdenes} icono="🧾" />
+          <StatCardDueno label="Instalaciones" valor={actual.instalaciones} anterior={anterior.instalaciones} icono="🔌" />
+        </div>
+
+        {/* Tarjetas financieras */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 24 }}>
+          <StatCardDueno label="Ingresos del mes" valor={actual.ingresos} anterior={anterior.ingresos} icono="💰" esMoneda />
+          <StatCardDueno label="Egresos del mes" valor={actual.egresos} anterior={anterior.egresos} icono="📤" esMoneda invertirColor />
+          <StatCardDueno label="Total en caja (hoy)" valor={actual.totalCaja} anterior={anterior.totalCaja} icono="🏦" esMoneda />
+        </div>
+
+        {/* Vista por día específico */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 16, marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>📅 Cierre de un día específico {zonaSel === "todas" ? "(todas las zonas)" : "(" + zonas.find(z => z.id === zonaSel)?.nombre + ")"}</div>
+            <input type="date" value={fechaDia} onChange={e => setFechaDia(e.target.value)} max={fechaLocal()} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "inherit" }} />
+          </div>
+          {cargandoDia ? (
+            <div style={{ color: "#94a3b8", fontSize: 13, padding: "10px 0" }}>Cargando…</div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>💵 Recaudado ese día</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#16a34a" }}>{formatCOP(statsDia.totalIngresosDia)}</div>
+                <div style={{ fontSize: 11, color: "#94a3b8" }}>{statsDia.cantidadAbonos} pago{statsDia.cantidadAbonos !== 1 ? "s" : ""} de factura{statsDia.ingresosCajaDia ? " + ingresos manuales" : ""}</div>
+              </div>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📤 Egresos ese día</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#dc2626" }}>{formatCOP(statsDia.egresosCajaDia)}</div>
+              </div>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📦 Saldo con el que empezó</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#475569" }}>{formatCOP(statsDia.saldoAnterior)}</div>
+              </div>
+              <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "#047857", fontWeight: 600 }}>🏦 Caja al cierre de ese día</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#047857" }}>{formatCOP(statsDia.saldoCierreDia)}</div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Tendencia 6 meses */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 16, marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 10 }}>📈 Ingresos vs Egresos — últimos 6 meses {zonaSel === "todas" ? "(todas las zonas)" : "(" + zonas.find(z => z.id === zonaSel)?.nombre + ")"}</div>
+          <BarChartComparativo data={ultimos6} colorA="#16a34a" colorB="#dc2626" labelA="Ingresos" labelB="Egresos" />
+        </div>
+
+        {/* Comparación entre zonas */}
+        {zonaSel === "todas" && zonas.length > 1 && (
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 10 }}>📍 Comparación entre zonas — {MESES[mes - 1]} {anio}</div>
+            {zonas.map(z => {
+              const st = calcularStats(z.id, mes, anio);
+              return (
+                <div key={z.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 4px", borderBottom: "1px solid #f1f5f9", flexWrap: "wrap", gap: 8 }}>
+                  <div style={{ fontWeight: 700, color: z.color || "#0f172a", fontSize: 13 }}>📍 {z.nombre}</div>
+                  <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#475569" }}>
+                    <span>👥 {st.activos} activos</span>
+                    <span>🔴 {st.morosos} morosos</span>
+                    <span>💰 {formatCOP(st.ingresos)}</span>
+                    <span>🏦 {formatCOP(st.totalCaja)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 // ══════════════════════════════════════════════════════════════
 // APP PRINCIPAL
@@ -10667,6 +10993,9 @@ export default function App() {
       )}
       {sesion && sesion.rol === "tecnico" && (
         <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} setUsuarios={setUsuarios} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
+      )}
+      {sesion && sesion.rol === "dueno" && (
+        <PortalDueno zonas={zonas} />
       )}
       {sesion && (sesion.rol === "admin" || sesion.rol === "superusuario") && (
         <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
