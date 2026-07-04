@@ -9990,7 +9990,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       </div>
                     </Field>
                   )}
-                  {editU.rol !== "superusuario" && editU.rol !== "admin" && (
+                  {editU.rol !== "superusuario" && editU.rol !== "admin" && editU.rol !== "dueno" && (
                     <Field label="Zona asignada">
                       <Sel value={editU.zonaId || ""} onChange={e => setEditU({ ...editU, zonaId: e.target.value })}>
                         <option value="">— Sin zona —</option>
