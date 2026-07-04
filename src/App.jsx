@@ -10437,6 +10437,19 @@ function StatCardDueno({ label, valor, anterior, esMoneda, invertirColor, icono 
   );
 }
 
+// Contenedor de sección con encabezado de color, para separar visualmente los bloques del panel
+function SeccionDueno({ titulo, color, bg, children, nota }) {
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, marginBottom: 18, overflow: "hidden" }}>
+      <div style={{ background: bg, borderBottom: "1px solid " + color + "33", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color }}>{titulo}</div>
+        {nota && <div style={{ fontSize: 11, color: color + "cc" }}>{nota}</div>}
+      </div>
+      <div style={{ padding: 16 }}>{children}</div>
+    </div>
+  );
+}
+
 function PortalDueno({ zonas }) {
   const [usuarios, setUsuarios] = useState([]);
   const [ordenes, setOrdenes] = useState([]);
@@ -10523,7 +10536,9 @@ function PortalDueno({ zonas }) {
     const ingresos = cobradoFacturas + ingresosManual;
 
     // Total en caja: saldo acumulado a la fecha (no depende del mes filtrado, es el saldo actual real)
-    const saldoBaseZ = zonaId ? (zonas.find(z => z.id === zonaId)?.saldoBase || 0) : zonas.reduce((s, z) => s + (z.saldoBase || 0), 0);
+    // Igual que en Facturación y Caja: el saldo base es de toda la oficina, solo se suma
+    // en la vista "todas las zonas" — para una zona específica NO se reparte.
+    const saldoBaseZ = zonaId ? 0 : zonas.reduce((s, z) => s + (z.saldoBase || 0), 0);
     const cobradoHistoricoTotal = facturas.filter(f => enZona(f.zonaId) && f.estado !== "Anulada")
       .reduce((s, f) => s + Math.max(0, f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)), 0);
     const ingresosManualTotal = movimientos.filter(mv => enZona(mv.zonaId) && mv.tipo === "Ingreso").reduce((s, mv) => s + mv.monto, 0);
@@ -10562,7 +10577,8 @@ function PortalDueno({ zonas }) {
   // saldo anterior (todo lo acumulado ANTES del día) + lo del día = saldo con el que cerró la caja ese día.
   const statsDia = React.useMemo(() => {
     const enZona = (zid) => zonaSel === "todas" || zid === zonaSel;
-    const saldoBaseZ = zonaSel === "todas" ? zonas.reduce((s, z) => s + (z.saldoBase || 0), 0) : (zonas.find(z => z.id === zonaSel)?.saldoBase || 0);
+    // Igual que en Facturación y Caja: el saldo base solo se suma en la vista "todas las zonas".
+    const saldoBaseZ = zonaSel === "todas" ? zonas.reduce((s, z) => s + (z.saldoBase || 0), 0) : 0;
 
     const abonosDiaValidos = abonosDia.filter(a => a.facturaEstado !== "Anulada");
     const totalAbonosDia = abonosDiaValidos.reduce((s, a) => s + a.monto, 0);
@@ -10595,7 +10611,7 @@ function PortalDueno({ zonas }) {
         </h1>
 
         {/* Filtros */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 14 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 14, alignItems: "center" }}>
           <select value={zonaSel} onChange={e => setZonaSel(e.target.value)} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "inherit" }}>
             <option value="todas">🌐 Todas las zonas</option>
             {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
@@ -10606,35 +10622,49 @@ function PortalDueno({ zonas }) {
           <select value={anio} onChange={e => setAnio(Number(e.target.value))} style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "inherit" }}>
             {[hoy.getFullYear(), hoy.getFullYear() - 1, hoy.getFullYear() - 2].map(a => <option key={a} value={a}>{a}</option>)}
           </select>
-          <div style={{ fontSize: 12, color: "#94a3b8", alignSelf: "center" }}>Comparado contra {MESES[mesAnt - 1]} {anioAnt}</div>
+          <div style={{ fontSize: 12, color: "#94a3b8" }}>Comparado contra {MESES[mesAnt - 1]} {anioAnt}</div>
         </div>
 
-        {/* Tarjetas de clientes */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
-          <StatCardDueno label="Clientes activos" valor={actual.activos} anterior={anterior.activos} icono="✅" />
-          <StatCardDueno label="Clientes inactivos" valor={actual.inactivos} anterior={anterior.inactivos} icono="🚫" invertirColor />
-          <StatCardDueno label="Morosos" valor={actual.morosos} anterior={anterior.morosos} icono="🔴" invertirColor />
-        </div>
-
-        {/* Tarjetas de operación */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 20 }}>
-          <StatCardDueno label="Órdenes creadas" valor={actual.totalOrdenes} anterior={anterior.totalOrdenes} icono="🧾" />
-          <StatCardDueno label="Instalaciones" valor={actual.instalaciones} anterior={anterior.instalaciones} icono="🔌" />
-        </div>
-
-        {/* Tarjetas financieras */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12, marginBottom: 24 }}>
-          <StatCardDueno label="Ingresos del mes" valor={actual.ingresos} anterior={anterior.ingresos} icono="💰" esMoneda />
-          <StatCardDueno label="Egresos del mes" valor={actual.egresos} anterior={anterior.egresos} icono="📤" esMoneda invertirColor />
-          <StatCardDueno label="Total en caja (hoy)" valor={actual.totalCaja} anterior={anterior.totalCaja} icono="🏦" esMoneda />
-        </div>
-
-        {/* Vista por día específico */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 16, marginBottom: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>📅 Cierre de un día específico {zonaSel === "todas" ? "(todas las zonas)" : "(" + zonas.find(z => z.id === zonaSel)?.nombre + ")"}</div>
-            <input type="date" value={fechaDia} onChange={e => setFechaDia(e.target.value)} max={fechaLocal()} style={{ padding: "7px 10px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, fontFamily: "inherit" }} />
+        {/* Aviso si el mes seleccionado está en curso (la comparación no es justa todavía) */}
+        {mes === hoy.getMonth() + 1 && anio === hoy.getFullYear() && (
+          <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12, padding: "10px 14px", marginBottom: 18, fontSize: 12, color: "#92400e", display: "flex", gap: 8, alignItems: "center" }}>
+            ⚠️ {MESES[mes - 1]} todavía está en curso (van {hoy.getDate()} días) — las comparaciones "vs mes anterior" van a verse bajas hasta que termine el mes completo.
           </div>
+        )}
+
+        {/* Sección: Clientes */}
+        <SeccionDueno titulo="👥 CLIENTES" color="#0e7490" bg="#ecfeff">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+            <StatCardDueno label="Clientes activos" valor={actual.activos} anterior={anterior.activos} icono="✅" />
+            <StatCardDueno label="Clientes inactivos" valor={actual.inactivos} anterior={anterior.inactivos} icono="🚫" invertirColor />
+            <StatCardDueno label="Morosos" valor={actual.morosos} anterior={anterior.morosos} icono="🔴" invertirColor />
+          </div>
+        </SeccionDueno>
+
+        {/* Sección: Operación */}
+        <SeccionDueno titulo="🛠️ OPERACIÓN" color="#7c3aed" bg="#f5f3ff">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+            <StatCardDueno label="Órdenes creadas" valor={actual.totalOrdenes} anterior={anterior.totalOrdenes} icono="🧾" />
+            <StatCardDueno label="Instalaciones" valor={actual.instalaciones} anterior={anterior.instalaciones} icono="🔌" />
+          </div>
+        </SeccionDueno>
+
+        {/* Sección: Finanzas del mes */}
+        <SeccionDueno titulo="💰 FINANZAS DEL MES" color="#b45309" bg="#fffbeb"
+          nota="⚠️ El saldo inicial de caja aún no está sincronizado — ver nota abajo">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+            <StatCardDueno label="Ingresos del mes" valor={actual.ingresos} anterior={anterior.ingresos} icono="💰" esMoneda />
+            <StatCardDueno label="Egresos del mes" valor={actual.egresos} anterior={anterior.egresos} icono="📤" esMoneda invertirColor />
+            <StatCardDueno label="Total en caja (acumulado)" valor={actual.totalCaja} anterior={anterior.totalCaja} icono="🏦" esMoneda />
+          </div>
+          <div style={{ fontSize: 11, color: "#92400e", marginTop: 10, lineHeight: 1.5 }}>
+            "Total en caja" aquí puede no coincidir exactamente con la pantalla de Facturación, porque el saldo inicial de caja está guardado solo en el navegador donde se configuró, no en la base de datos. Pídele a soporte que lo migre para que este número sea 100% exacto.
+          </div>
+        </SeccionDueno>
+
+        {/* Sección: Cierre de un día específico */}
+        <SeccionDueno titulo={"📅 CIERRE DE UN DÍA ESPECÍFICO" + (zonaSel === "todas" ? "" : " — " + zonas.find(z => z.id === zonaSel)?.nombre)} color="#0f766e" bg="#f0fdfa"
+          nota={<input type="date" value={fechaDia} onChange={e => setFechaDia(e.target.value)} max={fechaLocal()} style={{ padding: "5px 9px", borderRadius: 7, border: "1px solid #99f6e4", fontSize: 12, fontFamily: "inherit" }} />}>
           {cargandoDia ? (
             <div style={{ color: "#94a3b8", fontSize: 13, padding: "10px 0" }}>Cargando…</div>
           ) : (
@@ -10658,34 +10688,35 @@ function PortalDueno({ zonas }) {
               </div>
             </div>
           )}
-        </div>
+        </SeccionDueno>
 
-        {/* Tendencia 6 meses */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 16, marginBottom: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 10 }}>📈 Ingresos vs Egresos — últimos 6 meses {zonaSel === "todas" ? "(todas las zonas)" : "(" + zonas.find(z => z.id === zonaSel)?.nombre + ")"}</div>
-          <BarChartComparativo data={ultimos6} colorA="#16a34a" colorB="#dc2626" labelA="Ingresos" labelB="Egresos" />
-        </div>
-
-        {/* Comparación entre zonas */}
-        {zonaSel === "todas" && zonas.length > 1 && (
-          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 10 }}>📍 Comparación entre zonas — {MESES[mes - 1]} {anio}</div>
-            {zonas.map(z => {
-              const st = calcularStats(z.id, mes, anio);
-              return (
-                <div key={z.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 4px", borderBottom: "1px solid #f1f5f9", flexWrap: "wrap", gap: 8 }}>
-                  <div style={{ fontWeight: 700, color: z.color || "#0f172a", fontSize: 13 }}>📍 {z.nombre}</div>
-                  <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#475569" }}>
-                    <span>👥 {st.activos} activos</span>
-                    <span>🔴 {st.morosos} morosos</span>
-                    <span>💰 {formatCOP(st.ingresos)}</span>
-                    <span>🏦 {formatCOP(st.totalCaja)}</span>
-                  </div>
-                </div>
-              );
-            })}
+        {/* Sección: Tendencias */}
+        <SeccionDueno titulo="📈 TENDENCIAS Y COMPARACIONES" color="#334155" bg="#f1f5f9">
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8 }}>
+            Ingresos vs Egresos — últimos 6 meses {zonaSel === "todas" ? "(todas las zonas)" : "(" + zonas.find(z => z.id === zonaSel)?.nombre + ")"}
           </div>
-        )}
+          <BarChartComparativo data={ultimos6} colorA="#16a34a" colorB="#dc2626" labelA="Ingresos" labelB="Egresos" />
+
+          {zonaSel === "todas" && zonas.length > 1 && (
+            <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid #e2e8f0" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 10 }}>Comparación entre zonas — {MESES[mes - 1]} {anio}</div>
+              {zonas.map(z => {
+                const st = calcularStats(z.id, mes, anio);
+                return (
+                  <div key={z.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 4px", borderBottom: "1px solid #f1f5f9", flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ fontWeight: 700, color: z.color || "#0f172a", fontSize: 13 }}>📍 {z.nombre}</div>
+                    <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#475569" }}>
+                      <span>👥 {st.activos} activos</span>
+                      <span>🔴 {st.morosos} morosos</span>
+                      <span>💰 {formatCOP(st.ingresos)}</span>
+                      <span>🏦 {formatCOP(st.totalCaja)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </SeccionDueno>
       </div>
     </div>
   );
