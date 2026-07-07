@@ -747,7 +747,7 @@ const initialZonas = [
 // Datos de la oficina (dirección/teléfono) por zona, para imprimir en las tirillas.
 // La clave se compara sin tildes y en minúsculas, así que "Tulua" o "Tuluá" matchean igual.
 const ZONA_CONTACTO = {
-  "vijes": { direccion: "Calle 7 #2-15 Kennedy", telefono: "318-8255601" },
+  "vijes": { direccion: "Calle 7 #2-15 Kennedy", telefono: "318-8255601", telefono2: "315-7613752" },
   "tulua": { direccion: "Calle 25 # 5-06 Las Americas", telefono: "316 4753169", nombreEmpresa: "OFICINA TELECABLE LAS AMERICAS" },
 };
 const normalizarZona = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -3864,7 +3864,7 @@ function ModalConfirm({ titulo, mensaje, icono, onConfirm, onCancel }) {
   );
 }
 
-function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, direccion, onClose, db, usuario }) {
+function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, telefono2, direccion, onClose, db, usuario }) {
   // El abono más reciente (este pago) vs. el total histórico abonado a la factura — son cosas distintas.
   // abonos viene ordenado por fecha y numeroPago descendente, así que abonos[0] es siempre el más reciente.
   const ultimoAbono = abonos && abonos.length > 0 ? abonos[0] : null;
@@ -3927,7 +3927,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, direccion,
   const buildEscPos = () => {
     const empresa  = (nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase();
     const tel1     = "Tel: " + (telefono || "318-8255601");
-    const tel2     = "Tel: 315-7613752";
+    const tel2     = telefono2 ? "Tel: " + telefono2 : "";
     const dir1     = direccion || "";
     const recibo   = "#" + String(factura.numeroRecibo || factura.id?.slice(-6) || "0").padStart(5,"0");
     const lastAbono = abonos && abonos.length > 0 ? abonos[0] : null;
@@ -3942,7 +3942,7 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, direccion,
     d += ALIGN_LFT;
     d += center(empresa);
     d += BOLD_OFF + center(tel1);
-    d += center(tel2);
+    if (tel2) d += center(tel2);
     if (dir1) d += center(dir1);
     d += SEP_DASH;
 
@@ -4617,6 +4617,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   const [modalRecibo, setModalRecibo] = useState(null);
   const [abonosModal, setAbonosModal] = useState([]);
   const [nuevoAbono, setNuevoAbono] = useState({ monto: "", metodoPago: "Efectivo", observacion: "", fecha: fechaLocal() });
+  const [descuentoPPAplicado, setDescuentoPPAplicado] = useState(false);
   const [errAbono, setErrAbono] = useState("");
   const [registrandoPago, setRegistrandoPago] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -4722,11 +4723,12 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
 
     setRegistrandoPago(true);
     try {
-      // Verificar si aplica pronto pago
+      // Verificar si aplica pronto pago — SOLO si el secretario le dio clic a "Aplicar descuento" explícitamente.
+      // (Antes se aplicaba automáticamente por la fecha, sin que nadie lo pidiera.)
       const cliente = usuarios.find(u => u.id === modalAbono.clienteId);
       const diaHoy = new Date().getDate();
       let descuentoPP = 0;
-      if (cliente) {
+      if (cliente && descuentoPPAplicado) {
         // Buscar descuento específico para el plan del cliente, o el genérico de la zona
         const ppEspecifico = prontoPagos.find(p =>
           p.activo &&
@@ -4812,6 +4814,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
 
     setModalAbono(f);
     setAbonosModal([]);
+    setDescuentoPPAplicado(false);
     try { const abs = await db.getAbonos(f.id); setAbonosModal(abs); } catch {}
   };
 
@@ -5017,10 +5020,20 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
                       <div style={{ fontSize: 13, color: "#92400e", marginTop: 4, fontWeight: 700 }}>
                         Valor con descuento: {formatCOP(valorConDescuento)}
                       </div>
-                      <button onClick={() => setNuevoAbono({ ...nuevoAbono, monto: String(valorConDescuento) })}
-                        style={{ marginTop: 8, background: "#f59e0b", color: "#fff", border: "none", borderRadius: 7, padding: "6px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
-                        Aplicar descuento
-                      </button>
+                      {!descuentoPPAplicado ? (
+                        <button onClick={() => { setNuevoAbono({ ...nuevoAbono, monto: String(valorConDescuento) }); setDescuentoPPAplicado(true); }}
+                          style={{ marginTop: 8, background: "#f59e0b", color: "#fff", border: "none", borderRadius: 7, padding: "6px 14px", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
+                          Aplicar descuento
+                        </button>
+                      ) : (
+                        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ background: "#16a34a", color: "#fff", borderRadius: 7, padding: "6px 14px", fontWeight: 700, fontSize: 12 }}>✅ Descuento aplicado</span>
+                          <button onClick={() => setDescuentoPPAplicado(false)}
+                            style={{ background: "none", border: "1px solid #d97706", color: "#92400e", borderRadius: 7, padding: "5px 12px", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
+                            Quitar descuento
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -5086,6 +5099,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
         return (
           <ReciboImprimible factura={modalRecibo.factura} abonos={modalRecibo.abonos}
             nombreEmpresa={contactoZona?.nombreEmpresa || zonaFactura?.nombreEmpresa || nombreEmpresa} telefono={contactoZona?.telefono || "318-8255601"}
+            telefono2={contactoZona?.telefono2 || null}
             direccion={contactoZona?.direccion} onClose={() => setModalRecibo(null)}
             db={db} usuario={usuario} />
         );
