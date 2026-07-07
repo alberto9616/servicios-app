@@ -2204,16 +2204,47 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
     let clienteNombre, clienteDireccion, clienteId, telefonoCliente;
 
     if (esNueva) {
-      // Si hay cliente existente detectado y se confirmó agregar contrato
+      // Si hay cliente existente detectado y se confirmó agregar contrato:
+      // se crea un cliente NUEVO (segundo contrato) con la misma cédula, en vez de
+      // reutilizar el id del contrato anterior — así sí queda registrado como contrato aparte.
       if (ordenManual._clienteExistenteDetectado && ordenManual._agregarContrato) {
         const c = ordenManual._clienteExistenteDetectado;
-        clienteId = c.id;
-        clienteNombre = c.nombre;
-        clienteDireccion = ordenManual.nuevaDireccion.trim() || c.direccion;
-        telefonoCliente = ordenManual.nuevoTelefono.trim() || c.telefono;
-        // Actualizar dirección si cambió
-        if (ordenManual.nuevaDireccion.trim() && ordenManual.nuevaDireccion.trim() !== c.direccion) {
-          try { await db.upsertUsuario({ ...c, direccion: ordenManual.nuevaDireccion.trim() }); } catch {}
+        const cedula = (ordenManual.nuevaCedula || c.cedula || "").trim();
+        const contratosExistentes = usuarios.filter(x => x.cedula?.trim() === cedula && x.rol === "cliente");
+        const contratoNum = contratosExistentes.length + 1;
+        let usuarioFinal = ordenManual.nuevoUsuario.trim();
+        if (!usuarioFinal) usuarioFinal = `${cedula}_${contratoNum}`;
+        const claveFinal = ordenManual.nuevaClave.trim() || usuarioFinal;
+        const nuevoContrato = {
+          id: "", usuario: usuarioFinal, clave: claveFinal,
+          rol: "cliente", nombre: ordenManual.nuevoNombre.trim() || c.nombre, activo: true,
+          zonaId: usuario.zonaId, secretarioId: usuario.id,
+          tipo: ordenManual.nuevoTipo || c.tipo || "final",
+          cedula,
+          telefono: ordenManual.nuevoTelefono.trim() || c.telefono,
+          correo: ordenManual.nuevoCorreo.trim() || c.correo || null,
+          servicio: ordenManual.nuevoServicio || "Internet",
+          plan: ordenManual.nuevoPlan || "",
+          planId: ordenManual.nuevoPlanId || null,
+          monto: ordenManual.nuevoMonto ? Number(ordenManual.nuevoMonto) : null,
+          estado: ordenManual.nuevoEstado || "Al día",
+          direccion: ordenManual.nuevaDireccion.trim() || c.direccion,
+          claveWifi: ordenManual.nuevoClaveWifi.trim() || null,
+          perfilPagoId: ordenManual.nuevoPerfilPagoId || null,
+          fechaPrimeraFactura: ordenManual.nuevoFechaPrimeraFactura ? ordenManual.nuevoFechaPrimeraFactura + "-01" : null,
+          contratoNum,
+          privilegios: [], zonasIds: [],
+        };
+        try {
+          const clienteGuardado = await db.upsertUsuario(nuevoContrato);
+          setUsuarios(p => [...p, clienteGuardado]);
+          clienteNombre = clienteGuardado.nombre;
+          clienteDireccion = clienteGuardado.direccion;
+          clienteId = clienteGuardado.id;
+          telefonoCliente = clienteGuardado.telefono;
+        } catch (err) {
+          alert("Error al crear el contrato adicional: " + err.message);
+          return;
         }
       } else {
         // Crear nuevo cliente
