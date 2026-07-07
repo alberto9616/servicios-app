@@ -591,6 +591,93 @@ const db = {
 };
 
 // ══════════════════════════════════════════════════════════════
+// QZ TRAY — Certificado digital propio de GC HOGAR.NET S.A.S
+// Esto reemplaza el "QZ Tray Demo Cert" (que se regenera y por eso
+// vuelve a pedir permiso cada vez). Con un certificado FIJO propio,
+// una vez el usuario le da "Allow" + "Remember this decision" en QZ Tray,
+// no vuelve a preguntar nunca más en ese computador.
+// Requiere que en index.html esté cargado jsrsasign (ver instrucciones).
+// ══════════════════════════════════════════════════════════════
+const QZ_CERTIFICADO = `-----BEGIN CERTIFICATE-----
+MIID8TCCAtmgAwIBAgIUHE0PLBPpPAUDcFvKI67mJ8zQ4IowDQYJKoZIhvcNAQEL
+BQAwgYcxCzAJBgNVBAYTAkNPMRgwFgYDVQQIDA9WYWxsZSBkZWwgQ2F1Y2ExDjAM
+BgNVBAcMBVR1bHVhMRswGQYDVQQKDBJHQyBIT0dBUi5ORVQgUy5BLlMxFDASBgNV
+BAsMC0ZhY3R1cmFjaW9uMRswGQYDVQQDDBJHQyBIT0dBUi5ORVQgUy5BLlMwHhcN
+MjYwNzA3MjA1OTA2WhcNNDYwNzAyMjA1OTA2WjCBhzELMAkGA1UEBhMCQ08xGDAW
+BgNVBAgMD1ZhbGxlIGRlbCBDYXVjYTEOMAwGA1UEBwwFVHVsdWExGzAZBgNVBAoM
+EkdDIEhPR0FSLk5FVCBTLkEuUzEUMBIGA1UECwwLRmFjdHVyYWNpb24xGzAZBgNV
+BAMMEkdDIEhPR0FSLk5FVCBTLkEuUzCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC
+AQoCggEBAMkAZ1WKh+gERjzjp24DPLX4GlOmRXrHR5XZGzLaYlYTWyeFe9rL9LwF
+RjoE/LnPUptwq62m8xZpK6EhSVf02AlVmD7ZuDT1JlsCjfRToce98A3GulJYVIbv
+vTIBcgFf2VcmR2SvVv5OXJfgpyRzxSscQRmguS8Dhgtv2GDBxuHgkuD72OC65O0R
+6Uew2mx3IY6SK6BdfI1C050G9KznWsokfm2qH0bCdrCHNWTs9/bwy3c1xfqGwrG3
+XW7O1dPxytRoKNLUV+VMDeukPt89r6Elr3ntLPBBDVzLSLUIs2hP0ayZI704/1PE
+flvRrqPQ7NgJvlaPeXphxk3cs98tkBMCAwEAAaNTMFEwHQYDVR0OBBYEFNyCxElu
+8AVf3XoeAP7WLdm0xyZZMB8GA1UdIwQYMBaAFNyCxElu8AVf3XoeAP7WLdm0xyZZ
+MA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAKOMMAw8UdUR3VPj
+798D1bZEuwY8Fp84wPTP9qxN3ge4QxblJ5ReqsvSUpxVvDx9afNoxKefEEOxfLg9
+PAe4H/Ns3cNQPOV6wJkr2DEKeT0WaeNJf8jOr07mq3PwwF3WUAJvHmwMY0BxjK6N
+hnpQOl1zRAVRBRVzJ69thnn4MeoP1Tv8WblaWu707nsANMy2lMsIe5nWP8KtEu1b
+Pw1E+b3UG5F2mk3l6CMjmc7gP3ve2OQ+sE3OaozaM8vU5WcyKC3kvv1eCrrS3n9V
+PN0LefFJDLp9zL4y3QSaBMxkQBwHQ9Oj6V/B7vv4sspr1UuEobUW/ZlnHwRzLvSz
+EJeHJ7U=
+-----END CERTIFICATE-----`;
+
+const QZ_LLAVE_PRIVADA = `-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDJAGdViofoBEY8
+46duAzy1+BpTpkV6x0eV2Rsy2mJWE1snhXvay/S8BUY6BPy5z1KbcKutpvMWaSuh
+IUlX9NgJVZg+2bg09SZbAo30U6HHvfANxrpSWFSG770yAXIBX9lXJkdkr1b+TlyX
+4Kckc8UrHEEZoLkvA4YLb9hgwcbh4JLg+9jguuTtEelHsNpsdyGOkiugXXyNQtOd
+BvSs51rKJH5tqh9GwnawhzVk7Pf28Mt3NcX6hsKxt11uztXT8crUaCjS1FflTA3r
+pD7fPa+hJa957SzwQQ1cy0i1CLNoT9GsmSO9OP9TxH5b0a6j0OzYCb5Wj3l6YcZN
+3LPfLZATAgMBAAECggEAPD/jOZhjQZBab3D75HWS8qayWYWbCQEH+6pOxVEBrfRy
+W+fepsiBDQT1tnl9OcMj61T8GPrUndCbk9py7isFwNKH5rsDRNiBDUG4RFb3RPSx
+qqd5fSpd9+6Pwxf80N2mu8FNICiQxny9s4bTAxGytcfr2Z88MxP2z6HQdbxP/a92
+6iC6NCrT9REk7KOoxCcc6Jy9ShU9Tyuj5v7EIymiFPIGEgiF5zglLwGqOUsv5LkQ
+OH7plJEfkz9AppeSwx8phrs4QeHeCj5mnprXBGLMcpB+HmI1Mw+bWcYkIRa1n2gU
+J4y56KpDupPlKJcl5PbkmCRzrkW1o/Ma9NaiOjsnMQKBgQD+DFyvXdP/bCu0rnSE
+CRfzoCpTayUpto4Mq8xXouowSm+no2k0lN1DsdYBIGUB1zan3OJhpMHxcMB8ohSO
+uHT385AaED3Xpy4+GiFAeGaBAEtYHgO3TamfxLLCFlGaOAT4Z/BYEfpo6vaNQ11k
+H9lmNkZHb/KA+iGCt8HB/3eUsQKBgQDKi7bhxgcJk5J/McoadUdiAl/sMA12xKHG
+qrgWOkfY3h6GgFtBKcXQUulAD9a94xdp67g5JgFVn9LrLMfq0kAy2ebDlfWdBYVU
+lAC9rwTIMeb+Gbank0t+cGbLjem8kJSdDcjhSIcOz40AhnGc/25wVz9+0IunHcfh
+BAn6DZByAwKBgQCGtItYuUm1v+eU0IQblq7KkXyf6sozygacFWQue8XtgSqfGvin
+1t9UC7HLux+T0Ee8zlSDLddgbEbETzTTUF9FMjKQf1grRwwwBa7n/m9rq3pH6PJT
+eaydeLDIVQlD2rxX8tTv/ehnRV8iHDwi4PhnSBQPwP43AWpPY5wrf4gqoQKBgF9J
+u5AcCdOHibQtSFeKNTr2wwnq0Wq+tx0v08shQAvW86VzXXsam+WWHAX3bZ+H5sv+
+CX1ZU+dkeWYKe0MOBwXlXZtGQXbN0hwoRPD4FdfZIkMI9dWAhlPFrZa1/PCpVEFO
+6uKRrHhbTIqitXCW+u3/HfAbTJgiepZxv//TwdDhAoGBAODoer6Gs4WBQmVUg8dV
+5Cl6r2bODVBtueM7yq7tcOjBtevTOqoz2wa9qFoj+FzQ0MhbrUTp+hzRmPWPc6I2
+cRtJnnL/PKIW6KfJS2fEAfKTxmMP83mGxC3C4Uja1+Z/2MF+Dg0WutPah3eZ/CRr
+jyaJHY1TkA1NY8nDXc6FZrXt
+-----END PRIVATE KEY-----`;
+
+let _qzConfigurado = false;
+function configurarSeguridadQZ() {
+  if (_qzConfigurado || !window.qz) return;
+  try {
+    window.qz.security.setCertificatePromise(function (resolve) { resolve(QZ_CERTIFICADO); });
+    if (window.KJUR && window.KEYUTIL) {
+      window.qz.security.setSignatureAlgorithm("SHA512");
+      window.qz.security.setSignaturePromise(function (toSign) {
+        return function (resolve, reject) {
+          try {
+            const pk = window.KEYUTIL.getKey(QZ_LLAVE_PRIVADA);
+            const sig = new window.KJUR.crypto.Signature({ alg: "SHA512withRSA" });
+            sig.init(pk);
+            sig.updateString(toSign);
+            const hex = sig.sign();
+            resolve(window.stob64(window.hextorstr(hex)));
+          } catch (err) { reject(err); }
+        };
+      });
+    }
+    _qzConfigurado = true;
+  } catch (err) { console.error("Error configurando certificado QZ:", err); }
+}
+
+
+// ══════════════════════════════════════════════════════════════
 // WISPRO API — Corte y reconexión vía Edge Function (proxy sin CORS)
 // ══════════════════════════════════════════════════════════════
 const WISPRO_EDGE_URL  = "https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/dynamic-responder";
@@ -3301,6 +3388,24 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion 
                     setUsuarios(prev => prev.map(u => u.id === o.clienteId ? { ...u, direccion: o.direccionNueva } : u));
                   } catch (err) { console.error("Error actualizando dirección del cliente tras traslado:", err); }
                 }
+                // Instalación nueva cancelada: el cliente/contrato ya se había creado al generar la orden.
+                // Preguntar si también se debe desactivar, para no dejar un contrato "fantasma" activo.
+                if (nuevoEstado === "Cancelada" && o.tipo === "Instalación nueva" && o.clienteId) {
+                  const cli = usuarios.find(u => u.id === o.clienteId);
+                  if (cli && cli.activo) {
+                    const desactivar = confirm(
+                      `Esta orden creó el contrato de "${cli.nombre}".\n\n` +
+                      `¿Deseas desactivar ese contrato ya que la instalación se canceló?\n\n` +
+                      `(Se puede reactivar después desde la ficha del cliente)`
+                    );
+                    if (desactivar) {
+                      try {
+                        await db.toggleUsuario(cli.id, false);
+                        setUsuarios(prev => prev.map(u => u.id === cli.id ? { ...u, activo: false } : u));
+                      } catch (err) { alert("No se pudo desactivar el contrato: " + err.message); }
+                    }
+                  }
+                }
               } catch(err) {
                 alert("Error al cambiar estado: " + (err.message || "Verifica tu conexión"));
               }
@@ -3510,6 +3615,27 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
             await db.updateDireccionCliente(orden.clienteId, orden.direccionNueva);
             setUsuarios(p => p.map(u => u.id === orden.clienteId ? { ...u, direccion: orden.direccionNueva } : u));
           } catch (err) { console.error("Error actualizando dirección del cliente tras traslado:", err); }
+        }
+      }
+      if (estado === "Cancelada") {
+        const orden = ordenes.find(o => o.id === ordenId);
+        // Instalación nueva cancelada: el cliente/contrato ya se había creado al generar la orden.
+        // Preguntar si también se debe desactivar, para no dejar un contrato "fantasma" activo.
+        if (orden?.tipo === "Instalación nueva" && orden.clienteId) {
+          const cli = usuarios.find(u => u.id === orden.clienteId);
+          if (cli && cli.activo) {
+            const desactivar = confirm(
+              `Esta orden creó el contrato de "${cli.nombre}".\n\n` +
+              `¿Deseas desactivar ese contrato ya que la instalación se canceló?\n\n` +
+              `(Se puede reactivar después desde la ficha del cliente)`
+            );
+            if (desactivar) {
+              try {
+                await db.toggleUsuario(cli.id, false);
+                setUsuarios(p => p.map(u => u.id === cli.id ? { ...u, activo: false } : u));
+              } catch (err) { alert("No se pudo desactivar el contrato: " + err.message); }
+            }
+          }
         }
       }
     } catch (err) { console.error("Error cambiando estado orden:", err); }
@@ -3913,6 +4039,8 @@ function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, direccion,
       }
 
       if (!window.qz) throw new Error("QZ_NO_CARGADO");
+
+      configurarSeguridadQZ();
 
       // Conectar WebSocket con QZ Tray local
       if (!qz.websocket.isActive()) {
@@ -8275,6 +8403,7 @@ function AgentImpresora({ impresoraId, qzNombre, db }) {
     const iniciar = async () => {
       try {
         // Conectar QZ Tray
+        configurarSeguridadQZ();
         if (!qz.websocket.isActive()) {
           await qz.websocket.connect({ retries: 3, delay: 1 });
         }
