@@ -2808,7 +2808,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                 </Field>
 
                 {/* Aviso de cliente existente */}
-                {ordenManual._clienteExistenteDetectado && (
+                {ordenManual._clienteExistenteDetectado && !ordenManual._agregarContrato && (
                   <div style={{ background: "#fef3c7", border: "2px solid #f59e0b", borderRadius: 10, padding: "12px 16px", marginBottom: 14 }}>
                     <div style={{ fontWeight: 700, color: "#d97706", fontSize: 14, marginBottom: 4 }}>
                       ⚠️ Este cliente ya existe con {ordenManual._numContratos} contrato(s)
@@ -2827,6 +2827,21 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                         Cancelar
                       </button>
                     </div>
+                  </div>
+                )}
+                {ordenManual._clienteExistenteDetectado && ordenManual._agregarContrato && (
+                  <div style={{ background: "#dcfce7", border: "2px solid #22c55e", borderRadius: 10, padding: "12px 16px", marginBottom: 14 }}>
+                    <div style={{ fontWeight: 700, color: "#15803d", fontSize: 14, marginBottom: 4 }}>
+                      ✅ Confirmado: se creará el Contrato #{(ordenManual._numContratos || 0) + 1}
+                    </div>
+                    <div style={{ fontSize: 13, color: "#166534", marginBottom: 10 }}>
+                      Para <strong>{ordenManual._clienteExistenteDetectado.nombre}</strong> — Cédula: {ordenManual._clienteExistenteDetectado.cedula}<br/>
+                      Completa los datos de abajo (dirección, plan, técnico, etc.) y dale a <strong>"Generar orden"</strong> arriba para guardarlo.
+                    </div>
+                    <button onClick={() => setOrdenManual(prev => ({ ...prev, _clienteExistenteDetectado: null, _busqExistente: "", _agregarContrato: false }))}
+                      style={{ background: "#fff", color: "#166534", border: "1px solid #22c55e", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+                      ✕ Cancelar y buscar otro cliente
+                    </button>
                   </div>
                 )}
 
