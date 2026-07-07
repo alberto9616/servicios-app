@@ -420,7 +420,10 @@ const db = {
 
     // Fallback: INSERT directo con numero_pago consecutivo (solo si RPC no existe)
     let numeroPago = null;
-    try { numeroPago = await db.getSiguienteNumeroPago(); } catch {}
+    try {
+      const { data: fZona } = await sb.from("facturas").select("zona_id").eq("id", a.facturaId).single();
+      numeroPago = await db.getSiguienteNumeroPago(fZona?.zona_id || null);
+    } catch {}
     const { data, error } = await sb.from("abonos").insert({
       factura_id: a.facturaId, monto: a.monto,
       metodo_pago: a.metodoPago, fecha: a.fecha || fechaLocal(),
@@ -430,13 +433,32 @@ const db = {
     if (error) throw error;
     return mapAbono(data);
   },
-  async getSiguienteNumeroRecibo() {
-    const { data } = await sb.from("facturas").select("numero_recibo").not("numero_recibo", "is", null).order("numero_recibo", { ascending: false }).limit(1).single();
-    return data ? (Number(data.numero_recibo) + 1) : 68849;
+  async getSiguienteNumeroRecibo(zonaId = null) {
+    // Cada zona tiene su propio bloque de numeración (zonas.recibo_base) para que
+    // los recibos nunca se repitan entre zonas distintas (ej. VIJES vs TULUA).
+    let base = 68848;
+    if (zonaId) {
+      const { data: z } = await sb.from("zonas").select("recibo_base").eq("id", zonaId).single();
+      if (z && z.recibo_base != null) base = Number(z.recibo_base);
+    }
+    let query = sb.from("facturas").select("numero_recibo").not("numero_recibo", "is", null).order("numero_recibo", { ascending: false }).limit(1);
+    if (zonaId) query = query.eq("zona_id", zonaId);
+    const { data } = await query.single();
+    const maxActual = data ? Number(data.numero_recibo) : 0;
+    return Math.max(maxActual, base) + 1;
   },
-  async getSiguienteNumeroPago() {
-    const { data } = await sb.from("abonos").select("numero_pago").not("numero_pago", "is", null).order("numero_pago", { ascending: false }).limit(1).single();
-    return data ? (Number(data.numero_pago) + 1) : 1;
+  async getSiguienteNumeroPago(zonaId = null) {
+    // Igual que con los recibos: cada zona tiene su propio bloque (zonas.pago_base).
+    let base = 0;
+    if (zonaId) {
+      const { data: z } = await sb.from("zonas").select("pago_base").eq("id", zonaId).single();
+      if (z && z.pago_base != null) base = Number(z.pago_base);
+    }
+    let query = sb.from("abonos").select("numero_pago, facturas!inner(zona_id)").not("numero_pago", "is", null).order("numero_pago", { ascending: false }).limit(1);
+    if (zonaId) query = query.eq("facturas.zona_id", zonaId);
+    const { data } = await query.single();
+    const maxActual = data ? Number(data.numero_pago) : 0;
+    return Math.max(maxActual, base) + 1;
   },
   async getFacturasByMesAnio(mes, anio) {
     const { data, error } = await sb.from("facturas").select("*")
