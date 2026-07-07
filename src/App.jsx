@@ -2125,7 +2125,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       norm(c.usuario).includes(q) ||
       norm(c.telefono).includes(q) ||
       norm(c.direccion).includes(q);
-    const matchTipo = filtroTipo === "todos" ? true : filtroTipo === "inactivo" ? !c.activo : c.tipo === filtroTipo;
+    const matchTipo = filtroTipo === "todos" ? c.activo : filtroTipo === "inactivo" ? !c.activo : (c.tipo === filtroTipo && c.activo);
     return matchQ && matchTipo;
   });
   const pendientes = tickets.filter(t => t.estado === "Abierto").sort((a, b) => (b.prioridad === "alta" ? 1 : 0) - (a.prioridad === "alta" ? 1 : 0));
@@ -2770,7 +2770,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   {ordenManual._busqExistente && ordenManual._busqExistente.length >= 2 && !ordenManual._clienteExistenteDetectado && (() => {
                     const qraw = ordenManual._busqExistente;
                     const q = norm(qraw);
-                    const res = usuarios.filter(u => u.rol === "cliente" && (
+                    const res = usuarios.filter(u => u.rol === "cliente" && u.activo && (
                       coincideBusqueda(qraw, u.nombre) || norm(u.cedula).includes(q)
                     )).slice(0, 5);
                     if (!res.length) return <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>No encontrado — será cliente nuevo</div>;
