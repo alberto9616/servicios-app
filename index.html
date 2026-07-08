@@ -6,10 +6,10 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GC HOGAR.NET — Gestión</title>
- 
+
     <!-- QZ Tray: cargar síncronamente antes de React -->
     <script src="/qz-tray.js"></script>
- 
+
     <script>
       // Certificado PROPIO y ÚNICO de GC HOGAR.NET S.A.S (ya no el de muestra pública de QZ).
       // Al ser único, QZ Tray sí puede recordarlo de forma permanente tras el primer "Allow".
@@ -39,13 +39,13 @@
         "EJeHJ7U=",
         "-----END CERTIFICATE-----"
       ].join("\n");
- 
+
       // Configurar QZ Tray con certificado real y firma via Supabase
       if (window.qz) {
         qz.security.setCertificatePromise(function(resolve) {
           resolve(window.__QZ_CERT);
         });
-        qz.security.setSignatureAlgorithm("SHA512");
+        qz.security.setSignatureAlgorithm("SHA1");
         qz.security.setSignaturePromise(function(toSign) {
           return function(resolve, reject) {
             fetch("https://fwimnbieduydfsjwljjv.supabase.co/functions/v1/qz-sign", {
