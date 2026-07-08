@@ -8,33 +8,35 @@
     <title>GC HOGAR.NET — Gestión</title>
  
     <!-- QZ Tray: cargar síncronamente antes de React -->
- <script src="/qz-tray.js"></script>
+    <script src="/qz-tray.js"></script>
  
     <script>
+      // Certificado PROPIO y ÚNICO de GC HOGAR.NET S.A.S (ya no el de muestra pública de QZ).
+      // Al ser único, QZ Tray sí puede recordarlo de forma permanente tras el primer "Allow".
       window.__QZ_CERT = [
         "-----BEGIN CERTIFICATE-----",
-        "MIIECzCCAvOgAwIBAgIGAZ3F2o+sMA0GCSqGSIb3DQEBCwUAMIGiMQswCQYDVQQG",
-        "EwJVUzELMAkGA1UECAwCTlkxEjAQBgNVBAcMCUNhbmFzdG90YTEbMBkGA1UECgwS",
-        "UVogSW5kdXN0cmllcywgTExDMRswGQYDVQQLDBJRWiBJbmR1c3RyaWVzLCBMTEMx",
-        "HDAaBgkqhkiG9w0BCQEWDXN1cHBvcnRAcXouaW8xGjAYBgNVBAMMEVFaIFRyYXkg",
-        "RGVtbyBDZXJ0MB4XDTI2MDQyNDE4MTUyOFoXDTQ2MDQyNDE4MTUyOFowgaIxCzAJ",
-        "BgNVBAYTAlVTMQswCQYDVQQIDAJOWTESMBAGA1UEBwwJQ2FuYXN0b3RhMRswGQYD",
-        "VQQKDBJRWiBJbmR1c3RyaWVzLCBMTEMxGzAZBgNVBAsMElFaIEluZHVzdHJpZXMs",
-        "IExMQzEcMBoGCSqGSIb3DQEJARYNc3VwcG9ydEBxei5pbzEaMBgGA1UEAwwRUVog",
-        "VHJheSBEZW1vIENlcnQwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCY",
-        "V1BzVd1QkiMCFu6rrzJ5f1n1YuaJ2FKUELNcyXQWmXeD8y19JDANLlbJu44trzb4",
-        "12gHTB+8UWi8vrzIg9wH3uR2u3sDswqGdtBNZStte9nOuoATfLHV89j6GHsjjbLv",
-        "t5/zxHkKqgMnuoA9JXhUhzy50mls9FI+l3lw/78YYC9g0S7Jw1D/pVVKNvDOz49t",
-        "RgssvozjJ7KdNhnvZ7IlXnH4kmpmzCAsWc+Ml4PxcG9VYJwzCvIiehw460qgINH7",
-        "cR3Jj+b49+MBVCGPLPHdb3L+rEbm/leKaLdtDMHERG1YRK/jk8PQAFXS6s6PBFSd",
-        "lPYSNRk5kj2Ucny4TWqhAgMBAAGjRTBDMBIGA1UdEwEB/wQIMAYBAf8CAQEwDgYD",
-        "VR0PAQH/BAQDAgEGMB0GA1UdDgQWBBSISTJdBknftk89LSjK+P1prfWmyDANBgkq",
-        "hkiG9w0BAQsFAAOCAQEAIpfTPtrcZ94IzlF6OE2E6TIauNtMyFRoSDqqaBexLwmA",
-        "ZF/kQy1kOqBedn2d8M8H5gysUxf+mXguNlbwpbCq39PF4EU9TNg4QmQBYQ51dorh",
-        "2qyuPTTYGpOlemlM0+S9HUVDqhDSEpOiTSUkhGhaThyDwKV2B3RgogYmJ7BirVLC",
-        "y7THWyFztI9UIxmlB6TVSyECWvU7/AResWPsFhd7qFewvYOPz86Zx0c3wMjRLE8l",
-        "zVuZloURs7dvDC0H4mgA+f3VzUwnIFjRK8FE+n1zrnJkBlyM2AwHaySSTiJkFZRW",
-        "GWAmT2Cz59mlc3eSXtkbsT3XmrISFUzj0JWYcv0LrQ==",
+        "MIID8TCCAtmgAwIBAgIUHE0PLBPpPAUDcFvKI67mJ8zQ4IowDQYJKoZIhvcNAQEL",
+        "BQAwgYcxCzAJBgNVBAYTAkNPMRgwFgYDVQQIDA9WYWxsZSBkZWwgQ2F1Y2ExDjAM",
+        "BgNVBAcMBVR1bHVhMRswGQYDVQQKDBJHQyBIT0dBUi5ORVQgUy5BLlMxFDASBgNV",
+        "BAsMC0ZhY3R1cmFjaW9uMRswGQYDVQQDDBJHQyBIT0dBUi5ORVQgUy5BLlMwHhcN",
+        "MjYwNzA3MjA1OTA2WhcNNDYwNzAyMjA1OTA2WjCBhzELMAkGA1UEBhMCQ08xGDAW",
+        "BgNVBAgMD1ZhbGxlIGRlbCBDYXVjYTEOMAwGA1UEBwwFVHVsdWExGzAZBgNVBAoM",
+        "EkdDIEhPR0FSLk5FVCBTLkEuUzEUMBIGA1UECwwLRmFjdHVyYWNpb24xGzAZBgNV",
+        "BAMMEkdDIEhPR0FSLk5FVCBTLkEuUzCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC",
+        "AQoCggEBAMkAZ1WKh+gERjzjp24DPLX4GlOmRXrHR5XZGzLaYlYTWyeFe9rL9LwF",
+        "RjoE/LnPUptwq62m8xZpK6EhSVf02AlVmD7ZuDT1JlsCjfRToce98A3GulJYVIbv",
+        "vTIBcgFf2VcmR2SvVv5OXJfgpyRzxSscQRmguS8Dhgtv2GDBxuHgkuD72OC65O0R",
+        "6Uew2mx3IY6SK6BdfI1C050G9KznWsokfm2qH0bCdrCHNWTs9/bwy3c1xfqGwrG3",
+        "XW7O1dPxytRoKNLUV+VMDeukPt89r6Elr3ntLPBBDVzLSLUIs2hP0ayZI704/1PE",
+        "flvRrqPQ7NgJvlaPeXphxk3cs98tkBMCAwEAAaNTMFEwHQYDVR0OBBYEFNyCxElu",
+        "8AVf3XoeAP7WLdm0xyZZMB8GA1UdIwQYMBaAFNyCxElu8AVf3XoeAP7WLdm0xyZZ",
+        "MA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAKOMMAw8UdUR3VPj",
+        "798D1bZEuwY8Fp84wPTP9qxN3ge4QxblJ5ReqsvSUpxVvDx9afNoxKefEEOxfLg9",
+        "PAe4H/Ns3cNQPOV6wJkr2DEKeT0WaeNJf8jOr07mq3PwwF3WUAJvHmwMY0BxjK6N",
+        "hnpQOl1zRAVRBRVzJ69thnn4MeoP1Tv8WblaWu707nsANMy2lMsIe5nWP8KtEu1b",
+        "Pw1E+b3UG5F2mk3l6CMjmc7gP3ve2OQ+sE3OaozaM8vU5WcyKC3kvv1eCrrS3n9V",
+        "PN0LefFJDLp9zL4y3QSaBMxkQBwHQ9Oj6V/B7vv4sspr1UuEobUW/ZlnHwRzLvSz",
+        "EJeHJ7U=",
         "-----END CERTIFICATE-----"
       ].join("\n");
  
@@ -71,4 +73,3 @@
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
- 
