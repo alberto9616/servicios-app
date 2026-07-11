@@ -5053,7 +5053,18 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
                     {METODOS_PAGO.map(m => <option key={m.id} value={m.id}>{m.emoji} {m.label}</option>)}
                   </Sel>
                 </Field>
-                <Field label="Fecha de pago"><Inp type="date" value={nuevoAbono.fecha} onChange={e => setNuevoAbono({ ...nuevoAbono, fecha: e.target.value })} /></Field>
+                <Field label="Fecha de pago">
+                  {["admin", "superusuario", "dueno"].includes(usuario.rol) ? (
+                    <Inp type="date" value={nuevoAbono.fecha} onChange={e => setNuevoAbono({ ...nuevoAbono, fecha: e.target.value })} />
+                  ) : (
+                    <>
+                      <Inp type="date" value={nuevoAbono.fecha} disabled style={{ background: GC.bg3, color: GC.ink3, cursor: "not-allowed" }} />
+                      <div style={{ fontSize: 11, color: GC.ink3, marginTop: 4 }}>
+                        🔒 Se registra siempre con la fecha de hoy. Si necesitas corregirla, pídele a un administrador.
+                      </div>
+                    </>
+                  )}
+                </Field>
                 <Field label="Observación (opcional)"><Inp value={nuevoAbono.observacion} onChange={e => setNuevoAbono({ ...nuevoAbono, observacion: e.target.value })} /></Field>
                 {errAbono && <div style={{ color: GC.danger, fontSize: 13, marginBottom: 10 }}>⚠️ {errAbono}</div>}
                 <button
@@ -6265,7 +6276,7 @@ function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuario
   const hoy=fechaLocal(),primerDiaMes=fechaLocal().slice(0,8)+"01";
   const [fechaInicio,setFechaInicio]=useState(primerDiaMes);
   const [fechaFin,setFechaFin]=useState(hoy);
-  const [secretarioFiltro,setSecretarioFiltro]=useState(esAdmin?"todos":usuario.id);
+  const [secretarioFiltro,setSecretarioFiltro]=useState("todos");
   const [movimientosCaja,setMovimientosCaja]=useState([]);
   const [abonosCierre,setAbonosCierre]=useState([]);
   const [facturasFaltantes,setFacturasFaltantes]=useState([]); // facturas de abonos que no están en facturas/facturasHistoricas
@@ -6367,7 +6378,7 @@ function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuario
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(150px,1fr))",gap:"0 14px"}}>
         <Field label="Fecha inicio"><Inp type="date" value={fechaInicio} onChange={e=>setFechaInicio(e.target.value)} /></Field>
         <Field label="Fecha fin"><Inp type="date" value={fechaFin} onChange={e=>setFechaFin(e.target.value)} /></Field>
-        {esAdmin&&<Field label="Secretario"><Sel value={secretarioFiltro} onChange={e=>setSecretarioFiltro(e.target.value)}><option value="todos">Todos</option>{secretarios.map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</Sel></Field>}
+        {secretarios.length>1&&<Field label="Secretario"><Sel value={secretarioFiltro} onChange={e=>setSecretarioFiltro(e.target.value)}><option value="todos">Todos</option>{secretarios.map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</Sel></Field>}
       </div>
     </div>
     <div style={{fontSize:11,fontWeight:700,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.8,marginBottom:10}}>
@@ -10409,7 +10420,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
             </div>
           ) : (
             <div>
-              {["superusuario", "admin", "secretario", "tecnico", "cliente"].map(rol => {
+              {["superusuario", "admin", "dueno", "secretario", "tecnico", "cliente"].map(rol => {
                 if (rol === "superusuario" && sesion.rol !== "superusuario") return null;
                 const lista = usuarios.filter(u => u.rol === rol);
                 if (lista.length === 0) return null;
