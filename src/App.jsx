@@ -259,6 +259,16 @@ const db = {
   async togglePropaganda(id, activo) { const { error } = await sb.from("propaganda").update({ activo }).eq("id", id); if (error) throw error; },
 
   // FACTURACIÓN
+  async getInformeGerenciaDetallado(fecha) {
+    const { data, error } = await sb.rpc("informe_gerencia_detallado", { p_fecha: fecha });
+    if (error) throw error;
+    return (data || []).map(r => ({
+      zonaId: r.zona_id, zonaNombre: r.zona_nombre,
+      secretarioId: r.secretario_id, secretarioNombre: r.secretario_nombre,
+      cobradoDia: Number(r.cobrado_dia), egresosDia: Number(r.egresos_dia), ingresosCajaDia: Number(r.ingresos_caja_dia),
+      cobradoAcumulado: Number(r.cobrado_acumulado), egresosAcumulado: Number(r.egresos_acumulado), ingresosCajaAcumulado: Number(r.ingresos_caja_acumulado),
+    }));
+  },
   async getTotalCobradoAntesDeFecha(fecha, zonaId = null) {
     // Trae SOLO los campos necesarios (no todas las columnas) de TODAS las facturas
     // pagadas antes de la fecha dada, sin importar el mes/año seleccionado en pantalla.
@@ -7386,6 +7396,76 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
     const saldoAnterior = saldoBase + cobradoAntes + ingresosAntes - egresosAntes;
     const nuevoSaldo = saldoAnterior + totalIngresosDia - egresosCajaDia;
 
+    // Desglose completo por zona y por secretario, con acumulado histórico real (sin límite de años),
+    // calculado directo en la base de datos — esto es lo que pidió gerencia: ver cuánto ha
+    // cobrado/gastado cada secretario, de cada zona, y el gran total de toda la empresa.
+    let detalle = [];
+    try { detalle = await db.getInformeGerenciaDetallado(fechaInforme); } catch {}
+
+    const saldoBasePorZona = {};
+    zonas.forEach(z => { saldoBasePorZona[z.id] = z.saldoBase || 0; });
+
+    const zonasAgrupadas = {};
+    detalle.forEach(d => {
+      const key = d.zonaId || "_sinzona";
+      if (!zonasAgrupadas[key]) zonasAgrupadas[key] = { nombre: d.zonaNombre, filas: [], totDia: 0, totAcum: 0 };
+      const netoDia = d.cobradoDia + d.ingresosCajaDia - d.egresosDia;
+      const netoAcum = d.cobradoAcumulado + d.ingresosCajaAcumulado - d.egresosAcumulado;
+      zonasAgrupadas[key].filas.push({ nombre: d.secretarioNombre, netoDia, netoAcum, cobradoAcum: d.cobradoAcumulado, egresosAcum: d.egresosAcumulado });
+      zonasAgrupadas[key].totDia += netoDia;
+      zonasAgrupadas[key].totAcum += netoAcum;
+    });
+
+    let granTotalDia = 0, granTotalAcum = 0;
+    const filasZonasHtml = Object.entries(zonasAgrupadas).map(([zid, z]) => {
+      const saldoBaseZ = saldoBasePorZona[zid] || 0;
+      const totalZonaConBase = z.totAcum + saldoBaseZ;
+      granTotalDia += z.totDia;
+      granTotalAcum += totalZonaConBase;
+      const filasSec = z.filas.map(f => `
+        <tr>
+          <td style="padding:5px 8px 5px 24px;color:#555;">${f.nombre}</td>
+          <td style="padding:5px 8px;text-align:right;">${cop(f.cobradoAcum)}</td>
+          <td style="padding:5px 8px;text-align:right;color:#dc2626;">${cop(f.egresosAcum)}</td>
+          <td style="padding:5px 8px;text-align:right;">${cop(f.netoDia)}</td>
+          <td style="padding:5px 8px;text-align:right;font-weight:700;">${cop(f.netoAcum)}</td>
+        </tr>`).join("");
+      return `
+        <tr style="background:#f3f4f6;font-weight:800;">
+          <td style="padding:6px 8px;">📍 ${z.nombre}${saldoBaseZ ? ` (saldo inicial: ${cop(saldoBaseZ)})` : ""}</td>
+          <td></td><td></td><td></td>
+          <td style="padding:6px 8px;text-align:right;">${cop(totalZonaConBase)}</td>
+        </tr>
+        ${filasSec}`;
+    }).join("");
+
+    const tablaDetalleHtml = `
+    <div class="main-box">
+      <div class="main-box-title">📋 Desglose por zona y secretario (histórico completo)</div>
+      <div class="main-box-body" style="padding:0;">
+        <table style="width:100%;border-collapse:collapse;font-size:9.5pt;">
+          <thead>
+            <tr style="border-bottom:2px solid #111;text-align:right;">
+              <th style="padding:6px 8px;text-align:left;">Zona / Secretario</th>
+              <th style="padding:6px 8px;">Cobrado histórico</th>
+              <th style="padding:6px 8px;">Egresos histórico</th>
+              <th style="padding:6px 8px;">Neto del día</th>
+              <th style="padding:6px 8px;">Saldo acumulado</th>
+            </tr>
+          </thead>
+          <tbody>${filasZonasHtml}</tbody>
+          <tfoot>
+            <tr style="border-top:3px solid #111;font-weight:900;">
+              <td style="padding:10px 8px;">GRAN TOTAL (todas las zonas)</td>
+              <td></td><td></td>
+              <td style="padding:10px 8px;text-align:right;">${cop(granTotalDia)}</td>
+              <td style="padding:10px 8px;text-align:right;color:#15803d;">${cop(granTotalAcum)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>`;
+
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Informe Diario</title>
     <style>
       @page { size: A4; margin: 25mm 20mm; }
@@ -7455,6 +7535,8 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
         </div>
       </div>
     </div>
+
+    ${tablaDetalleHtml}
 
     <div class="firma">
       <div class="firma-linea">
