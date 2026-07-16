@@ -259,6 +259,30 @@ const db = {
   async togglePropaganda(id, activo) { const { error } = await sb.from("propaganda").update({ activo }).eq("id", id); if (error) throw error; },
 
   // FACTURACIÓN
+  async getTotalCobradoAntesDeFecha(fecha, zonaId = null) {
+    // Trae SOLO los campos necesarios (no todas las columnas) de TODAS las facturas
+    // pagadas antes de la fecha dada, sin importar el mes/año seleccionado en pantalla.
+    // Esto corrige el "Informe Diario" que antes solo veía el mes actualmente cargado.
+    let total = 0;
+    let from = 0;
+    const pageSize = 1000;
+    while (true) {
+      let query = sb.from("facturas")
+        .select("monto, saldo_pendiente, descuento_pronto_pago")
+        .neq("estado", "Anulada")
+        .not("fecha_pago", "is", null)
+        .lt("fecha_pago", fecha);
+      if (zonaId) query = query.eq("zona_id", zonaId);
+      const { data, error } = await query.range(from, from + pageSize - 1);
+      if (error) throw error;
+      for (const f of (data || [])) {
+        total += Number(f.monto || 0) - Number(f.saldo_pendiente || 0) - Number(f.descuento_pronto_pago || 0);
+      }
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+    return total;
+  },
   async getFacturas() {
     const todas = [];
     let from = 0;
@@ -6276,7 +6300,7 @@ function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuario
   const hoy=fechaLocal(),primerDiaMes=fechaLocal().slice(0,8)+"01";
   const [fechaInicio,setFechaInicio]=useState(primerDiaMes);
   const [fechaFin,setFechaFin]=useState(hoy);
-  const [secretarioFiltro,setSecretarioFiltro]=useState("todos");
+  const [secretarioFiltro,setSecretarioFiltro]=useState(esAdmin?"todos":usuario.id);
   const [movimientosCaja,setMovimientosCaja]=useState([]);
   const [abonosCierre,setAbonosCierre]=useState([]);
   const [facturasFaltantes,setFacturasFaltantes]=useState([]); // facturas de abonos que no están en facturas/facturasHistoricas
@@ -6330,7 +6354,7 @@ function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuario
     .map(a=>{
       const f=todasLasFacturas.find(x=>x.id===a.facturaId); // ahora incluye históricas, así no quedan "—" por facturas de meses anteriores
       if(!matchZonaCierre(f||{clienteId:a.clienteId,zonaId:a.facturaZonaId}))return null;
-      if(secretarioFiltro!=="todos"){const secId=f?.creadoPor||usuarios.find(u=>u.id===f?.clienteId)?.secretarioId;if(secId!==secretarioFiltro)return null;}
+      if(secretarioFiltro!=="todos"){const secId=a.registradoPor||f?.creadoPor||usuarios.find(u=>u.id===f?.clienteId)?.secretarioId;if(secId!==secretarioFiltro)return null;}
       if(f&&f.estado==="Anulada")return null;
       return{
         id:a.id,
@@ -6381,8 +6405,11 @@ function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuario
         {secretarios.length>1&&<Field label="Secretario"><Sel value={secretarioFiltro} onChange={e=>setSecretarioFiltro(e.target.value)}><option value="todos">Todos</option>{secretarios.map(s=><option key={s.id} value={s.id}>{s.nombre}</option>)}</Sel></Field>}
       </div>
     </div>
-    <div style={{fontSize:11,fontWeight:700,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.8,marginBottom:10}}>
-      {esUnDia?`📅 ${new Date(fechaInicio+"T12:00:00").toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`:`📋 Período: ${fechaInicio} → ${fechaFin}`}
+    <div style={{fontSize:11,fontWeight:700,color:GC.ink3,textTransform:"uppercase",letterSpacing:0.8,marginBottom:10,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+      <span>{esUnDia?`📅 ${new Date(fechaInicio+"T12:00:00").toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}`:`📋 Período: ${fechaInicio} → ${fechaFin}`}</span>
+      <span style={{background:secretarioFiltro==="todos"?"#e0f2fe":"#fef3c7",color:secretarioFiltro==="todos"?"#0369a1":"#92400e",padding:"2px 9px",borderRadius:20,fontSize:10.5}}>
+        👤 Mostrando: {secretarioFiltro==="todos"?"Todos los secretarios":(usuarios.find(u=>u.id===secretarioFiltro)?.nombre||"—")}
+      </span>
     </div>
     {cargandoCierre?<div style={{fontSize:13,color:GC.ink3,padding:"10px 0",marginBottom:14}}>Cargando...</div>:(
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
@@ -7348,10 +7375,12 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
     const egresosCajaDia = movsDia.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
     const totalIngresosDia = totalAbonosDia + ingresosCajaDia;
 
-    // Saldo anterior = todo lo acumulado ANTES de la fecha del informe
-    const cobradoAntes = facturas
-      .filter(f => f.estado !== "Anulada" && f.fechaPago && f.fechaPago < fechaInforme)
-      .reduce((s, f) => s + ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0))), 0);
+    // Saldo anterior = todo lo acumulado ANTES de la fecha del informe.
+    // IMPORTANTE: se consulta directo a la base de datos (todo el historico), no la lista
+    // de facturas cargada en pantalla (que solo trae el mes/año actualmente seleccionado
+    // en Facturación y por eso daba un saldo falso y cada vez más negativo).
+    let cobradoAntes = 0;
+    try { cobradoAntes = await db.getTotalCobradoAntesDeFecha(fechaInforme, zonaUsuario); } catch {}
     const ingresosAntes = movimientos.filter(m => m.tipo === "Ingreso" && m.fecha < fechaInforme).reduce((s, m) => s + m.monto, 0);
     const egresosAntes = movimientos.filter(m => m.tipo === "Egreso" && m.fecha < fechaInforme).reduce((s, m) => s + m.monto, 0);
     const saldoAnterior = saldoBase + cobradoAntes + ingresosAntes - egresosAntes;
