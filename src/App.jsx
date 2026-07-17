@@ -115,6 +115,15 @@ const mapAbono = r => r ? ({
 const db = {
   // ZONAS
   async getZonas() { const { data, error } = await sb.from("zonas").select("*").order("nombre"); if (error) throw error; return data.map(mapZona); },
+  async getEspacioNumeracionZonas() {
+    const { data, error } = await sb.rpc("verificar_espacio_numeracion_zonas");
+    if (error) throw error;
+    return (data || []).map(r => ({
+      zonaId: r.zona_id, zonaNombre: r.zona_nombre, reciboBase: Number(r.recibo_base),
+      maxReciboActual: Number(r.max_recibo_actual), siguienteBloque: Number(r.siguiente_bloque),
+      espacioRestante: Number(r.espacio_restante), porcentajeUsado: Number(r.porcentaje_usado),
+    }));
+  },
   async actualizarSaldoBaseZona(zonaId, saldoBase) {
     const { error } = await sb.from("zonas").update({ saldo_base: saldoBase }).eq("id", zonaId);
     if (error) throw error;
@@ -7375,96 +7384,100 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
     const fechaLabel = new Date(fechaInforme + "T12:00:00").toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric" });
     const ahora = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-    // Ingresos del día = abonos de facturas del día (no anuladas) + movimientos ingreso del día
-    let abonosDia = [];
-    try { abonosDia = await db.getAbonosByFecha(fechaInforme, zonaUsuario); } catch {}
-    const abonosDiaValidos = abonosDia.filter(a => a.facturaEstado !== "Anulada");
-    const totalAbonosDia = abonosDiaValidos.reduce((s, a) => s + a.monto, 0);
-    const movsDia = movimientos.filter(m => m.fecha === fechaInforme);
-    const ingresosCajaDia = movsDia.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
-    const egresosCajaDia = movsDia.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
-    const totalIngresosDia = totalAbonosDia + ingresosCajaDia;
-
-    // Saldo anterior = todo lo acumulado ANTES de la fecha del informe.
-    // IMPORTANTE: se consulta directo a la base de datos (todo el historico), no la lista
-    // de facturas cargada en pantalla (que solo trae el mes/año actualmente seleccionado
-    // en Facturación y por eso daba un saldo falso y cada vez más negativo).
-    let cobradoAntes = 0;
-    try { cobradoAntes = await db.getTotalCobradoAntesDeFecha(fechaInforme, zonaUsuario); } catch {}
-    const ingresosAntes = movimientos.filter(m => m.tipo === "Ingreso" && m.fecha < fechaInforme).reduce((s, m) => s + m.monto, 0);
-    const egresosAntes = movimientos.filter(m => m.tipo === "Egreso" && m.fecha < fechaInforme).reduce((s, m) => s + m.monto, 0);
-    const saldoAnterior = saldoBase + cobradoAntes + ingresosAntes - egresosAntes;
-    const nuevoSaldo = saldoAnterior + totalIngresosDia - egresosCajaDia;
-
-    // Desglose completo por zona y por secretario, con acumulado histórico real (sin límite de años),
-    // calculado directo en la base de datos — esto es lo que pidió gerencia: ver cuánto ha
-    // cobrado/gastado cada secretario, de cada zona, y el gran total de toda la empresa.
+    // Todo el informe (resumen Y desglose) sale de UNA sola fuente calculada en la base de
+    // datos (sin límite de 1000 filas como tenían las consultas anteriores del lado del
+    // navegador) — así el resumen de arriba y el desglose de abajo siempre cuadran entre sí.
     let detalle = [];
     try { detalle = await db.getInformeGerenciaDetallado(fechaInforme); } catch {}
 
+    const esGerencia = ["admin", "superusuario", "dueno"].includes(usuario.rol);
+
+    // Alcance: si el informe es de una zona específica (secretario, o admin con zona filtrada),
+    // solo se cuenta esa zona. Si además el que genera el informe NO es gerencia, se limita
+    // también a sus propios movimientos — nunca a los de otro secretario.
+    let detalleAlcance = zonaUsuario ? detalle.filter(d => d.zonaId === zonaUsuario) : detalle;
+    if (!esGerencia) detalleAlcance = detalleAlcance.filter(d => d.secretarioId === usuario.id);
+
     const saldoBasePorZona = {};
     zonas.forEach(z => { saldoBasePorZona[z.id] = z.saldoBase || 0; });
+    const zonasEnAlcance = new Set(detalleAlcance.map(d => d.zonaId));
+    const saldoBaseAlcance = zonaUsuario
+      ? (saldoBasePorZona[zonaUsuario] || 0)
+      : [...zonasEnAlcance].reduce((s, zid) => s + (saldoBasePorZona[zid] || 0), 0);
 
-    const zonasAgrupadas = {};
-    detalle.forEach(d => {
-      const key = d.zonaId || "_sinzona";
-      if (!zonasAgrupadas[key]) zonasAgrupadas[key] = { nombre: d.zonaNombre, filas: [], totDia: 0, totAcum: 0 };
-      const netoDia = d.cobradoDia + d.ingresosCajaDia - d.egresosDia;
-      const netoAcum = d.cobradoAcumulado + d.ingresosCajaAcumulado - d.egresosAcumulado;
-      zonasAgrupadas[key].filas.push({ nombre: d.secretarioNombre, netoDia, netoAcum, cobradoAcum: d.cobradoAcumulado, egresosAcum: d.egresosAcumulado });
-      zonasAgrupadas[key].totDia += netoDia;
-      zonasAgrupadas[key].totAcum += netoAcum;
-    });
+    const sum = campo => detalleAlcance.reduce((s, d) => s + d[campo], 0);
+    const totalIngresosDia = sum("cobradoDia") + sum("ingresosCajaDia");
+    const egresosCajaDia = sum("egresosDia");
+    const acumuladoTotal = sum("cobradoAcumulado") + sum("ingresosCajaAcumulado") - sum("egresosAcumulado");
+    const nuevoSaldo = saldoBaseAlcance + acumuladoTotal;
+    const saldoAnterior = nuevoSaldo - totalIngresosDia + egresosCajaDia;
 
-    let granTotalDia = 0, granTotalAcum = 0;
-    const filasZonasHtml = Object.entries(zonasAgrupadas).map(([zid, z]) => {
-      const saldoBaseZ = saldoBasePorZona[zid] || 0;
-      const totalZonaConBase = z.totAcum + saldoBaseZ;
-      granTotalDia += z.totDia;
-      granTotalAcum += totalZonaConBase;
-      const filasSec = z.filas.map(f => `
-        <tr>
-          <td style="padding:5px 8px 5px 24px;color:#555;">${f.nombre}</td>
-          <td style="padding:5px 8px;text-align:right;">${cop(f.cobradoAcum)}</td>
-          <td style="padding:5px 8px;text-align:right;color:#dc2626;">${cop(f.egresosAcum)}</td>
-          <td style="padding:5px 8px;text-align:right;">${cop(f.netoDia)}</td>
-          <td style="padding:5px 8px;text-align:right;font-weight:700;">${cop(f.netoAcum)}</td>
-        </tr>`).join("");
-      return `
-        <tr style="background:#f3f4f6;font-weight:800;">
-          <td style="padding:6px 8px;">📍 ${z.nombre}${saldoBaseZ ? ` (saldo inicial: ${cop(saldoBaseZ)})` : ""}</td>
-          <td></td><td></td><td></td>
-          <td style="padding:6px 8px;text-align:right;">${cop(totalZonaConBase)}</td>
-        </tr>
-        ${filasSec}`;
-    }).join("");
+    // Desglose por zona y secretario (histórico completo) — SOLO para gerencia (admin,
+    // superusuario, dueño). Un secretario normal nunca ve el desglose de otros compañeros
+    // ni de otras zonas: cuando genera su propio informe, ya vio solo su resumen arriba.
+    let tablaDetalleHtml = "";
+    if (esGerencia) {
+      const zonasAgrupadas = {};
+      detalleAlcance.forEach(d => {
+        const key = d.zonaId || "_sinzona";
+        if (!zonasAgrupadas[key]) zonasAgrupadas[key] = { nombre: d.zonaNombre, filas: [], totDia: 0, totAcum: 0 };
+        const netoDia = d.cobradoDia + d.ingresosCajaDia - d.egresosDia;
+        const netoAcum = d.cobradoAcumulado + d.ingresosCajaAcumulado - d.egresosAcumulado;
+        zonasAgrupadas[key].filas.push({ nombre: d.secretarioNombre, netoDia, netoAcum, cobradoAcum: d.cobradoAcumulado, egresosAcum: d.egresosAcumulado });
+        zonasAgrupadas[key].totDia += netoDia;
+        zonasAgrupadas[key].totAcum += netoAcum;
+      });
 
-    const tablaDetalleHtml = `
-    <div class="main-box">
-      <div class="main-box-title">📋 Desglose por zona y secretario (histórico completo)</div>
-      <div class="main-box-body" style="padding:0;">
-        <table style="width:100%;border-collapse:collapse;font-size:9.5pt;">
-          <thead>
-            <tr style="border-bottom:2px solid #111;text-align:right;">
-              <th style="padding:6px 8px;text-align:left;">Zona / Secretario</th>
-              <th style="padding:6px 8px;">Cobrado histórico</th>
-              <th style="padding:6px 8px;">Egresos histórico</th>
-              <th style="padding:6px 8px;">Neto del día</th>
-              <th style="padding:6px 8px;">Saldo acumulado</th>
-            </tr>
-          </thead>
-          <tbody>${filasZonasHtml}</tbody>
-          <tfoot>
-            <tr style="border-top:3px solid #111;font-weight:900;">
-              <td style="padding:10px 8px;">GRAN TOTAL (todas las zonas)</td>
-              <td></td><td></td>
-              <td style="padding:10px 8px;text-align:right;">${cop(granTotalDia)}</td>
-              <td style="padding:10px 8px;text-align:right;color:#15803d;">${cop(granTotalAcum)}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-    </div>`;
+      let granTotalDia = 0, granTotalAcum = 0;
+      const filasZonasHtml = Object.entries(zonasAgrupadas).map(([zid, z]) => {
+        const saldoBaseZ = saldoBasePorZona[zid] || 0;
+        const totalZonaConBase = z.totAcum + saldoBaseZ;
+        granTotalDia += z.totDia;
+        granTotalAcum += totalZonaConBase;
+        const filasSec = z.filas.map(f => `
+          <tr>
+            <td style="padding:5px 8px 5px 24px;color:#555;">${f.nombre}</td>
+            <td style="padding:5px 8px;text-align:right;">${cop(f.cobradoAcum)}</td>
+            <td style="padding:5px 8px;text-align:right;color:#dc2626;">${cop(f.egresosAcum)}</td>
+            <td style="padding:5px 8px;text-align:right;">${cop(f.netoDia)}</td>
+            <td style="padding:5px 8px;text-align:right;font-weight:700;">${cop(f.netoAcum)}</td>
+          </tr>`).join("");
+        return `
+          <tr style="background:#f3f4f6;font-weight:800;">
+            <td style="padding:6px 8px;">📍 ${z.nombre}${saldoBaseZ ? ` (saldo inicial: ${cop(saldoBaseZ)})` : ""}</td>
+            <td></td><td></td><td></td>
+            <td style="padding:6px 8px;text-align:right;">${cop(totalZonaConBase)}</td>
+          </tr>
+          ${filasSec}`;
+      }).join("");
+
+      tablaDetalleHtml = `
+      <div class="main-box">
+        <div class="main-box-title">📋 Desglose por zona y secretario (histórico completo)</div>
+        <div class="main-box-body" style="padding:0;">
+          <table style="width:100%;border-collapse:collapse;font-size:9.5pt;">
+            <thead>
+              <tr style="border-bottom:2px solid #111;text-align:right;">
+                <th style="padding:6px 8px;text-align:left;">Zona / Secretario</th>
+                <th style="padding:6px 8px;">Cobrado histórico</th>
+                <th style="padding:6px 8px;">Egresos histórico</th>
+                <th style="padding:6px 8px;">Neto del día</th>
+                <th style="padding:6px 8px;">Saldo acumulado</th>
+              </tr>
+            </thead>
+            <tbody>${filasZonasHtml}</tbody>
+            <tfoot>
+              <tr style="border-top:3px solid #111;font-weight:900;">
+                <td style="padding:10px 8px;">GRAN TOTAL${zonaUsuario ? "" : " (todas las zonas)"}</td>
+                <td></td><td></td>
+                <td style="padding:10px 8px;text-align:right;">${cop(granTotalDia)}</td>
+                <td style="padding:10px 8px;text-align:right;color:#15803d;">${cop(granTotalAcum)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>`;
+    }
 
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Informe Diario</title>
     <style>
@@ -9709,6 +9722,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const [editPlan, setEditPlan] = useState(null);
   const [filtroZonaPlanes, setFiltroZonaPlanes] = useState("todas");
   const [editZona, setEditZona] = useState(null);
+  const [espacioNumeracion, setEspacioNumeracion] = useState([]);
+  useEffect(() => { if (tab === "zonas") db.getEspacioNumeracionZonas().then(setEspacioNumeracion).catch(() => {}); }, [tab]);
   const [editPropa, setEditPropa] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [busqAdmin, setBusqAdmin] = useState("");
@@ -10164,6 +10179,17 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       {/* ── TAB ZONAS ── */}
       {tab === "zonas" && (
         <div>
+          {espacioNumeracion.filter(e => e.porcentajeUsado >= 70).map(e => (
+            <div key={e.zonaId} style={{ background: "#fef3c7", border: "2px solid #f59e0b", borderRadius: 10, padding: "12px 16px", marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, color: "#92400e", fontSize: 14 }}>
+                ⚠️ La zona <strong>{e.zonaNombre}</strong> ya usó el <strong>{e.porcentajeUsado}%</strong> de su bloque de numeración
+                (recibo actual #{e.maxReciboActual.toLocaleString("es-CO")}, siguiente bloque empieza en #{e.siguienteBloque.toLocaleString("es-CO")}).
+              </div>
+              <div style={{ fontSize: 12.5, color: "#92400e", marginTop: 4 }}>
+                Quedan {e.espacioRestante.toLocaleString("es-CO")} números disponibles. Avísale a soporte para ampliar el bloque antes de que se agote.
+              </div>
+            </div>
+          ))}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <span style={{ color: GC.ink2, fontSize: 14 }}>{zonas.length} zonas configuradas</span>
             <Btn onClick={() => { setEditZona({ ...emptyZona }); setFormTipo("zona"); setShowForm(true); }} style={{ fontSize: 13 }}>+ Nueva zona</Btn>
