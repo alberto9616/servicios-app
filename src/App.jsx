@@ -7392,27 +7392,23 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
 
     const esGerencia = ["admin", "superusuario", "dueno"].includes(usuario.rol);
 
-    // Alcance: si el informe es de una zona específica (secretario, o admin con zona filtrada),
-    // solo se cuenta esa zona. Si además el que genera el informe NO es gerencia, se limita
-    // también a sus propios movimientos — nunca a los de otro secretario.
-    let detalleAlcance = zonaUsuario ? detalle.filter(d => d.zonaId === zonaUsuario) : detalle;
-    if (!esGerencia) detalleAlcance = detalleAlcance.filter(d => d.secretarioId === usuario.id);
+    // El resumen de arriba (Saldo Anterior / Nuevo Saldo) SIEMPRE refleja la zona completa
+    // (igual al "Total Global" de esa zona) — es el estado real de la caja física, no debe
+    // cambiar según quién lo genere. Lo único que se oculta a un secretario normal es el
+    // detalle de quién cobró/gastó qué (privacidad entre compañeros), no el total de la caja.
+    let detalleZona = zonaUsuario ? detalle.filter(d => d.zonaId === zonaUsuario) : detalle;
 
     const saldoBasePorZona = {};
     zonas.forEach(z => { saldoBasePorZona[z.id] = z.saldoBase || 0; });
-    const zonasEnAlcance = new Set(detalleAlcance.map(d => d.zonaId));
-    const saldoBaseAlcance = zonaUsuario
-      ? (saldoBasePorZona[zonaUsuario] || 0)
-      : [...zonasEnAlcance].reduce((s, zid) => s + (saldoBasePorZona[zid] || 0), 0);
 
     const sum = (campo, arr) => arr.reduce((s, d) => s + d[campo], 0);
 
     // Resumen por zona, SIEMPRE separado — nunca se combina el saldo de una zona con el de otra.
     // Si el usuario está scoped a una sola zona (secretario, o admin con zona filtrada), sale 1 sola.
     // Si un admin ve "todas", sale un resumen independiente por cada zona.
-    const zonasParaResumen = zonaUsuario ? [zonaUsuario] : [...new Set(detalleAlcance.map(d => d.zonaId))];
+    const zonasParaResumen = zonaUsuario ? [zonaUsuario] : [...new Set(detalleZona.map(d => d.zonaId))];
     const resumenesPorZona = zonasParaResumen.map(zid => {
-      const filasZona = detalleAlcance.filter(d => d.zonaId === zid);
+      const filasZona = detalleZona.filter(d => d.zonaId === zid);
       const nombreZona = filasZona[0]?.zonaNombre || zonas.find(z => z.id === zid)?.nombre || "Sin zona";
       const saldoBaseZ = saldoBasePorZona[zid] || 0;
       const totalIngresosDia = sum("cobradoDia", filasZona) + sum("ingresosCajaDia", filasZona);
@@ -7422,6 +7418,10 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
       const saldoAnterior = nuevoSaldo - totalIngresosDia + egresosCajaDia;
       return { zid, nombreZona, saldoAnterior, totalIngresosDia, egresosCajaDia, nuevoSaldo };
     });
+
+    // El desglose detallado por secretario SÍ se limita a "solo lo mío" cuando no es gerencia,
+    // y de todas formas solo se renderiza (más abajo) si esGerencia es true.
+    let detalleAlcance = !esGerencia ? detalleZona.filter(d => d.secretarioId === usuario.id) : detalleZona;
 
     // Desglose por zona y secretario (histórico completo) — SOLO para gerencia (admin,
     // superusuario, dueño). Un secretario normal nunca ve el desglose de otros compañeros
