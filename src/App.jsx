@@ -1340,6 +1340,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "hoy",       icon: "📅", label: "Hoy" },
       { key: "todas",     icon: "📋", label: "Todas" },
       { key: "historial", icon: "✅", label: "Historial" },
+      ...(sesion.privilegios?.includes("ver_pagos") ? [{ key: "pagos", icon: "💰", label: "Pagos" }] : []),
       { key: "equipo",    icon: "👷", label: "Equipo de trabajo" },
     ],
   };
@@ -2440,10 +2441,26 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
       }
     } else {
       const c = usuarios.find(u => u.id === ordenManual.clienteExistente);
-      clienteNombre = c?.nombre || "Sin nombre";
-      clienteDireccion = c?.direccion || "Sin dirección";
       clienteId = c?.id || null;
-      telefonoCliente = c?.telefono || null;
+      clienteNombre = ordenManual._reconNombre || c?.nombre || "Sin nombre";
+      clienteDireccion = ordenManual._reconDireccion || c?.direccion || "Sin dirección";
+      telefonoCliente = ordenManual._reconTelefono || c?.telefono || null;
+
+      // Guardar cambios si el usuario editó el teléfono o la dirección desde este formulario
+      if (c && (
+        (ordenManual._reconTelefono && ordenManual._reconTelefono !== c.telefono) ||
+        (ordenManual._reconDireccion && ordenManual._reconDireccion !== c.direccion)
+      )) {
+        try {
+          const actualizado = {
+            ...c,
+            telefono:  ordenManual._reconTelefono  || c.telefono,
+            direccion: ordenManual._reconDireccion || c.direccion,
+          };
+          await db.upsertUsuario(actualizado);
+          setUsuarios(p => p.map(u => u.id === c.id ? { ...u, ...actualizado } : u));
+        } catch (err) { console.error("Error actualizando cliente:", err); }
+      }
     }
 
     const esTraslado = ordenManual.tipo === "Traslado / cambio de domicilio";
@@ -3111,16 +3128,45 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
               </div>
 
             ) : (
-              /* OTROS TIPOS: seleccionar cliente existente */
-              <Field label="Cliente existente">
-                <ClienteBuscador
-                  clientes={clientes}
-                  value={ordenManual.clienteExistente}
-                  onChange={id => setOrdenManual({ ...ordenManual, clienteExistente: id })}
-                  error={erroresOrdenManual.clienteExistente}
-                />
-                {erroresOrdenManual.clienteExistente && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Debes seleccionar un cliente</div>}
-              </Field>
+              /* OTROS TIPOS: seleccionar cliente existente, con opción de editar sus datos */
+              <div>
+                <Field label="Cliente existente">
+                  <ClienteBuscador
+                    clientes={clientes}
+                    value={ordenManual.clienteExistente}
+                    onChange={id => {
+                      const c = usuarios.find(u => u.id === id);
+                      setOrdenManual(prev => ({
+                        ...prev,
+                        clienteExistente: id,
+                        _reconNombre: c?.nombre || "",
+                        _reconTelefono: c?.telefono || "",
+                        _reconDireccion: c?.direccion || "",
+                      }));
+                    }}
+                    error={erroresOrdenManual.clienteExistente}
+                  />
+                  {erroresOrdenManual.clienteExistente && <div style={{ color: GC.danger, fontSize: 11, marginTop: 3 }}>Debes seleccionar un cliente</div>}
+                </Field>
+                {ordenManual.clienteExistente && (
+                  <div style={{ marginTop: 12, background: "#fff", border: "1px solid #bbf7d0", borderRadius: 10, padding: 14 }}>
+                    <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700, marginBottom: 10 }}>
+                      Datos actuales del cliente — verifica y edita si es necesario
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+                      <Field label="Teléfono">
+                        <Inp value={ordenManual._reconTelefono || ""} onChange={e => setOrdenManual(p => ({ ...p, _reconTelefono: e.target.value }))} />
+                      </Field>
+                      <Field label="Dirección">
+                        <Inp value={ordenManual._reconDireccion || ""} onChange={e => setOrdenManual(p => ({ ...p, _reconDireccion: e.target.value }))} />
+                      </Field>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#16a34a", marginTop: 6 }}>
+                      Si editas algún dato aquí, se actualizará en el sistema al crear la orden
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Campo nueva dirección para traslados */}
@@ -3628,6 +3674,18 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion 
 
 function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zonas, usuarios, setUsuarios, tabExterno, setTabExterno }) {
   const [tabLocal, setTabLocal] = useState("hoy"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
+  const puedeVerPagos = usuario.privilegios?.includes("ver_pagos");
+  const [facturasPagos, setFacturasPagos] = useState([]);
+  const [cargandoPagos, setCargandoPagos] = useState(false);
+  const [busqPagos, setBusqPagos] = useState("");
+  useEffect(() => {
+    if (tab === "pagos" && puedeVerPagos) {
+      setCargandoPagos(true);
+      const hoyD = new Date();
+      db.getFacturasByMesAnio(hoyD.getMonth() + 1, hoyD.getFullYear())
+        .then(setFacturasPagos).catch(() => setFacturasPagos([])).finally(() => setCargandoPagos(false));
+    }
+  }, [tab, puedeVerPagos]);
 
   const zonaT = zonas.find(z => z.id === usuario.zonaId);
   const hoy = fechaLocal();
@@ -3842,6 +3900,40 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
       {tab === "todas" && (ordenesActivas.length === 0 ? <div style={{ textAlign: "center", color: GC.ink3, padding: 50 }}>Sin órdenes activas</div> : ordenesActivas.map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "historial" && (completadas.length === 0 ? <div style={{ textAlign: "center", color: GC.ink3, padding: 50 }}>Sin órdenes completadas aún</div> : [...completadas].reverse().map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} rolFiltro={["admin","secretario","tecnico"]} zonaId={usuario.zonaId} />}
+      {tab === "pagos" && puedeVerPagos && (() => {
+        const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444", "Anulada": "#94a3b8" };
+        const q = norm(busqPagos);
+        const filas = facturasPagos.filter(f => {
+          const cliente = usuarios.find(u => u.id === f.clienteId);
+          if (!cliente || cliente.zonaId !== usuario.zonaId) return false;
+          if (f.estado === "Anulada") return false;
+          if (!q) return true;
+          return norm(f.clienteNombre).includes(q) || norm(cliente.cedula).includes(q);
+        });
+        return (
+          <div style={{ padding: "12px 14px" }}>
+            <div style={{ fontSize: 13, color: GC.ink3, marginBottom: 10 }}>💰 Solo puedes ver esta información — no puedes registrar ni modificar pagos.</div>
+            <Inp value={busqPagos} onChange={e => setBusqPagos(e.target.value)} placeholder="Buscar cliente o cédula..." style={{ marginBottom: 12 }} />
+            {cargandoPagos ? <div style={{ textAlign: "center", color: GC.ink3, padding: 30 }}>Cargando...</div> :
+             filas.length === 0 ? <div style={{ textAlign: "center", color: GC.ink3, padding: 30 }}>Sin resultados</div> :
+              filas.map(f => (
+                <div key={f.id} style={{ background: GC.bg2, border: "1px solid " + GC.border2, borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{f.clienteNombre}</div>
+                      <div style={{ fontSize: 12, color: GC.ink3 }}>{f.concepto}</div>
+                    </div>
+                    <span style={{ background: COLOR_ESTADO[f.estado] + "22", color: COLOR_ESTADO[f.estado], padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{f.estado}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 13 }}>
+                    <span style={{ color: GC.ink2 }}>Total: <strong>{formatCOP(f.monto)}</strong></span>
+                    {f.saldoPendiente > 0 && <span style={{ color: "#ef4444" }}>Saldo: <strong>{formatCOP(f.saldoPendiente)}</strong></span>}
+                  </div>
+                </div>
+              ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }
