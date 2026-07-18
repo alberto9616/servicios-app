@@ -7405,12 +7405,23 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
       ? (saldoBasePorZona[zonaUsuario] || 0)
       : [...zonasEnAlcance].reduce((s, zid) => s + (saldoBasePorZona[zid] || 0), 0);
 
-    const sum = campo => detalleAlcance.reduce((s, d) => s + d[campo], 0);
-    const totalIngresosDia = sum("cobradoDia") + sum("ingresosCajaDia");
-    const egresosCajaDia = sum("egresosDia");
-    const acumuladoTotal = sum("cobradoAcumulado") + sum("ingresosCajaAcumulado") - sum("egresosAcumulado");
-    const nuevoSaldo = saldoBaseAlcance + acumuladoTotal;
-    const saldoAnterior = nuevoSaldo - totalIngresosDia + egresosCajaDia;
+    const sum = (campo, arr) => arr.reduce((s, d) => s + d[campo], 0);
+
+    // Resumen por zona, SIEMPRE separado — nunca se combina el saldo de una zona con el de otra.
+    // Si el usuario está scoped a una sola zona (secretario, o admin con zona filtrada), sale 1 sola.
+    // Si un admin ve "todas", sale un resumen independiente por cada zona.
+    const zonasParaResumen = zonaUsuario ? [zonaUsuario] : [...new Set(detalleAlcance.map(d => d.zonaId))];
+    const resumenesPorZona = zonasParaResumen.map(zid => {
+      const filasZona = detalleAlcance.filter(d => d.zonaId === zid);
+      const nombreZona = filasZona[0]?.zonaNombre || zonas.find(z => z.id === zid)?.nombre || "Sin zona";
+      const saldoBaseZ = saldoBasePorZona[zid] || 0;
+      const totalIngresosDia = sum("cobradoDia", filasZona) + sum("ingresosCajaDia", filasZona);
+      const egresosCajaDia = sum("egresosDia", filasZona);
+      const acumuladoZona = sum("cobradoAcumulado", filasZona) + sum("ingresosCajaAcumulado", filasZona) - sum("egresosAcumulado", filasZona);
+      const nuevoSaldo = saldoBaseZ + acumuladoZona;
+      const saldoAnterior = nuevoSaldo - totalIngresosDia + egresosCajaDia;
+      return { zid, nombreZona, saldoAnterior, totalIngresosDia, egresosCajaDia, nuevoSaldo };
+    });
 
     // Desglose por zona y secretario (histórico completo) — SOLO para gerencia (admin,
     // superusuario, dueño). Un secretario normal nunca ve el desglose de otros compañeros
@@ -7466,14 +7477,6 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
               </tr>
             </thead>
             <tbody>${filasZonasHtml}</tbody>
-            <tfoot>
-              <tr style="border-top:3px solid #111;font-weight:900;">
-                <td style="padding:10px 8px;">GRAN TOTAL${zonaUsuario ? "" : " (todas las zonas)"}</td>
-                <td></td><td></td>
-                <td style="padding:10px 8px;text-align:right;">${cop(granTotalDia)}</td>
-                <td style="padding:10px 8px;text-align:right;color:#15803d;">${cop(granTotalAcum)}</td>
-              </tr>
-            </tfoot>
           </table>
         </div>
       </div>`;
@@ -7526,28 +7529,29 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
       <div><span>Fecha de generación: </span><strong>${ahora}</strong></div>
     </div>
 
+    ${resumenesPorZona.map(r => `
     <div class="main-box">
-      <div class="main-box-title">📊 Resumen del Día — ${fechaLabel}</div>
+      <div class="main-box-title">📊 Resumen del Día — ${r.nombreZona} — ${fechaLabel}</div>
       <div class="main-box-body">
         <div class="row ant">
           <span class="label">Saldo Anterior</span>
-          <span class="val">${cop(saldoAnterior)}</span>
+          <span class="val">${cop(r.saldoAnterior)}</span>
         </div>
         <div class="row ing">
           <span class="label">INGRESOS</span>
-          <span class="val">+ ${cop(totalIngresosDia)}</span>
+          <span class="val">+ ${cop(r.totalIngresosDia)}</span>
         </div>
         <div class="row egr">
           <span class="label">EGRESOS</span>
-          <span class="val">− ${cop(egresosCajaDia)}</span>
+          <span class="val">− ${cop(r.egresosCajaDia)}</span>
         </div>
         <hr class="divider"/>
         <div class="row total">
           <span class="label">Nuevo Saldo</span>
-          <span class="val">${cop(nuevoSaldo)}</span>
+          <span class="val">${cop(r.nuevoSaldo)}</span>
         </div>
       </div>
-    </div>
+    </div>`).join("")}
 
     ${tablaDetalleHtml}
 
