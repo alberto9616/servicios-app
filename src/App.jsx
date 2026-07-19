@@ -95,6 +95,15 @@ const mapFactura = r => r ? ({
   pronto_pago_aplicado: r.pronto_pago_aplicado || false,
 }) : null;
 
+const mapCobroRuta = r => r ? ({
+  id: r.id, tecnicoId: r.tecnico_id, tecnicoNombre: r.tecnico_nombre,
+  facturaId: r.factura_id, clienteId: r.cliente_id, clienteNombre: r.cliente_nombre,
+  monto: Number(r.monto), metodoPago: r.metodo_pago, fecha: r.fecha,
+  observacion: r.observacion || "", zonaId: r.zona_id, estado: r.estado,
+  aprobadoPor: r.aprobado_por, aprobadoPorNombre: r.aprobado_por_nombre,
+  aprobadoEn: r.aprobado_en, abonoId: r.abono_id, creadoEn: r.created_at,
+}) : null;
+
 const mapAbono = r => r ? ({
   id: r.id, facturaId: r.factura_id, monto: Number(r.monto),
   metodoPago: r.metodo_pago, fecha: r.fecha,
@@ -409,6 +418,31 @@ const db = {
       .order("created_at", { ascending: false });
     if (error) throw error;
     return data || [];
+  },
+  // COBROS EN RUTA (técnico cobra casa a casa, secretaria aprueba antes de aplicar a facturas)
+  async crearCobroRuta(item) {
+    const { data, error } = await sb.from("cobros_ruta").insert({
+      tecnico_id: item.tecnicoId, tecnico_nombre: item.tecnicoNombre,
+      factura_id: item.facturaId, cliente_id: item.clienteId, cliente_nombre: item.clienteNombre,
+      monto: item.monto, metodo_pago: item.metodoPago || "Efectivo", fecha: item.fecha,
+      observacion: item.observacion || "", zona_id: item.zonaId, estado: "Pendiente",
+    }).select().single();
+    if (error) throw error;
+    return mapCobroRuta(data);
+  },
+  async getCobrosRuta({ tecnicoId = null, zonaId = null, fecha = null, estado = null } = {}) {
+    let q = sb.from("cobros_ruta").select("*").order("created_at", { ascending: false });
+    if (tecnicoId) q = q.eq("tecnico_id", tecnicoId);
+    if (zonaId) q = q.eq("zona_id", zonaId);
+    if (fecha) q = q.eq("fecha", fecha);
+    if (estado) q = q.eq("estado", estado);
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data || []).map(mapCobroRuta);
+  },
+  async actualizarCobroRuta(id, campos) {
+    const { error } = await sb.from("cobros_ruta").update(campos).eq("id", id);
+    if (error) throw error;
   },
   async registrarAbono(a) {
     // IDs en este sistema pueden ser UUIDs o cortos tipo "u4463d9bd" — solo se valida que no esté vacío.
@@ -3678,14 +3712,41 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
   const [facturasPagos, setFacturasPagos] = useState([]);
   const [cargandoPagos, setCargandoPagos] = useState(false);
   const [busqPagos, setBusqPagos] = useState("");
+  const [cobrosHoy, setCobrosHoy] = useState([]);
+  const [modalCobro, setModalCobro] = useState(null);
+  const [formCobro, setFormCobro] = useState({ monto: "", metodoPago: "Efectivo", observacion: "" });
+  const [guardandoCobro, setGuardandoCobro] = useState(false);
+  const cargarCobrosHoy = () => {
+    db.getCobrosRuta({ tecnicoId: usuario.id, fecha: fechaLocal() }).then(setCobrosHoy).catch(() => {});
+  };
   useEffect(() => {
     if (tab === "pagos" && puedeVerPagos) {
       setCargandoPagos(true);
       const hoyD = new Date();
       db.getFacturasByMesAnio(hoyD.getMonth() + 1, hoyD.getFullYear())
         .then(setFacturasPagos).catch(() => setFacturasPagos([])).finally(() => setCargandoPagos(false));
+      cargarCobrosHoy();
     }
   }, [tab, puedeVerPagos]);
+  const registrarCobroRuta = async () => {
+    const monto = Number(formCobro.monto);
+    if (!monto || monto <= 0) { alert("Ingresa un monto válido"); return; }
+    if (monto > modalCobro.saldoPendiente) { alert(`El monto no puede ser mayor al saldo pendiente (${formatCOP(modalCobro.saldoPendiente)})`); return; }
+    setGuardandoCobro(true);
+    try {
+      await db.crearCobroRuta({
+        tecnicoId: usuario.id, tecnicoNombre: usuario.nombre,
+        facturaId: modalCobro.id, clienteId: modalCobro.clienteId, clienteNombre: modalCobro.clienteNombre,
+        monto, metodoPago: formCobro.metodoPago, fecha: fechaLocal(),
+        observacion: formCobro.observacion, zonaId: usuario.zonaId,
+      });
+      setModalCobro(null);
+      setFormCobro({ monto: "", metodoPago: "Efectivo", observacion: "" });
+      cargarCobrosHoy();
+      alert("✅ Cobro registrado. Queda pendiente hasta que la secretaria lo confirme.");
+    } catch (err) { alert("Error al registrar el cobro: " + err.message); }
+    setGuardandoCobro(false);
+  };
 
   const zonaT = zonas.find(z => z.id === usuario.zonaId);
   const hoy = fechaLocal();
@@ -3902,6 +3963,7 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
       {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} rolFiltro={["admin","secretario","tecnico"]} zonaId={usuario.zonaId} />}
       {tab === "pagos" && puedeVerPagos && (() => {
         const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444", "Anulada": "#94a3b8" };
+        const COLOR_COBRO = { "Pendiente": "#f59e0b", "Aprobado": "#22c55e", "Rechazado": "#ef4444" };
         const q = norm(busqPagos);
         const filas = facturasPagos.filter(f => {
           const cliente = usuarios.find(u => u.id === f.clienteId);
@@ -3912,7 +3974,24 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
         });
         return (
           <div style={{ padding: "12px 14px" }}>
-            <div style={{ fontSize: 13, color: GC.ink3, marginBottom: 10 }}>💰 Solo puedes ver esta información — no puedes registrar ni modificar pagos.</div>
+            <div style={{ fontSize: 13, color: GC.ink3, marginBottom: 10 }}>💰 Puedes registrar lo que cobras casa a casa. Queda pendiente hasta que la secretaria lo confirme — tú no puedes marcar facturas como pagadas.</div>
+
+            {cobrosHoy.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, fontSize: 13, color: GC.ink, marginBottom: 6 }}>📋 Mis cobros de hoy</div>
+                {cobrosHoy.map(c => (
+                  <div key={c.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: GC.bg2, border: "1px solid " + GC.border2, borderRadius: 8, padding: "8px 12px", marginBottom: 6 }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13 }}>{c.clienteNombre}</div>
+                      <div style={{ fontSize: 12, color: GC.ink3 }}>{formatCOP(c.monto)} · {c.metodoPago}</div>
+                    </div>
+                    <span style={{ background: COLOR_COBRO[c.estado] + "22", color: COLOR_COBRO[c.estado], padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{c.estado}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ fontWeight: 700, fontSize: 13, color: GC.ink, marginBottom: 6 }}>📄 Facturas de mi zona</div>
             <Inp value={busqPagos} onChange={e => setBusqPagos(e.target.value)} placeholder="Buscar cliente o cédula..." style={{ marginBottom: 12 }} />
             {cargandoPagos ? <div style={{ textAlign: "center", color: GC.ink3, padding: 30 }}>Cargando...</div> :
              filas.length === 0 ? <div style={{ textAlign: "center", color: GC.ink3, padding: 30 }}>Sin resultados</div> :
@@ -3925,12 +4004,47 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
                     </div>
                     <span style={{ background: COLOR_ESTADO[f.estado] + "22", color: COLOR_ESTADO[f.estado], padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700 }}>{f.estado}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 13 }}>
-                    <span style={{ color: GC.ink2 }}>Total: <strong>{formatCOP(f.monto)}</strong></span>
-                    {f.saldoPendiente > 0 && <span style={{ color: "#ef4444" }}>Saldo: <strong>{formatCOP(f.saldoPendiente)}</strong></span>}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6, fontSize: 13 }}>
+                    <span style={{ color: GC.ink2 }}>Total: <strong>{formatCOP(f.monto)}</strong> {f.saldoPendiente > 0 && <span style={{ color: "#ef4444" }}> · Saldo: <strong>{formatCOP(f.saldoPendiente)}</strong></span>}</span>
+                    {f.saldoPendiente > 0 && (
+                      <button onClick={() => { setModalCobro(f); setFormCobro({ monto: String(f.saldoPendiente), metodoPago: "Efectivo", observacion: "" }); }}
+                        style={{ background: GC.brand, color: "#fff", border: "none", borderRadius: 7, padding: "6px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                        💵 Registrar cobro
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
+
+            {modalCobro && (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 16 }}
+                onClick={e => { if (e.target === e.currentTarget) setModalCobro(null); }}>
+                <div style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 380 }}>
+                  <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 4 }}>💵 Registrar cobro</div>
+                  <div style={{ fontSize: 13, color: GC.ink3, marginBottom: 14 }}>{modalCobro.clienteNombre} — Saldo: {formatCOP(modalCobro.saldoPendiente)}</div>
+                  <Field label="Monto cobrado">
+                    <Inp type="number" value={formCobro.monto} onChange={e => setFormCobro(p => ({ ...p, monto: e.target.value }))} />
+                  </Field>
+                  <Field label="Método de pago">
+                    <Sel value={formCobro.metodoPago} onChange={e => setFormCobro(p => ({ ...p, metodoPago: e.target.value }))}>
+                      <option value="Efectivo">💵 Efectivo</option>
+                      <option value="Transferencia">🏦 Transferencia</option>
+                      <option value="Nequi">📱 Nequi</option>
+                    </Sel>
+                  </Field>
+                  <Field label="Observación (opcional)">
+                    <Inp value={formCobro.observacion} onChange={e => setFormCobro(p => ({ ...p, observacion: e.target.value }))} />
+                  </Field>
+                  <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                    <button onClick={registrarCobroRuta} disabled={guardandoCobro}
+                      style={{ flex: 1, background: GC.brand, color: "#fff", border: "none", borderRadius: 8, padding: "10px 0", fontWeight: 700, cursor: "pointer" }}>
+                      {guardandoCobro ? "Guardando..." : "✅ Registrar"}
+                    </button>
+                    <button onClick={() => setModalCobro(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer" }}>Cancelar</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
@@ -4992,6 +5106,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   const TABS = [
     { key: "emitidas", icon: "🧾", label: "Emitidas" },
     { key: "cierre",   icon: "💼", label: "Cierre de caja" },
+    { key: "cobrostec",icon: "🚶", label: "Cobros técnicos" },
     { key: "historial",icon: "🔍", label: "Historial" },
     { key: "prontopago", icon: "🏷️", label: "Pronto pago" },
     { key: "caja",     icon: "💰", label: "Caja" },
@@ -5281,6 +5396,18 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           zonas={zonas} esAdmin={esAdmin} esSuperusuario={esSuperusuario}
           filtroZona={filtroZona}
           nombreEmpresa={nombreEmpresa} COLOR_ESTADO={COLOR_ESTADO}
+        />
+      )}
+
+      {/* ════════════════════════════════════════════════════ */}
+      {/* TAB — COBROS EN RUTA DE TÉCNICOS (revisar y aprobar)  */}
+      {/* ════════════════════════════════════════════════════ */}
+      {subTab === "cobrostec" && (
+        <SeccionCobrosTecnicos
+          usuario={usuario} usuarios={usuarios} setUsuarios={setUsuarios}
+          zonas={zonas} esAdmin={esAdmin} esSuperusuario={esSuperusuario}
+          filtroZona={filtroZona} facturas={facturas} setFacturas={setFacturas}
+          facturasHistoricas={facturasHistoricas} setFacturasHistoricas={setFacturasHistoricas}
         />
       )}
 
@@ -6405,6 +6532,132 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
 }
 
 // ── Sección 2: Cierre de Caja ─────────────────────────────────
+function SeccionCobrosTecnicos({ usuario, usuarios, setUsuarios, zonas, esAdmin, esSuperusuario, filtroZona = "todas", facturas, setFacturas, facturasHistoricas = [], setFacturasHistoricas }) {
+  const [cobros, setCobros] = useState([]);
+  const [cargando, setCargando] = useState(true);
+  const [seleccion, setSeleccion] = useState(new Set());
+  const [procesando, setProcesando] = useState(false);
+  const zonaUsuario = esAdmin ? (filtroZona !== "todas" ? filtroZona : null) : usuario.zonaId;
+
+  const cargar = () => {
+    setCargando(true);
+    db.getCobrosRuta({ zonaId: zonaUsuario, estado: "Pendiente" })
+      .then(setCobros).catch(() => setCobros([])).finally(() => setCargando(false));
+  };
+  useEffect(cargar, [zonaUsuario]);
+
+  const porTecnico = {};
+  cobros.forEach(c => {
+    const key = c.tecnicoId || "_sin";
+    if (!porTecnico[key]) porTecnico[key] = { nombre: c.tecnicoNombre || "Sin asignar", items: [], total: 0 };
+    porTecnico[key].items.push(c);
+    porTecnico[key].total += c.monto;
+  });
+
+  const toggle = id => setSeleccion(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const totalSeleccionado = cobros.filter(c => seleccion.has(c.id)).reduce((s, c) => s + c.monto, 0);
+
+  const aprobar = async (items) => {
+    if (items.length === 0) return;
+    if (!confirm(`¿Confirmas que la plata está completa? Se van a aplicar ${items.length} cobro(s) por un total de ${formatCOP(items.reduce((s,c)=>s+c.monto,0))} a las facturas correspondientes.`)) return;
+    setProcesando(true);
+    try {
+      const idsUnicos = [...new Set(items.map(c => c.facturaId))];
+      const facturasFrescas = await db.getFacturasPorIds(idsUnicos);
+      const mapaFacturas = {}; facturasFrescas.forEach(f => { mapaFacturas[f.id] = f; });
+
+      for (const item of items) {
+        const f = mapaFacturas[item.facturaId];
+        if (!f) { console.error("Factura no encontrada para cobro", item.id); continue; }
+        const nuevoSaldo = Math.max(0, f.saldoPendiente - item.monto);
+        const nuevoEstado = nuevoSaldo <= 0 ? "Pagado" : "Abono parcial";
+        const abono = await db.registrarAbono({
+          facturaId: item.facturaId, monto: item.monto, metodoPago: item.metodoPago,
+          fecha: item.fecha, observacion: item.observacion || `Cobrado en ruta por ${item.tecnicoNombre}`,
+          registradoPor: item.tecnicoId,
+        });
+        await db.actualizarFactura(item.facturaId, {
+          saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: item.metodoPago,
+          fecha_pago: nuevoSaldo <= 0 ? item.fecha : null,
+        });
+        await db.actualizarCobroRuta(item.id, {
+          estado: "Aprobado", aprobado_por: usuario.id, aprobado_por_nombre: usuario.nombre,
+          aprobado_en: new Date().toISOString(), abono_id: abono?.id || null,
+        });
+        // Reflejar el cambio en el estado local si la factura está cargada
+        const actualizarLocal = arr => arr.map(x => x.id === item.facturaId ? { ...x, saldoPendiente: nuevoSaldo, estado: nuevoEstado } : x);
+        setFacturas(prev => actualizarLocal(prev));
+        if (setFacturasHistoricas) setFacturasHistoricas(prev => actualizarLocal(prev));
+        mapaFacturas[item.facturaId] = { ...f, saldoPendiente: nuevoSaldo }; // por si hay 2 cobros a la misma factura en el lote
+      }
+      setSeleccion(new Set());
+      cargar();
+      alert("✅ Cobros aplicados correctamente");
+    } catch (err) {
+      alert("Error al aplicar los cobros: " + err.message);
+    }
+    setProcesando(false);
+  };
+
+  const rechazar = async (item) => {
+    const motivo = prompt(`¿Por qué rechazas el cobro de ${item.clienteNombre} (${formatCOP(item.monto)})? Esto NO se aplicará a la factura.`);
+    if (motivo === null) return;
+    try {
+      await db.actualizarCobroRuta(item.id, {
+        estado: "Rechazado", aprobado_por: usuario.id, aprobado_por_nombre: usuario.nombre,
+        aprobado_en: new Date().toISOString(), observacion: item.observacion + ` [Rechazado: ${motivo}]`,
+      });
+      cargar();
+    } catch (err) { alert("Error: " + err.message); }
+  };
+
+  if (cargando) return <div style={{ textAlign: "center", color: GC.ink3, padding: 40 }}>Cargando...</div>;
+  if (cobros.length === 0) return <div style={{ textAlign: "center", color: GC.ink3, padding: 50 }}>🎉 No hay cobros de técnicos pendientes de revisar</div>;
+
+  return (
+    <div>
+      <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#1e40af" }}>
+        🚶 Aquí aparecen los cobros que los técnicos registraron en su recorrido. Revisa que la plata física coincida y confírmalos — solo entonces se aplican como pago real a las facturas.
+      </div>
+
+      {seleccion.size > 0 && (
+        <div style={{ position: "sticky", top: 0, zIndex: 10, background: "#fff", border: "2px solid " + GC.brand, borderRadius: 10, padding: "10px 14px", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>{seleccion.size} seleccionado(s) — Total: {formatCOP(totalSeleccionado)}</span>
+          <button disabled={procesando} onClick={() => aprobar(cobros.filter(c => seleccion.has(c.id)))}
+            style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontWeight: 700, cursor: "pointer" }}>
+            {procesando ? "Procesando..." : "✅ Confirmar y aplicar a facturas"}
+          </button>
+        </div>
+      )}
+
+      {Object.entries(porTecnico).map(([tid, grupo]) => (
+        <div key={tid} style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ fontWeight: 800, fontSize: 14, color: GC.ink }}>👷 {grupo.nombre} — {formatCOP(grupo.total)} en {grupo.items.length} cobro(s)</div>
+            <button disabled={procesando} onClick={() => aprobar(grupo.items)}
+              style={{ background: GC.brandLight, color: GC.brandText, border: "none", borderRadius: 7, padding: "5px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+              Aprobar todos de {grupo.nombre.split(" ")[0]}
+            </button>
+          </div>
+          {grupo.items.map(c => (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, background: GC.bg2, border: "1px solid " + GC.border2, borderRadius: 10, padding: 12, marginBottom: 6 }}>
+              <input type="checkbox" checked={seleccion.has(c.id)} onChange={() => toggle(c.id)} style={{ width: 18, height: 18 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 13.5 }}>{c.clienteNombre}</div>
+                <div style={{ fontSize: 12, color: GC.ink3 }}>{formatCOP(c.monto)} · {c.metodoPago} · {c.fecha}{c.observacion ? ` · ${c.observacion}` : ""}</div>
+              </div>
+              <button onClick={() => rechazar(c)} disabled={procesando}
+                style={{ background: "#fef2f2", color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                Rechazar
+              </button>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SeccionCierreCaja({ usuario, facturas, facturasHistoricas = [], usuarios, zonas, esAdmin, esSuperusuario, filtroZona = "todas", nombreEmpresa, COLOR_ESTADO }) {
   // Secretario: SIEMPRE su propia zona. Admin: respeta la zona activa del filtro visual (o todas).
   const zonaFiltroActiva = !esAdmin ? usuario?.zonaId : (filtroZona !== "todas" ? filtroZona : null);
