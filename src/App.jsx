@@ -462,6 +462,7 @@ const db = {
         p_fecha:          a.fecha || fechaLocal(),
         p_observacion:    a.observacion || "",
         p_registrado_por: regPor,
+        p_fecha_confiable: !!a.fechaConfiable,
       });
       if (error) {
         // Si el error es que la función no existe, continuar con fallback
@@ -6574,7 +6575,7 @@ function SeccionCobrosTecnicos({ usuario, usuarios, setUsuarios, zonas, esAdmin,
         const abono = await db.registrarAbono({
           facturaId: item.facturaId, monto: item.monto, metodoPago: item.metodoPago,
           fecha: item.fecha, observacion: item.observacion || `Cobrado en ruta por ${item.tecnicoNombre}`,
-          registradoPor: item.tecnicoId,
+          registradoPor: item.tecnicoId, fechaConfiable: true,
         });
         await db.actualizarFactura(item.facturaId, {
           saldo_pendiente: nuevoSaldo, estado: nuevoEstado, metodo_pago: item.metodoPago,
