@@ -241,10 +241,20 @@ const db = {
 
   // TICKETS
   async getTickets() {
-    const { data: tks, error: e1 } = await sb.from("tickets").select("*").order("fecha_creacion", { ascending: false });
-    if (e1) throw e1;
-    const { data: msgs, error: e2 } = await sb.from("ticket_mensajes").select("*").order("ts");
-    if (e2) throw e2;
+    const PAGE = 1000;
+    const paginar = async (tabla, orderCol, ascending) => {
+      let all = []; let from = 0;
+      while (true) {
+        const { data, error } = await sb.from(tabla).select("*").order(orderCol, { ascending }).range(from, from + PAGE - 1);
+        if (error) throw error;
+        all = all.concat(data || []);
+        if (!data || data.length < PAGE) break;
+        from += PAGE;
+      }
+      return all;
+    };
+    const tks = await paginar("tickets", "fecha_creacion", false);
+    const msgs = await paginar("ticket_mensajes", "ts", true);
     return tks.map(t => mapTicket(t, msgs.filter(m => m.ticket_id === t.id)));
   },
   async crearTicket(t) {
@@ -260,7 +270,19 @@ const db = {
   async eliminarTicket(id) { const { error } = await sb.from("tickets").delete().eq("id", id); if (error) throw error; },
 
   // ÓRDENES
-  async getOrdenes() { const { data, error } = await sb.from("ordenes").select("*").order("fecha_creacion", { ascending: false }); if (error) throw error; return data.map(mapOrden); },
+  async getOrdenes() {
+    const PAGE = 1000;
+    let all = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await sb.from("ordenes").select("*").order("fecha_creacion", { ascending: false }).range(from, from + PAGE - 1);
+      if (error) throw error;
+      all = all.concat(data || []);
+      if (!data || data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all.map(mapOrden);
+  },
   async crearOrden(o) {
     const tecnicoPrincipal = Array.isArray(o.tecnicosIds) && o.tecnicosIds.length > 0 ? o.tecnicosIds[0] : (o.tecnicoId||null);
     const { data, error } = await sb.from("ordenes").insert({ ticket_id: o.ticketId||null, cliente_id: o.clienteId||null, cliente_nombre: o.clienteNombre, secretario_id: o.secretarioId||null, tecnico_id: tecnicoPrincipal, tecnicos_ids: Array.isArray(o.tecnicosIds) ? o.tecnicosIds : (o.tecnicoId ? [o.tecnicoId] : []), tipo: o.tipo, descripcion: o.descripcion||null, direccion: o.direccion||null, telefono_cliente: o.telefonoCliente||null, direccion_anterior: o.direccionAnterior||null, direccion_nueva: o.direccionNueva||null, fecha: o.fecha, hora: o.hora, estado: o.estado||"Pendiente", prioridad: o.prioridad||"normal", es_manual: o.esManual||false, zona_id: o.zonaId||null, datos_instalacion: o.datosInstalacion||null, notas: o.notas||[] }).select().single();
@@ -539,11 +561,20 @@ const db = {
     return Math.max(maxActual, base) + 1;
   },
   async getFacturasByMesAnio(mes, anio) {
-    const { data, error } = await sb.from("facturas").select("*")
-      .eq("mes", mes).eq("anio", anio)
-      .order("fecha_emision", { ascending: false });
-    if (error) throw error;
-    return (data || []).map(mapFactura);
+    const PAGE = 1000;
+    let all = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await sb.from("facturas").select("*")
+        .eq("mes", mes).eq("anio", anio)
+        .order("fecha_emision", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      all = all.concat(data || []);
+      if (!data || data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all.map(mapFactura);
   },
   async getFacturasAnuladas() {
     // Carga facturas anuladas históricas (máx 500 más recientes)
@@ -562,24 +593,40 @@ const db = {
     const mesActual = ahora.getMonth() + 1;
     const anioActual = ahora.getFullYear();
     try {
-      const { data, error } = await sb.from("facturas")
-        .select("*")
-        .neq("estado", "Anulada")
-        .neq("estado", "Pagado")
-        .gt("saldo_pendiente", 0)
-        .or(`anio.lt.${anioActual},and(anio.eq.${anioActual},mes.lte.${mesActual})`);
-      if (error) throw error;
-      return (data || []).map(mapFactura);
+      const PAGE = 1000;
+      let all = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await sb.from("facturas")
+          .select("*")
+          .neq("estado", "Anulada")
+          .neq("estado", "Pagado")
+          .gt("saldo_pendiente", 0)
+          .or(`anio.lt.${anioActual},and(anio.eq.${anioActual},mes.lte.${mesActual})`)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        all = all.concat(data || []);
+        if (!data || data.length < PAGE) break;
+        from += PAGE;
+      }
+      return all.map(mapFactura);
     } catch {
       // Fallback: cargar últimos 12 meses si falla la query optimizada
       const resultados = [];
       for (let i = 1; i <= 12; i++) {
         const d = new Date(ahora.getFullYear(), ahora.getMonth() - i, 1);
         try {
-          const { data, error } = await sb.from("facturas").select("*")
-            .eq("mes", d.getMonth() + 1).eq("anio", d.getFullYear())
-            .neq("estado", "Anulada");
-          if (!error && data) resultados.push(...data.map(mapFactura));
+          const PAGE = 1000;
+          let from = 0;
+          while (true) {
+            const { data, error } = await sb.from("facturas").select("*")
+              .eq("mes", d.getMonth() + 1).eq("anio", d.getFullYear())
+              .neq("estado", "Anulada")
+              .range(from, from + PAGE - 1);
+            if (!error && data) resultados.push(...data.map(mapFactura));
+            if (error || !data || data.length < PAGE) break;
+            from += PAGE;
+          }
         } catch { /* ignorar errores por mes */ }
       }
       return resultados;
@@ -648,11 +695,19 @@ const db = {
     return total;
   },
   async getMovimientosCaja(zonaId = null) {
-    let query = sb.from("caja_movimientos").select("*");
-    if (zonaId) query = query.eq("zona_id", zonaId);
-    const { data, error } = await query.order("fecha", { ascending: false }).order("created_at", { ascending: false });
-    if (error) throw error;
-    return data.map(r => ({ id: r.id, tipo: r.tipo, concepto: r.concepto, monto: Number(r.monto), fecha: r.fecha, registradoPor: r.registrado_por, observacion: r.observacion || "", creadoEn: r.created_at, zonaId: r.zona_id }));
+    const PAGE = 1000;
+    let all = [];
+    let from = 0;
+    while (true) {
+      let query = sb.from("caja_movimientos").select("*");
+      if (zonaId) query = query.eq("zona_id", zonaId);
+      const { data, error } = await query.order("fecha", { ascending: false }).order("created_at", { ascending: false }).range(from, from + PAGE - 1);
+      if (error) throw error;
+      all = all.concat(data || []);
+      if (!data || data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all.map(r => ({ id: r.id, tipo: r.tipo, concepto: r.concepto, monto: Number(r.monto), fecha: r.fecha, registradoPor: r.registrado_por, observacion: r.observacion || "", creadoEn: r.created_at, zonaId: r.zona_id }));
   },
   async crearMovimientoCaja(m) {
     const zonaIdVal = (m.zonaId && String(m.zonaId).trim()) ? String(m.zonaId).trim() : null;
