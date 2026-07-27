@@ -3433,6 +3433,7 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion 
     if (!editOrden || editOrden.tecnicosIds.length === 0) return;
     try {
       const esTraslado = editOrden.tipo === "Traslado / cambio de domicilio";
+      const ordenPrevia = ordenes.find(o => o.id === editOrden.id);
       await db.actualizarOrden(editOrden.id, {
         tipo: editOrden.tipo,
         descripcion: editOrden.descripcion,
@@ -3449,6 +3450,14 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion 
         ? { ...o, tipo: editOrden.tipo, descripcion: editOrden.descripcion, fecha: editOrden.fecha, hora: editOrden.hora, tecnicoId: editOrden.tecnicosIds[0], tecnicosIds: editOrden.tecnicosIds, direccion: editOrden.direccion, telefonoCliente: editOrden.telefonoCliente || null, direccionNueva: esTraslado ? editOrden.direccionNueva : o.direccionNueva, direccionAnterior: esTraslado ? editOrden.direccionAnterior : o.direccionAnterior }
         : o
       ));
+      // Sincronizar dirección con el cliente: cualquier edición de la dirección de una orden
+      // se refleja también en la ficha oficial del cliente (tabla usuarios), no solo en la orden.
+      if (editOrden.clienteId && editOrden.direccion && editOrden.direccion !== ordenPrevia?.direccion) {
+        try {
+          await db.updateDireccionCliente(editOrden.clienteId, editOrden.direccion);
+          setUsuarios(prev => prev.map(u => u.id === editOrden.clienteId ? { ...u, direccion: editOrden.direccion } : u));
+        } catch (err) { console.error("Error actualizando dirección del cliente:", err); }
+      }
       setEditOrden(null);
     } catch(e) { alert("Error al guardar: " + e.message); }
   };
