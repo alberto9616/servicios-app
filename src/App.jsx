@@ -7141,9 +7141,10 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
     return { deudaTotal, mesesDeuda, total: fact.length };
   })() : null;
 
-  const totalFact    = facturasAudit.reduce((s, f) => s + f.monto, 0);
-  const totalCobrado = facturasAudit.reduce((s, f) => s + ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0))), 0);
-  const totalPend    = facturasAudit.reduce((s, f) => s + f.saldoPendiente, 0);
+  const facturasAuditActivas = facturasAudit.filter(f => f.estado !== "Anulada");
+  const totalFact    = facturasAuditActivas.reduce((s, f) => s + f.monto, 0);
+  const totalCobrado = facturasAuditActivas.reduce((s, f) => s + ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0))), 0);
+  const totalPend    = facturasAuditActivas.reduce((s, f) => s + f.saldoPendiente, 0);
 
   // Guardar edición de factura
   const guardarEdicion = async () => {
@@ -7169,8 +7170,9 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
 
   const imprimirTirilla = (cliente, listaFact) => {
     const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
-    const totalCli = listaFact.reduce((s,f) => s + f.monto, 0);
-    const cobradoCli = listaFact.reduce((s,f) => s + ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0))), 0);
+    const listaFactActiva = listaFact.filter(f => f.estado !== "Anulada");
+    const totalCli = listaFactActiva.reduce((s,f) => s + f.monto, 0);
+    const cobradoCli = listaFactActiva.reduce((s,f) => s + ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0))), 0);
     const pagadas = listaFact.filter(f => f.estado === "Pagado").length;
     const filas = listaFact.map(f => {
       const colorBg = {"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2","Anulada":"#f1f5f9"}[f.estado]||"#f1f5f9";
@@ -7451,7 +7453,7 @@ function FacturacionCliente({ usuario }) {
     db.getFacturasByCliente(usuario.id).then(setFacturas).catch(console.error).finally(() => setCargando(false));
   }, []);
 
-  const totalPendiente = facturas.filter(f => f.estado !== "Pagado").reduce((s, f) => s + f.saldoPendiente, 0);
+  const totalPendiente = facturas.filter(f => f.estado !== "Pagado" && f.estado !== "Anulada").reduce((s, f) => s + f.saldoPendiente, 0);
 
   return (
     <div>
