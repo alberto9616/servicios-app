@@ -3512,6 +3512,12 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion 
       <div style={{ background: "#fff", border: "1px solid " + GC.border, borderLeft: `4px solid ${colorEstado[o.estado] || "#94a3b8"}`, borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
         {/* Cabecera — siempre visible */}
         <div style={{ padding: "14px 16px" }}>
+          {/* Zona destacada */}
+          {zona && (
+            <div style={{ display: "inline-block", background: zona.color + "22", color: zona.color, border: "1.5px solid " + zona.color, borderRadius: 8, padding: "3px 14px", fontSize: 13, fontWeight: 800, marginBottom: 8, letterSpacing: 0.3 }}>
+              📍 {zona.nombre.toUpperCase()}
+            </div>
+          )}
           {/* Título + badge sugerencias */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: GC.ink, flex: 1, minWidth: 0 }}>
@@ -3531,7 +3537,7 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion 
 
           {/* Info: fecha, zona, teléfono, dirección, técnicos */}
           <div>
-            <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>📅 {o.fecha} {o.hora}{zona ? ` · ${zona.nombre}` : ""}</div>
+            <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>📅 {o.fecha} {o.hora}</div>
 
             {telPrincipal && (
               <div style={{ fontSize: 12, marginTop: 4, fontWeight: 600 }}>
@@ -3924,13 +3930,18 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
     return (
       <div style={{ background: "#ffffff", border: "1px solid " + (orden.prioridad === "alta" ? "#8b5cf633" : "#e2e8f0"), borderLeft: "4px solid " + ORDEN_COLOR[orden.estado], borderRadius: 12, marginBottom: 10, overflow: "hidden" }}>
         <div onClick={() => setAbierta(!abierta)} style={{ padding: "12px 16px", cursor: "pointer" }}>
+          {zonaOrden && (
+            <div style={{ display: "inline-block", background: zonaOrden.color + "22", color: zonaOrden.color, border: "1.5px solid " + zonaOrden.color, borderRadius: 8, padding: "3px 14px", fontSize: 13, fontWeight: 800, marginBottom: 8, letterSpacing: 0.3 }}>
+              📍 {zonaOrden.nombre.toUpperCase()}
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontWeight: 700, color: GC.ink, flex: 1, fontSize: 14 }}>{orden.tipo}</span>
             {orden.prioridad === "alta" && <Badge text="🏢 Prioridad" color="#8b5cf6" />}
             <Badge text={orden.estado} color={ORDEN_COLOR[orden.estado]} />
           </div>
           <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>
-            👤 {orden.clienteNombre} · 📅 {orden.fecha} {orden.hora}{zonaOrden ? ` · 📍 ${zonaOrden.nombre}` : ""}
+            👤 {orden.clienteNombre} · 📅 {orden.fecha} {orden.hora}
           </div>
           {/* Teléfono del cliente */}
           {orden.telefonoCliente && (
