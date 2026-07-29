@@ -200,7 +200,7 @@ const db = {
   },
   async upsertUsuario(u) {
     const privilegiosBase = u.privilegios || [];
-    const zonasEntries = (u.rol === "admin" || u.rol === "superusuario")
+    const zonasEntries = (u.rol === "admin" || u.rol === "superusuario" || u.rol === "tecnico")
       ? (u.zonasIds || []).map(id => "zona:" + id)
       : [];
     const row = {
@@ -887,6 +887,10 @@ const ZONA_CONTACTO = {
 };
 const normalizarZona = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 const getContactoZona = (nombreZona) => ZONA_CONTACTO[normalizarZona(nombreZona)] || null;
+
+// Devuelve TODAS las zonas asociadas a un usuario (zonaId principal + zonasIds adicionales,
+// útil para técnicos que trabajan en más de una zona), sin duplicados.
+const zonasDeUsuario = (u) => Array.from(new Set([u?.zonaId, ...((u?.zonasIds) || [])].filter(Boolean)));
 
 // ══════════════════════════════════════════════════════════════
 
@@ -2337,7 +2341,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   };
 
   // Solo tecnicos de la misma zona
-  const tecnicos = usuarios.filter(u => u.rol === "tecnico" && u.activo && u.zonaId === usuario.zonaId);
+  const tecnicos = usuarios.filter(u => u.rol === "tecnico" && u.activo && zonasDeUsuario(u).includes(usuario.zonaId));
   // Solo clientes de la misma zona
   const clientes = usuarios.filter(u => u.rol === "cliente" && u.zonaId === usuario.zonaId);
   const clientesFiltrados = clientes.filter(c => {
@@ -3426,8 +3430,9 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion 
   const [subTab, setSubTab] = useState("activas");
   const [filtroFecha, setFiltroFecha] = useState("");
   const [filtroTecnico, setFiltroTecnico] = useState("");
+  const [filtroZona, setFiltroZona] = useState("todas"); // solo aplica para admin/superusuario (sin zona fija)
   const [editOrden, setEditOrden] = useState(null); // orden siendo editada
-  const tecnicos = usuarios.filter(u => u.rol === "tecnico" && u.activo && (!sesion?.zonaId || u.zonaId === sesion.zonaId));
+  const tecnicos = usuarios.filter(u => u.rol === "tecnico" && u.activo && (!sesion?.zonaId || zonasDeUsuario(u).includes(sesion.zonaId)));
 
   const guardarEdicionOrden = async () => {
     if (!editOrden || editOrden.tecnicosIds.length === 0) return;
@@ -3464,8 +3469,9 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion 
   const ordenarPorFecha = arr => [...arr].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "") || (a.hora || "").localeCompare(b.hora || ""));
   const ordenesFiltradas = ordenes.filter(o => {
     // Si sesion tiene zonaId (secretario o técnico), solo ve órdenes de su propia zona.
-    // Admin/superusuario no tienen zonaId fijo de este tipo, así que ven todas.
+    // Admin/superusuario no tienen zonaId fijo de este tipo, así que pueden filtrar libremente por zona.
     if (sesion?.zonaId && o.zonaId !== sesion.zonaId) return false;
+    if (!sesion?.zonaId && filtroZona !== "todas" && o.zonaId !== filtroZona) return false;
     if (filtroFecha && o.fecha !== filtroFecha) return false;
     if (filtroTecnico && o.tecnicoId !== filtroTecnico) return false;
     return true;
@@ -3684,11 +3690,17 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion 
       </div>
       <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <Inp type="date" value={filtroFecha} onChange={e => setFiltroFecha(e.target.value)} style={{ width: "auto" }} />
+        {!sesion?.zonaId && (
+          <Sel value={filtroZona} onChange={e => setFiltroZona(e.target.value)} style={{ width: "auto", minWidth: 140 }}>
+            <option value="todas">Todas las zonas</option>
+            {zonas.filter(z => z.activa).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+          </Sel>
+        )}
         <Sel value={filtroTecnico} onChange={e => setFiltroTecnico(e.target.value)} style={{ width: "auto", minWidth: 140 }}>
           <option value="">Todos los técnicos</option>
           {tecnicos.map(t => <option key={t.id} value={t.id}>{t.nombre}</option>)}
         </Sel>
-        {(filtroFecha || filtroTecnico) && <button onClick={() => { setFiltroFecha(""); setFiltroTecnico(""); }} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 13 }}>✕ Limpiar</button>}
+        {(filtroFecha || filtroTecnico || filtroZona !== "todas") && <button onClick={() => { setFiltroFecha(""); setFiltroTecnico(""); setFiltroZona("todas"); }} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 13 }}>✕ Limpiar</button>}
       </div>
       <div>
         {listaActual.length === 0 ? (
@@ -3783,6 +3795,7 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
   const [modalCobro, setModalCobro] = useState(null);
   const [formCobro, setFormCobro] = useState({ monto: "", metodoPago: "Efectivo", observacion: "" });
   const [guardandoCobro, setGuardandoCobro] = useState(false);
+  const [filtroZonaTec, setFiltroZonaTec] = useState("todas");
   const cargarCobrosHoy = () => {
     db.getCobrosRuta({ tecnicoId: usuario.id, fecha: fechaLocal() }).then(setCobrosHoy).catch(() => {});
   };
@@ -3816,11 +3829,14 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
   };
 
   const zonaT = zonas.find(z => z.id === usuario.zonaId);
+  const misZonasIds = zonasDeUsuario(usuario);
+  const misZonas = zonas.filter(z => misZonasIds.includes(z.id));
   const hoy = fechaLocal();
-  const misOrdenes = ordenes.filter(o =>
+  const misOrdenesTodas = ordenes.filter(o =>
     (Array.isArray(o.tecnicosIds) && o.tecnicosIds.includes(usuario.id))
     || o.tecnicoId === usuario.id
   );
+  const misOrdenes = filtroZonaTec !== "todas" ? misOrdenesTodas.filter(o => o.zonaId === filtroZonaTec) : misOrdenesTodas;
   // "Todas" muestra todas las órdenes asignadas (pasadas, hoy y futuras)
   // "Hoy" solo muestra las de hoy pendientes
   const ordenesHoy = misOrdenes.filter(o => o.fecha === hoy && o.estado !== "Completada" && o.estado !== "Cancelada");
@@ -3877,6 +3893,7 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
     const [sugerencia, setSugerencia] = useState("");
     const esTraslado = orden.tipo === "Traslado / cambio de domicilio";
     const esInstalacion = orden.tipo === "Instalación nueva";
+    const zonaOrden = zonas.find(z => z.id === orden.zonaId);
 
     const agregarNota = async () => {
       if (!nota.trim()) return;
@@ -3913,7 +3930,7 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
             <Badge text={orden.estado} color={ORDEN_COLOR[orden.estado]} />
           </div>
           <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4 }}>
-            👤 {orden.clienteNombre} · 📅 {orden.fecha} {orden.hora}
+            👤 {orden.clienteNombre} · 📅 {orden.fecha} {orden.hora}{zonaOrden ? ` · 📍 ${zonaOrden.nombre}` : ""}
           </div>
           {/* Teléfono del cliente */}
           {orden.telefonoCliente && (
@@ -4024,6 +4041,14 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
           </div>
         );
       })()}
+      {misZonas.length > 1 && (tab === "hoy" || tab === "todas" || tab === "historial") && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+          <button onClick={() => setFiltroZonaTec("todas")} style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid " + (filtroZonaTec === "todas" ? GC.brand : GC.border), background: filtroZonaTec === "todas" ? GC.brand : "#fff", color: filtroZonaTec === "todas" ? "#fff" : GC.ink2, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Todas mis zonas</button>
+          {misZonas.map(z => (
+            <button key={z.id} onClick={() => setFiltroZonaTec(z.id)} style={{ padding: "5px 12px", borderRadius: 20, border: "1px solid " + (filtroZonaTec === z.id ? z.color : GC.border), background: filtroZonaTec === z.id ? z.color : "#fff", color: filtroZonaTec === z.id ? "#fff" : GC.ink2, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>📍 {z.nombre}</button>
+          ))}
+        </div>
+      )}
       {tab === "hoy" && (ordenesHoy.length === 0 ? <div style={{ textAlign: "center", color: GC.ink3, padding: 50 }}>🎉 Sin órdenes para hoy</div> : ordenesHoy.sort((a, b) => (b.prioridad === "alta" ? 1 : 0) - (a.prioridad === "alta" ? 1 : 0)).map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "todas" && (ordenesActivas.length === 0 ? <div style={{ textAlign: "center", color: GC.ink3, padding: 50 }}>Sin órdenes activas</div> : ordenesActivas.map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "historial" && (completadas.length === 0 ? <div style={{ textAlign: "center", color: GC.ink3, padding: 50 }}>Sin órdenes completadas aún</div> : [...completadas].reverse().map(o => <OrdenCard key={o.id} orden={o} />))}
@@ -10194,6 +10219,11 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
         return;
       }
     }
+    // Técnico con varias zonas: la "zona principal" (zonaId, usada en otras partes del sistema
+    // como filtros de secretario/equipo) queda como la primera zona seleccionada en la lista.
+    if (u.rol === "tecnico") {
+      u = { ...u, zonaId: (u.zonasIds && u.zonasIds[0]) || null };
+    }
     try {
       const usuarioAnterior = usuarios.find(x => x.id === u.id);
       const estadoAnterior = usuarioAnterior?.estado;
@@ -10747,7 +10777,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   <Field label="Usuario (login)"><Inp value={editU.usuario} onChange={e => setEditU({ ...editU, usuario: e.target.value })} /></Field>
                   <Field label="Teléfono 2 (opcional)"><Inp value={editU.telefono2 || ""} onChange={e => setEditU({ ...editU, telefono2: e.target.value })} placeholder="Segundo número" /></Field>
                   <Field label="Clave"><Inp type="text" value={editU.clave} onChange={e => setEditU({ ...editU, clave: e.target.value })} /></Field>
-                  {editU.rol === "admin" && (
+                  {(editU.rol === "admin" || editU.rol === "tecnico") && (
                     <Field label="Zonas asignadas (puede seleccionar varias)">
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
                         {zonas.filter(z => z.activa).map(z => {
@@ -10767,7 +10797,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                       </div>
                     </Field>
                   )}
-                  {editU.rol !== "superusuario" && editU.rol !== "admin" && editU.rol !== "dueno" && (
+                  {editU.rol !== "superusuario" && editU.rol !== "admin" && editU.rol !== "dueno" && editU.rol !== "tecnico" && (
                     <Field label="Zona asignada">
                       <Sel value={editU.zonaId || ""} onChange={e => setEditU({ ...editU, zonaId: e.target.value })}>
                         <option value="">— Sin zona —</option>
@@ -10948,8 +10978,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                     <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{u.nombre}</div>
                     <div style={{ fontSize: 12, color: GC.ink3 }}>
                       @{u.usuario}
-                      {u.rol === "admin" && (u.zonasIds || []).length > 0 && (u.zonasIds || []).map(id => { const z = zonas.find(x => x.id === id); return z ? <span key={id} style={{ color: z.color, marginLeft: 6 }}>📍 {z.nombre}</span> : null; })}
-                      {u.rol !== "admin" && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
+                      {(u.rol === "admin" || u.rol === "tecnico") && (u.zonasIds || []).length > 0 && (u.zonasIds || []).map(id => { const z = zonas.find(x => x.id === id); return z ? <span key={id} style={{ color: z.color, marginLeft: 6 }}>📍 {z.nombre}</span> : null; })}
+                      {u.rol !== "admin" && !(u.rol === "tecnico" && (u.zonasIds || []).length > 0) && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
                       {u.telefono && <span style={{ color: GC.info, marginLeft: 6 }}>📞 {u.telefono}</span>}
                       {u.rol === "cliente" && u.direccion && <span style={{ marginLeft: 6 }}>· {u.direccion}</span>}
                     </div>
@@ -10991,8 +11021,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                           <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{u.nombre}</div>
                           <div style={{ fontSize: 12, color: GC.ink3 }}>
                             @{u.usuario}
-                            {u.rol === "admin" && (u.zonasIds || []).length > 0 && (u.zonasIds || []).map(id => { const z = zonas.find(x => x.id === id); return z ? <span key={id} style={{ color: z.color, marginLeft: 6 }}>📍 {z.nombre}</span> : null; })}
-                            {u.rol !== "admin" && u.rol !== "cliente" && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
+                            {(u.rol === "admin" || u.rol === "tecnico") && (u.zonasIds || []).length > 0 && (u.zonasIds || []).map(id => { const z = zonas.find(x => x.id === id); return z ? <span key={id} style={{ color: z.color, marginLeft: 6 }}>📍 {z.nombre}</span> : null; })}
+                            {u.rol !== "admin" && u.rol !== "cliente" && !(u.rol === "tecnico" && (u.zonasIds || []).length > 0) && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
                             {u.telefono && <span style={{ color: GC.info, marginLeft: 6 }}>📞 {u.telefono}</span>}
                           </div>
                           {u.rol === "cliente" && u.direccion && <div style={{ fontSize: 11, color: GC.ink3 }}>📍 {u.direccion}</div>}
