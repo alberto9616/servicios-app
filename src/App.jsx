@@ -56,6 +56,7 @@ const mapUsuario = r => r ? ({
   ip: r.ip || null,
   contratoNum: r.contrato_num || 1,
   telefono2: r.telefono2 || null,
+  encargadoInventario: !!r.encargado_inventario,
 }) : null;
 const mapAviso = r => r ? ({ id: r.id, tipo: r.tipo, titulo: r.titulo, mensaje: r.mensaje, fecha: r.fecha, afecta: r.afecta, activo: r.activo }) : null;
 const mapTicket = (r, mensajes = []) => r ? ({
@@ -221,6 +222,7 @@ const db = {
       ip: u.ip || null,
       contrato_num: u.contratoNum || 1,
       telefono2: u.telefono2 || null,
+      encargado_inventario: !!u.encargadoInventario,
     };
     // Remove undefined id so Supabase generates it automatically
     if (row.id === undefined) delete row.id;
@@ -291,6 +293,47 @@ const db = {
   async actualizarEstadoOrden(id, estado) { const { error } = await sb.from("ordenes").update({ estado }).eq("id", id); if (error) throw error; },
   async actualizarOrden(id, data) { const { error } = await sb.from("ordenes").update(data).eq("id", id); if (error) throw error; },
   async agregarNotaOrden(id, notas) { const { error } = await sb.from("ordenes").update({ notas }).eq("id", id); if (error) throw error; },
+
+  // ══════════ INVENTARIO ══════════
+  async getInventarioItems() {
+    const { data, error } = await sb.from("inventario_items").select("*").eq("activo", true).order("nombre");
+    if (error) throw error;
+    return (data || []).map(r => ({ id: r.id, nombre: r.nombre, activo: r.activo }));
+  },
+  async crearInventarioItem(nombre) {
+    const { data, error } = await sb.from("inventario_items").insert({ nombre }).select().single();
+    if (error) throw error;
+    return { id: data.id, nombre: data.nombre, activo: data.activo };
+  },
+  async getInventarioStock() {
+    const { data, error } = await sb.from("inventario_stock").select("*");
+    if (error) throw error;
+    return (data || []).map(r => ({ itemId: r.item_id, zonaId: r.zona_id, cantidad: r.cantidad }));
+  },
+  async getInventarioMovimientos({ ordenId, itemId, zonaId, limit = 200 } = {}) {
+    let q = sb.from("inventario_movimientos").select("*").order("created_at", { ascending: false }).limit(limit);
+    if (ordenId) q = q.eq("orden_id", ordenId);
+    if (itemId) q = q.eq("item_id", itemId);
+    if (zonaId) q = q.eq("zona_id", zonaId);
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data || []).map(r => ({
+      id: r.id, itemId: r.item_id, zonaId: r.zona_id, cantidad: r.cantidad, tipo: r.tipo,
+      ordenId: r.orden_id, usuarioId: r.usuario_id, usuarioNombre: r.usuario_nombre,
+      nota: r.nota, insuficiente: r.insuficiente, fecha: r.created_at,
+    }));
+  },
+  // Registra un movimiento (positivo = carga/entrada, negativo = salida/uso) de forma atómica,
+  // sin permitir que el stock quede negativo (recorta a lo disponible y avisa "insuficiente").
+  async registrarMovimientoInventario({ itemId, zonaId, cantidad, tipo, ordenId = null, usuarioId = null, usuarioNombre = null, nota = null }) {
+    const { data, error } = await sb.rpc("registrar_movimiento_inventario", {
+      p_item_id: itemId, p_zona_id: zonaId, p_cantidad: cantidad, p_tipo: tipo,
+      p_orden_id: ordenId, p_usuario_id: usuarioId, p_usuario_nombre: usuarioNombre, p_nota: nota,
+    });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    return { cantidadAplicada: row.cantidad_aplicada, stockResultante: row.stock_resultante, insuficiente: row.insuficiente };
+  },
 
   // PROPAGANDA
   async getPropaganda() { const { data, error } = await sb.from("propaganda").select("*").order("created_at"); if (error) throw error; return data.map(mapPropaganda); },
@@ -892,6 +935,24 @@ const getContactoZona = (nombreZona) => ZONA_CONTACTO[normalizarZona(nombreZona)
 // útil para técnicos que trabajan en más de una zona), sin duplicados.
 const zonasDeUsuario = (u) => Array.from(new Set([u?.zonaId, ...((u?.zonasIds) || [])].filter(Boolean)));
 
+// Al crear una orden de "Instalación nueva" se descuenta automáticamente 1 ONU + 2 conectores de
+// fibra del inventario de la zona de esa orden. Todo lo demás se descuenta manualmente desde el
+// módulo de Inventario o desde la propia orden ("Material usado"). No lanza si falla: solo avisa.
+async function descontarMaterialInstalacion(orden, items, usuarioId, usuarioNombre) {
+  if (!orden || orden.tipo !== "Instalación nueva" || !orden.zonaId || !Array.isArray(items) || items.length === 0) return;
+  const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const onu = items.find(i => norm(i.nombre).includes("onu"));
+  const conectorFibra = items.find(i => norm(i.nombre).includes("conector") && norm(i.nombre).includes("fibra"));
+  const tareas = [];
+  if (onu) tareas.push(db.registrarMovimientoInventario({ itemId: onu.id, zonaId: orden.zonaId, cantidad: -1, tipo: "automatico", ordenId: orden.id, usuarioId, usuarioNombre, nota: "Instalación nueva (automático)" }));
+  if (conectorFibra) tareas.push(db.registrarMovimientoInventario({ itemId: conectorFibra.id, zonaId: orden.zonaId, cantidad: -2, tipo: "automatico", ordenId: orden.id, usuarioId, usuarioNombre, nota: "Instalación nueva (automático)" }));
+  try {
+    const resultados = await Promise.all(tareas);
+    const insuf = resultados.filter(r => r?.insuficiente);
+    if (insuf.length > 0) alert("⚠️ Se creó la orden, pero no había suficiente stock de algún material para la instalación (ONU y/o conectores de fibra). Revisa el inventario de la zona.");
+  } catch (e) { console.error("Error descontando material de instalación:", e); }
+}
+
 // ══════════════════════════════════════════════════════════════
 
 // PLANES (creados por admin, asignados por secretario)
@@ -1402,6 +1463,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "propaganda",  icon: "🎁", label: "Promociones" },
       { key: "facturacion", icon: "🧾", label: "Facturación y Caja" },
       { key: "equipo",      icon: "👷", label: "Equipo de trabajo" },
+      { key: "inventario",  icon: "📦", label: "Inventario" },
       { key: "resumen",     icon: "📊", label: "Resumen" },
       { key: "micuenta",    icon: "🔐", label: "Mi cuenta" },
     ],
@@ -1419,6 +1481,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "propaganda",   icon: "🎁", label: "Promociones" },
       { key: "facturacion",  icon: "🧾", label: "Facturación y Caja" },
       { key: "equipo",       icon: "👷", label: "Equipo de trabajo" },
+      { key: "inventario",   icon: "📦", label: "Inventario" },
       { key: "resumen",      icon: "📊", label: "Resumen" },
       { key: "micuenta",     icon: "🔐", label: "Mi cuenta" },
     ],
@@ -1429,6 +1492,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "facturacion",     icon: "🧾", label: "Cobros" },
       { key: "equipos_morosos", icon: "📦", label: "Equipos morosos" },
       { key: "equipo",          icon: "👷", label: "Equipo de trabajo" },
+      { key: "inventario",      icon: "📦", label: "Inventario" },
       { key: "avisos",          icon: "📢", label: "Avisos" },
       { key: "promo",           icon: "🎁", label: "Promos" },
     ],
@@ -1438,6 +1502,7 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "historial", icon: "✅", label: "Historial" },
       ...(sesion.privilegios?.includes("ver_pagos") ? [{ key: "pagos", icon: "💰", label: "Pagos" }] : []),
       { key: "equipo",    icon: "👷", label: "Equipo de trabajo" },
+      { key: "inventario", icon: "📦", label: "Inventario" },
     ],
   };
 
@@ -2200,7 +2265,7 @@ function ClienteAcciones({ c, wisproLoading, setWisproLoading, setUsuarios, setE
   );
 }
 
-function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, usuarios, setUsuarios, avisos, setAvisos, planes, perfilesPago = [], zonas, propaganda, tabExterno, setTabExterno }) {
+function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, usuarios, setUsuarios, avisos, setAvisos, planes, perfilesPago = [], zonas, propaganda, tabExterno, setTabExterno, inventarioItems, setInventarioItems, inventarioStock, setInventarioStock }) {
   const [tabLocal, setTabLocal] = useState("tickets"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const [ticketAbierto, setTicketAbierto] = useState(null);
   const [confirmElimSecretario, setConfirmElimSecretario] = useState(null);
@@ -2396,6 +2461,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
     };
     try {
       const orden = await db.crearOrden(ordenData);
+      descontarMaterialInstalacion(orden, inventarioItems, usuario.id, usuario.nombre);
       setOrdenes(p => [...p, orden]);
       await db.actualizarEstadoTicket(modalOrden.id, "En proceso");
       await db.actualizarOrdenIdTicket(modalOrden.id, orden.id);
@@ -2578,6 +2644,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
     try {
       const guardada = await db.crearOrden(orden);
       setOrdenes(p => [...p, guardada]);
+      descontarMaterialInstalacion(guardada, inventarioItems, usuario.id, usuario.nombre);
       setShowModalOrdenManual(false);
       setOrdenManual({ tipo: "Revisión / diagnóstico", descripcion: "", tecnicosIds: [], fecha: fechaLocal(), hora: "08:00", otro: "", clienteExistente: "", esInstalacionNueva: false, nuevoNombre: "", nuevaCedula: "", nuevoTelefono: "", nuevaDireccion: "", nuevoCorreo: "", nuevoUsuario: "", nuevaClave: "", nuevoServicio: "Internet", nuevoPlan: "", nuevoPlanId: "", nuevoMonto: "", nuevoEstado: "Al día", nuevoClaveWifi: "", nuevoTipo: "final", nuevoPerfilPagoId: "", nuevoFechaPrimeraFactura: "", _busqExistente: "", _clienteExistenteDetectado: null, _numContratos: 0, _agregarContrato: false, _reconNombre: "", _reconTelefono: "", _reconDireccion: "", _reconIp: "", _reconClaveWifi: "", _reconServicio: "" });
     } catch (err) { console.error("Error creando orden manual:", err); }
@@ -2689,7 +2756,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
             <Btn onClick={() => setShowModalOrdenManual(true)} style={{ fontSize: 13 }}>➕ Generar orden</Btn>
           </div>
-          <TabOrdenes ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} sesion={usuario} />
+          <TabOrdenes ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} sesion={usuario} inventarioItems={inventarioItems} />
         </div>
       )}
 
@@ -3314,6 +3381,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
         </div>
       )}
       {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} zonaId={usuario.zonaId} />}
+      {tab === "inventario" && <SeccionInventario usuario={usuario} zonas={zonas} items={inventarioItems} setItems={setInventarioItems} stock={inventarioStock} setStock={setInventarioStock} />}
       {tab === "equipos_morosos" && <SeccionEquiposMorosos usuarios={usuarios} ordenes={ordenes} setOrdenes={setOrdenes} tecnicos={tecnicos} secretarioId={usuario.id} zonaId={usuario.zonaId} />}
       {confirmElimSecretario && <ModalConfirm titulo={confirmElimSecretario.titulo} mensaje={confirmElimSecretario.mensaje} onCancel={() => setConfirmElimSecretario(null)} onConfirm={() => { confirmElimSecretario.accion(); setConfirmElimSecretario(null); }} />}
       {modalOrdenServicio && (
@@ -3424,7 +3492,7 @@ function ClienteBuscador({ clientes, value, onChange, error, placeholder = "🔍
   );
 }
 
-function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion }) {
+function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion, inventarioItems }) {
   const hoy = fechaLocal();
   const manana = fechaLocal(new Date(Date.now() + 86400000));
   const [subTab, setSubTab] = useState("activas");
@@ -3575,6 +3643,8 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion 
 
             {o.descripcion && <div style={{ fontSize: 12, color: GC.ink3, marginTop: 4, fontStyle: "italic" }}>{o.descripcion}</div>}
           </div>
+
+          <MaterialUsadoOrden orden={o} items={inventarioItems || []} usuarioId={sesion?.id} usuarioNombre={sesion?.nombre} />
 
           {/* Controles en fila compacta — debajo de la info */}
           <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -3791,7 +3861,7 @@ function TabOrdenes({ ordenes, setOrdenes, usuarios, setUsuarios, zonas, sesion 
   );
 }
 
-function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zonas, usuarios, setUsuarios, tabExterno, setTabExterno }) {
+function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zonas, usuarios, setUsuarios, tabExterno, setTabExterno, inventarioItems, setInventarioItems, inventarioStock, setInventarioStock }) {
   const [tabLocal, setTabLocal] = useState("hoy"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const puedeVerPagos = usuario.privilegios?.includes("ver_pagos");
   const [facturasPagos, setFacturasPagos] = useState([]);
@@ -3995,6 +4065,7 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
                 ))}
               </div>
             )}
+            <MaterialUsadoOrden orden={orden} items={inventarioItems} usuarioId={usuario.id} usuarioNombre={usuario.nombre} />
             {orden.estado !== "Completada" && (
               <>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -4064,6 +4135,7 @@ function PortalTecnico({ usuario, ordenes, setOrdenes, tickets, setTickets, zona
       {tab === "todas" && (ordenesActivas.length === 0 ? <div style={{ textAlign: "center", color: GC.ink3, padding: 50 }}>Sin órdenes activas</div> : ordenesActivas.map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "historial" && (completadas.length === 0 ? <div style={{ textAlign: "center", color: GC.ink3, padding: 50 }}>Sin órdenes completadas aún</div> : [...completadas].reverse().map(o => <OrdenCard key={o.id} orden={o} />))}
       {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} rolFiltro={["admin","secretario","tecnico"]} zonaId={usuario.zonaId} />}
+      {tab === "inventario" && <SeccionInventario usuario={usuario} zonas={zonas} items={inventarioItems} setItems={setInventarioItems} stock={inventarioStock} setStock={setInventarioStock} />}
       {tab === "pagos" && puedeVerPagos && (() => {
         const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444", "Anulada": "#94a3b8" };
         const COLOR_COBRO = { "Pendiente": "#f59e0b", "Aprobado": "#22c55e", "Rechazado": "#ef4444" };
@@ -7538,6 +7610,269 @@ function FacturacionCliente({ usuario }) {
 // ══════════════════════════════════════════════════════════════
 // SECCIÓN EQUIPO DE TRABAJO
 // ══════════════════════════════════════════════════════════════
+function SeccionInventario({ usuario, zonas, items, setItems, stock, setStock }) {
+  const [zonaSel, setZonaSel] = useState("todas");
+  const [nuevoItem, setNuevoItem] = useState("");
+  const [mostrarNuevoItem, setMostrarNuevoItem] = useState(false);
+  const [editando, setEditando] = useState(null); // { itemId, zonaId }
+  const [deltaInput, setDeltaInput] = useState("");
+  const [notaInput, setNotaInput] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [verHistorial, setVerHistorial] = useState(false);
+  const [historial, setHistorial] = useState([]);
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
+
+  const esAdmin = usuario.rol === "admin" || usuario.rol === "superusuario" || usuario.rol === "dueno";
+  const misZonasIds = esAdmin ? zonas.filter(z => z.activa).map(z => z.id) : zonasDeUsuario(usuario);
+  const zonasVisibles = zonas.filter(z => z.activa && misZonasIds.includes(z.id));
+
+  const puedeEditarZona = (zonaId) => {
+    if (esAdmin) return true;
+    if (usuario.rol === "secretario") return zonaId === usuario.zonaId;
+    if (usuario.rol === "tecnico") return usuario.encargadoInventario && zonasDeUsuario(usuario).includes(zonaId);
+    return false;
+  };
+
+  const getCantidad = (itemId, zonaId) => stock.find(s => s.itemId === itemId && s.zonaId === zonaId)?.cantidad ?? 0;
+
+  const abrirEdicion = (itemId, zonaId) => { setEditando({ itemId, zonaId }); setDeltaInput(""); setNotaInput(""); };
+
+  const registrar = async (signo) => {
+    const n = parseInt(deltaInput, 10);
+    if (!n || n <= 0) { alert("Ingresa una cantidad válida mayor a 0."); return; }
+    setGuardando(true);
+    try {
+      const res = await db.registrarMovimientoInventario({
+        itemId: editando.itemId, zonaId: editando.zonaId, cantidad: signo * n,
+        tipo: "ajuste", usuarioId: usuario.id, usuarioNombre: usuario.nombre, nota: notaInput || null,
+      });
+      setStock(prev => {
+        const existe = prev.find(s => s.itemId === editando.itemId && s.zonaId === editando.zonaId);
+        return existe
+          ? prev.map(s => s.itemId === editando.itemId && s.zonaId === editando.zonaId ? { ...s, cantidad: res.stockResultante } : s)
+          : [...prev, { itemId: editando.itemId, zonaId: editando.zonaId, cantidad: res.stockResultante }];
+      });
+      if (res.insuficiente) alert(`⚠️ No había suficiente stock: solo se descontaron ${Math.abs(res.cantidadAplicada)} unidades (quedó en 0).`);
+      setEditando(null);
+    } catch (e) { alert("Error registrando movimiento: " + e.message); }
+    setGuardando(false);
+  };
+
+  const crearItem = async () => {
+    const nombre = nuevoItem.trim();
+    if (!nombre) return;
+    if (items.some(i => i.nombre.toLowerCase() === nombre.toLowerCase())) { alert("Ya existe un ítem con ese nombre."); return; }
+    try {
+      const creado = await db.crearInventarioItem(nombre);
+      setItems(prev => [...prev, creado].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      setNuevoItem(""); setMostrarNuevoItem(false);
+    } catch (e) { alert("Error creando ítem: " + e.message); }
+  };
+
+  const cargarHistorial = async () => {
+    setCargandoHistorial(true);
+    try {
+      const filtroZona = zonaSel !== "todas" ? zonaSel : (esAdmin ? undefined : misZonasIds[0]);
+      const h = await db.getInventarioMovimientos({ zonaId: filtroZona, limit: 150 });
+      setHistorial(h);
+    } catch (e) { console.error(e); }
+    setCargandoHistorial(false);
+  };
+
+  useEffect(() => { if (verHistorial) cargarHistorial(); }, [verHistorial, zonaSel]);
+
+  const zonasColumnas = zonaSel === "todas" ? zonasVisibles : zonasVisibles.filter(z => z.id === zonaSel);
+
+  return (
+    <div style={{ padding: "0 4px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 8 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 800, margin: 0 }}>📦 Inventario</h2>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {zonasVisibles.length > 1 && (
+            <Sel value={zonaSel} onChange={e => setZonaSel(e.target.value)} style={{ width: "auto", minWidth: 140 }}>
+              <option value="todas">Todas mis zonas</option>
+              {zonasVisibles.map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+            </Sel>
+          )}
+          <button onClick={() => setVerHistorial(v => !v)} style={{ background: verHistorial ? GC.brand : GC.bg3, color: verHistorial ? "#fff" : GC.ink2, border: "none", borderRadius: 8, padding: "6px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+            🕘 Historial
+          </button>
+          {esAdmin && (
+            <button onClick={() => setMostrarNuevoItem(v => !v)} style={{ background: GC.brand, color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+              + Nuevo ítem
+            </button>
+          )}
+        </div>
+      </div>
+
+      {mostrarNuevoItem && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <Inp value={nuevoItem} onChange={e => setNuevoItem(e.target.value)} placeholder="Nombre del nuevo ítem (ej. Splitters)" style={{ flex: 1 }} />
+          <Btn onClick={crearItem}>Crear</Btn>
+        </div>
+      )}
+
+      {!verHistorial ? (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: "8px 10px", borderBottom: "2px solid " + GC.border, fontWeight: 700, color: GC.ink2 }}>Ítem</th>
+                {zonasColumnas.map(z => (
+                  <th key={z.id} style={{ textAlign: "center", padding: "8px 10px", borderBottom: "2px solid " + GC.border, color: z.color, fontWeight: 800 }}>{z.nombre}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(item => (
+                <tr key={item.id} style={{ borderBottom: "1px solid " + GC.border }}>
+                  <td style={{ padding: "8px 10px", fontWeight: 600 }}>{item.nombre}</td>
+                  {zonasColumnas.map(z => {
+                    const cant = getCantidad(item.id, z.id);
+                    const editable = puedeEditarZona(z.id);
+                    const abierto = editando?.itemId === item.id && editando?.zonaId === z.id;
+                    return (
+                      <td key={z.id} style={{ padding: "8px 10px", textAlign: "center" }}>
+                        {abierto ? (
+                          <div style={{ display: "inline-flex", flexDirection: "column", gap: 6, alignItems: "center", background: GC.bg3, padding: 10, borderRadius: 10 }}>
+                            <input type="number" min="1" value={deltaInput} onChange={e => setDeltaInput(e.target.value)} placeholder="Cantidad" style={{ width: 90, padding: 6, borderRadius: 6, border: "1px solid " + GC.border, textAlign: "center" }} />
+                            <input value={notaInput} onChange={e => setNotaInput(e.target.value)} placeholder="Motivo (opcional)" style={{ width: 140, padding: 6, borderRadius: 6, border: "1px solid " + GC.border, fontSize: 12 }} />
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button disabled={guardando} onClick={() => registrar(1)} style={{ background: "#16a34a", color: "#fff", border: "none", borderRadius: 6, padding: "5px 10px", fontWeight: 700, cursor: "pointer" }}>+ Entrada</button>
+                              <button disabled={guardando} onClick={() => registrar(-1)} style={{ background: "#dc2626", color: "#fff", border: "none", borderRadius: 6, padding: "5px 10px", fontWeight: 700, cursor: "pointer" }}>− Salida</button>
+                            </div>
+                            <button onClick={() => setEditando(null)} style={{ background: "none", border: "none", color: GC.ink3, fontSize: 12, cursor: "pointer" }}>Cancelar</button>
+                          </div>
+                        ) : (
+                          <span
+                            onClick={() => editable && abrirEdicion(item.id, z.id)}
+                            style={{
+                              display: "inline-block", minWidth: 36, padding: "4px 10px", borderRadius: 8,
+                              fontWeight: 800, cursor: editable ? "pointer" : "default",
+                              background: cant === 0 ? "#fee2e2" : (cant < 5 ? "#fef3c7" : "#dcfce7"),
+                              color: cant === 0 ? "#991b1b" : (cant < 5 ? "#92400e" : "#166534"),
+                            }}
+                          >
+                            {cant}
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!esAdmin && !zonasVisibles.some(z => puedeEditarZona(z.id)) && (
+            <div style={{ marginTop: 12, fontSize: 12, color: GC.ink3 }}>Solo puedes ver el inventario. Para cargarlo o descontarlo, contacta al encargado de bodega de tu zona.</div>
+          )}
+        </div>
+      ) : (
+        <div>
+          {cargandoHistorial ? <div style={{ textAlign: "center", padding: 30, color: GC.ink3 }}>Cargando...</div> : (
+            historial.length === 0 ? <div style={{ textAlign: "center", padding: 30, color: GC.ink3 }}>Sin movimientos registrados.</div> : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {historial.map(m => {
+                  const item = items.find(i => i.id === m.itemId);
+                  const zona = zonas.find(z => z.id === m.zonaId);
+                  const esSalida = m.cantidad < 0;
+                  return (
+                    <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderRadius: 8, background: GC.bg3, fontSize: 13 }}>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{item?.nombre || "Ítem"} {zona ? <span style={{ color: zona.color }}>· {zona.nombre}</span> : ""}</div>
+                        <div style={{ fontSize: 11, color: GC.ink3 }}>
+                          {m.tipo === "automatico" ? "🤖 Automático (orden instalación)" : m.tipo === "orden" ? "🔧 Material usado en orden" : m.tipo === "carga" ? "📥 Carga manual" : "✏️ Ajuste manual"}
+                          {m.usuarioNombre ? ` · ${m.usuarioNombre}` : ""}
+                          {m.nota ? ` · ${m.nota}` : ""}
+                          {" · " + new Date(m.fecha).toLocaleString("es-CO")}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {m.insuficiente && <span title="No había suficiente stock" style={{ fontSize: 14 }}>⚠️</span>}
+                        <span style={{ fontWeight: 800, fontSize: 15, color: esSalida ? "#dc2626" : "#16a34a" }}>{esSalida ? m.cantidad : "+" + m.cantidad}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MaterialUsadoOrden({ orden, items, usuarioId, usuarioNombre }) {
+  const [movs, setMovs] = useState([]);
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [itemSel, setItemSel] = useState("");
+  const [cantidad, setCantidad] = useState("");
+  const [nota, setNota] = useState("");
+  const [guardando, setGuardando] = useState(false);
+
+  const cargar = async () => {
+    try { setMovs(await db.getInventarioMovimientos({ ordenId: orden.id })); }
+    catch (e) { console.error("Error cargando material de la orden:", e); }
+  };
+  useEffect(() => { cargar(); }, [orden.id]);
+
+  const registrar = async () => {
+    const n = parseInt(cantidad, 10);
+    if (!itemSel || !n || n <= 0) { alert("Selecciona un ítem y una cantidad válida."); return; }
+    if (!orden.zonaId) { alert("Esta orden no tiene zona asignada, no se puede registrar material."); return; }
+    setGuardando(true);
+    try {
+      const res = await db.registrarMovimientoInventario({
+        itemId: itemSel, zonaId: orden.zonaId, cantidad: -n, tipo: "orden",
+        ordenId: orden.id, usuarioId, usuarioNombre, nota: nota || null,
+      });
+      if (res.insuficiente) alert(`⚠️ No había suficiente stock: solo se descontaron ${Math.abs(res.cantidadAplicada)} unidades (quedó en 0).`);
+      setItemSel(""); setCantidad(""); setNota(""); setMostrarForm(false);
+      await cargar();
+    } catch (e) { alert("Error registrando material: " + e.message); }
+    setGuardando(false);
+  };
+
+  const usados = movs.filter(m => m.cantidad < 0);
+  const totalUsado = usados.reduce((s, m) => s + Math.abs(m.cantidad), 0);
+
+  return (
+    <div style={{ marginTop: 10, borderTop: "1px dashed #cbd5e1", paddingTop: 10 }} onClick={e => e.stopPropagation()}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>
+          🔧 Material usado {totalUsado > 0 ? `(${totalUsado} unid.)` : "· ninguno registrado"}
+        </div>
+        <button onClick={() => setMostrarForm(v => !v)} style={{ fontSize: 12, background: "none", border: "none", color: GC.brand, fontWeight: 700, cursor: "pointer" }}>{mostrarForm ? "Cancelar" : "+ Registrar"}</button>
+      </div>
+      {usados.length > 0 && (
+        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
+          {usados.map(m => {
+            const it = items.find(i => i.id === m.itemId);
+            return (
+              <div key={m.id} style={{ fontSize: 12, color: GC.ink2 }}>
+                • {it?.nombre || "Ítem"}: <b>{Math.abs(m.cantidad)}</b>{m.tipo === "automatico" ? " (automático)" : ""}{m.nota ? ` — ${m.nota}` : ""}
+                {m.insuficiente && <span style={{ color: "#dc2626" }}> ⚠️ stock insuficiente</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {mostrarForm && (
+        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+          <Sel value={itemSel} onChange={e => setItemSel(e.target.value)} style={{ minWidth: 140 }}>
+            <option value="">Ítem...</option>
+            {items.map(i => <option key={i.id} value={i.id}>{i.nombre}</option>)}
+          </Sel>
+          <input type="number" min="1" value={cantidad} onChange={e => setCantidad(e.target.value)} placeholder="Cant." style={{ width: 70, padding: 6, borderRadius: 6, border: "1px solid " + GC.border }} />
+          <input value={nota} onChange={e => setNota(e.target.value)} placeholder="Nota (opcional)" style={{ flex: 1, minWidth: 100, padding: 6, borderRadius: 6, border: "1px solid " + GC.border }} />
+          <button disabled={guardando} onClick={registrar} style={{ background: GC.brand, color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", fontWeight: 700, cursor: "pointer" }}>Guardar</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SeccionEquipoTrabajo({ usuarios, zonas, zonaId }) {
   const ROL_BG = { admin: GC.brand, secretario: GC.purple, tecnico: GC.warning };
   const ROL_ICON = { admin: "🛡️", secretario: "🗂️", tecnico: "🔧" };
@@ -8335,7 +8670,7 @@ function TabPerfiles({ perfilesPago, setPerfilesPago, usuarios }) {
 // ══════════════════════════════════════════════════════════════
 // TAB TICKETS PARA ADMIN — ve todos los tickets de todas las zonas
 // ══════════════════════════════════════════════════════════════
-function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, sesion, zonas, planes, perfilesPago }) {
+function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, sesion, zonas, planes, perfilesPago, inventarioItems }) {
   const [ticketAbierto, setTicketAbierto] = useState(null);
   const [busqTicket, setBusqTicket] = useState("");
   const [modalOrden, setModalOrden] = useState(null);
@@ -8377,6 +8712,7 @@ function TabTicketsAdmin({ tickets, setTickets, usuarios, ordenes, setOrdenes, s
     };
     try {
       const orden = await db.crearOrden(ordenData);
+      descontarMaterialInstalacion(orden, inventarioItems, sesion.id, sesion.nombre);
       setOrdenes(p => [...p, orden]);
       await db.actualizarEstadoTicket(modalOrden.id, "En proceso");
       await db.actualizarOrdenIdTicket(modalOrden.id, orden.id);
@@ -10169,7 +10505,7 @@ function exportarMorosos(facturasHistoricas, facturasMes, usuarios, zonas, anioA
   return rows.length;
 }
 
-function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion, tabExterno, setTabExterno }) {
+function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion, tabExterno, setTabExterno, inventarioItems, setInventarioItems, inventarioStock, setInventarioStock }) {
   const [tabLocal, setTabLocal] = useState("usuarios"); const tab = tabExterno || tabLocal; const setTab = (v) => { setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const [editU, setEditU] = useState(null);
   const [editA, setEditA] = useState(null);
@@ -10422,12 +10758,13 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
           tickets={tickets} setTickets={setTickets}
           usuarios={usuarios} ordenes={ordenes} setOrdenes={setOrdenes}
           sesion={sesion} zonas={zonas} planes={planes} perfilesPago={perfilesPago}
+          inventarioItems={inventarioItems}
         />
       )}
 
       {/* ── TAB ÓRDENES (admin ve todas) ── */}
       {tab === "ordenes" && (
-        <TabOrdenes ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} sesion={sesion} />
+        <TabOrdenes ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} sesion={sesion} inventarioItems={inventarioItems} />
       )}
 
       {/* ── TAB SUPERUSUARIO (solo visible para superusuario) ── */}
@@ -10487,6 +10824,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
       )}
 
       {tab === "equipo" && <SeccionEquipoTrabajo usuarios={usuarios} zonas={zonas} zonaId={null} />}
+      {tab === "inventario" && <SeccionInventario usuario={sesion} zonas={zonas} items={inventarioItems} setItems={setInventarioItems} stock={inventarioStock} setStock={setInventarioStock} />}
 
       {/* ── TAB MI CUENTA ── */}
       {tab === "metodos_pago" && (
@@ -10806,6 +11144,14 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                         })}
                         {(editU.zonasIds || []).length === 0 && <div style={{ fontSize: 11, color: "#94a3b8" }}>Sin zonas asignadas</div>}
                       </div>
+                    </Field>
+                  )}
+                  {editU.rol === "tecnico" && (
+                    <Field label="Inventario">
+                      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "8px 10px", borderRadius: 8, border: "1px solid " + (editU.encargadoInventario ? "#16a34a" : "#e2e8f0"), background: editU.encargadoInventario ? "#16a34a15" : "#fff" }}>
+                        <input type="checkbox" checked={!!editU.encargadoInventario} onChange={e => setEditU({ ...editU, encargadoInventario: e.target.checked })} style={{ accentColor: "#16a34a", width: 16, height: 16 }} />
+                        <span style={{ fontSize: 13, fontWeight: editU.encargadoInventario ? 700 : 400 }}>📦 Encargado de bodega/inventario (puede cargar y descontar material en sus zonas)</span>
+                      </label>
                     </Field>
                   )}
                   {editU.rol !== "superusuario" && editU.rol !== "admin" && editU.rol !== "dueno" && editU.rol !== "tecnico" && (
@@ -11559,6 +11905,8 @@ export default function App() {
   const [perfilesPago, setPerfilesPago] = useState([]);
   const [zonas, setZonas] = useState([]);
   const [propaganda, setPropaganda] = useState([]);
+  const [inventarioItems, setInventarioItems] = useState([]);
+  const [inventarioStock, setInventarioStock] = useState([]);
   const [sesion, setSesionRaw] = useState(null);
   const [loginUser, setLoginUser] = useState(() => {
     try { return localStorage.getItem("gc_remember_user") || ""; } catch { return ""; }
@@ -11596,12 +11944,24 @@ export default function App() {
     const cargar = async () => {
       try {
         setCargando(true);
-        const [z, pl, perf, u, a, t, o, pr] = await Promise.all([
+        const [z, pl, perf, u, a, t, o, pr, invItems, invStock] = await Promise.all([
           db.getZonas(), db.getPlanes(), db.getPerfilesPago(), db.getUsuarios(),
-          db.getAvisos(), db.getTickets(), db.getOrdenes(), db.getPropaganda()
+          db.getAvisos(), db.getTickets(), db.getOrdenes(), db.getPropaganda(),
+          db.getInventarioItems(), db.getInventarioStock(),
         ]);
         setZonas(z); setPlanes(pl); setPerfilesPago(perf); setUsuarios(u);
         setAvisos(a); setTickets(t); setOrdenes(o); setPropaganda(pr);
+        // Si todavía no hay ítems de inventario creados, sembrar los básicos una sola vez.
+        if (invItems.length === 0) {
+          const nombresBase = ["ONUs", "Conectores coaxial", "Conectores de fibra", "Rollos de fibra", "Rollos de coaxial", "Bolsas de grapas", "Paquetes de amarras"];
+          try {
+            const creados = await Promise.all(nombresBase.map(n => db.crearInventarioItem(n)));
+            setInventarioItems(creados);
+            setInventarioStock([]); // el stock se crea on-demand (0) al mostrarse cada celda
+          } catch (e) { console.error("Error sembrando inventario inicial:", e); setInventarioItems(invItems); setInventarioStock(invStock); }
+        } else {
+          setInventarioItems(invItems); setInventarioStock(invStock);
+        }
         // Restaurar sesión guardada al recargar la página
         try {
           const savedId = localStorage.getItem("gc_sesion_id");
@@ -11838,16 +12198,16 @@ export default function App() {
         <PortalCliente usuario={sesion} tickets={tickets} setTickets={setTickets} avisos={avisos} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} propaganda={propaganda} perfilesPago={perfilesPago} />
       )}
       {sesion && sesion.rol === "secretario" && (
-        <PortalSecretario usuario={sesion} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} planes={planes} perfilesPago={perfilesPago} zonas={zonas} propaganda={propaganda} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
+        <PortalSecretario usuario={sesion} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} planes={planes} perfilesPago={perfilesPago} zonas={zonas} propaganda={propaganda} inventarioItems={inventarioItems} setInventarioItems={setInventarioItems} inventarioStock={inventarioStock} setInventarioStock={setInventarioStock} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
       {sesion && sesion.rol === "tecnico" && (
-        <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} setUsuarios={setUsuarios} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
+        <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} setUsuarios={setUsuarios} inventarioItems={inventarioItems} setInventarioItems={setInventarioItems} inventarioStock={inventarioStock} setInventarioStock={setInventarioStock} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
       {sesion && sesion.rol === "dueno" && (
         <PortalDueno zonas={zonas} />
       )}
       {sesion && (sesion.rol === "admin" || sesion.rol === "superusuario") && (
-        <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
+        <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} inventarioItems={inventarioItems} setInventarioItems={setInventarioItems} inventarioStock={inventarioStock} setInventarioStock={setInventarioStock} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
     </div>
   );
