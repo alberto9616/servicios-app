@@ -7828,7 +7828,7 @@ function MaterialUsadoOrden({ orden, items, usuarioId, usuarioNombre }) {
         ordenId: orden.id, usuarioId, usuarioNombre, nota: nota || null,
       });
       if (res.insuficiente) alert(`⚠️ No había suficiente stock: solo se descontaron ${Math.abs(res.cantidadAplicada)} unidades (quedó en 0).`);
-      setItemSel(""); setCantidad(""); setNota(""); setMostrarForm(false);
+      setItemSel(""); setCantidad(""); setNota(""); // deja el formulario abierto para seguir agregando más ítems
       await cargar();
     } catch (e) { alert("Error registrando material: " + e.message); }
     setGuardando(false);
@@ -7843,7 +7843,7 @@ function MaterialUsadoOrden({ orden, items, usuarioId, usuarioNombre }) {
         <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>
           🔧 Material usado {totalUsado > 0 ? `(${totalUsado} unid.)` : "· ninguno registrado"}
         </div>
-        <button onClick={() => setMostrarForm(v => !v)} style={{ fontSize: 12, background: "none", border: "none", color: GC.brand, fontWeight: 700, cursor: "pointer" }}>{mostrarForm ? "Cancelar" : "+ Registrar"}</button>
+        <button onClick={() => setMostrarForm(v => !v)} style={{ fontSize: 12, background: "none", border: "none", color: GC.brand, fontWeight: 700, cursor: "pointer" }}>{mostrarForm ? "Ocultar" : "+ Registrar"}</button>
       </div>
       {usados.length > 0 && (
         <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 2 }}>
@@ -7859,14 +7859,16 @@ function MaterialUsadoOrden({ orden, items, usuarioId, usuarioNombre }) {
         </div>
       )}
       {mostrarForm && (
-        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
           <Sel value={itemSel} onChange={e => setItemSel(e.target.value)} style={{ minWidth: 140 }}>
             <option value="">Ítem...</option>
             {items.map(i => <option key={i.id} value={i.id}>{i.nombre}</option>)}
           </Sel>
           <input type="number" min="1" value={cantidad} onChange={e => setCantidad(e.target.value)} placeholder="Cant." style={{ width: 70, padding: 6, borderRadius: 6, border: "1px solid " + GC.border }} />
           <input value={nota} onChange={e => setNota(e.target.value)} placeholder="Nota (opcional)" style={{ flex: 1, minWidth: 100, padding: 6, borderRadius: 6, border: "1px solid " + GC.border }} />
-          <button disabled={guardando} onClick={registrar} style={{ background: GC.brand, color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", fontWeight: 700, cursor: "pointer" }}>Guardar</button>
+          <button disabled={guardando} onClick={registrar} style={{ background: GC.brand, color: "#fff", border: "none", borderRadius: 6, padding: "6px 12px", fontWeight: 700, cursor: "pointer" }}>+ Agregar</button>
+          <button onClick={() => setMostrarForm(false)} style={{ background: "none", border: "1px solid " + GC.border, borderRadius: 6, padding: "6px 12px", fontWeight: 600, cursor: "pointer", color: GC.ink2 }}>Listo</button>
+          <div style={{ width: "100%", fontSize: 11, color: GC.ink3 }}>Puedes seguir agregando varios ítems, uno por uno, sin cerrar este formulario.</div>
         </div>
       )}
     </div>
