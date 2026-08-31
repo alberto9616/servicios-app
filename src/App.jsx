@@ -37,7 +37,15 @@ const fechaLocal = (d = new Date()) => {
 // ──────────────────────────────────────────────────────────
 // HELPERS: convierten snake_case (BD) ↔ camelCase (app)
 // ──────────────────────────────────────────────────────────
-const mapZona = r => r ? ({ id: r.id, nombre: r.nombre, color: r.color, activa: r.activa, nombreEmpresa: r.nombre_empresa, wisproActivo: r.wispro_activo !== false, saldoBase: Number(r.saldo_base || 0) }) : null;
+const mapZona = r => r ? ({ id: r.id, nombre: r.nombre, color: r.color, activa: r.activa, nombreEmpresa: r.nombre_empresa, wisproActivo: r.wispro_activo !== false, saldoBase: Number(r.saldo_base || 0), equipoCuotasActivo: !!r.equipo_cuotas_activo }) : null;
+const mapPlanEquipo = r => r ? ({
+  id: r.id, clienteId: r.cliente_id, clienteNombre: r.cliente_nombre, zonaId: r.zona_id,
+  descripcion: r.descripcion, precioTotal: Number(r.precio_total || 0),
+  numCuotas: r.num_cuotas, montoCuota: Number(r.monto_cuota || 0),
+  mesInicio: r.mes_inicio, anioInicio: r.anio_inicio,
+  aplazamientoUsado: !!r.aplazamiento_usado, estado: r.estado || "activo",
+  creadoPor: r.creado_por || null, creadoEn: r.created_at,
+}) : null;
 const mapPlan = r => r ? ({ id: r.id, nombre: r.nombre, precio: r.precio, descripcion: r.descripcion, activo: r.activo, zonaId: r.zona_id || null }) : null;
 const mapPerfilPago = r => r ? ({ id: r.id, nombre: r.nombre, diaInicio: r.dia_inicio, diaFin: r.dia_fin, diaCorte: r.dia_corte || 20, descripcion: r.descripcion || "", activo: r.activo }) : null;
 const mapUsuario = r => r ? ({
@@ -94,6 +102,10 @@ const mapFactura = r => r ? ({
   numeroRecibo: r.numero_recibo,
   descuento_pronto_pago: r.descuento_pronto_pago ? Number(r.descuento_pronto_pago) : 0,
   pronto_pago_aplicado: r.pronto_pago_aplicado || false,
+  tipo: r.tipo || "servicio", // "servicio" (mensualidad) | "equipo" (cuota de equipo a plazos)
+  equipoPlanId: r.equipo_plan_id || null,
+  numeroCuota: r.numero_cuota || null,
+  totalCuotas: r.total_cuotas || null,
 }) : null;
 
 const mapCobroRuta = r => r ? ({
@@ -140,6 +152,7 @@ const db = {
   },
   async upsertZona(z) { const { data, error } = await sb.from("zonas").upsert({ id: z.id||undefined, nombre: z.nombre, color: z.color, activa: z.activa, nombre_empresa: z.nombreEmpresa||null, wispro_activo: z.wisproActivo !== false }).select().single(); if (error) throw error; return mapZona(data); },
   async toggleWisproZona(id, wisproActivo) { const { error } = await sb.from("zonas").update({ wispro_activo: wisproActivo }).eq("id", id); if (error) throw error; },
+  async toggleEquipoCuotasZona(id, activo) { const { error } = await sb.from("zonas").update({ equipo_cuotas_activo: activo }).eq("id", id); if (error) throw error; },
   async deleteZona(id) { const { error } = await sb.from("zonas").delete().eq("id", id); if (error) throw error; },
   async toggleZona(id, activa) { const { error } = await sb.from("zonas").update({ activa }).eq("id", id); if (error) throw error; },
   async patchZonaNombreEmpresa(id, nombreEmpresa) { const { error } = await sb.from("zonas").update({ nombre_empresa: nombreEmpresa }).eq("id", id); if (error) throw error; },
@@ -407,12 +420,82 @@ const db = {
       fecha_emision: f.fechaEmision || fechaLocal(),
       notas: f.notas || "", creado_por: f.creadoPor || null,
       numero_recibo: f.numeroRecibo || null,
+      tipo: f.tipo || "servicio",
+      equipo_plan_id: f.equipoPlanId || null,
+      numero_cuota: f.numeroCuota || null,
+      total_cuotas: f.totalCuotas || null,
     }).select().single();
     if (error) throw error;
     return mapFactura(data);
   },
   async actualizarFactura(id, campos) { const { error } = await sb.from("facturas").update(campos).eq("id", id); if (error) throw error; },
   async deleteFactura(id) { const { error } = await sb.from("facturas").delete().eq("id", id); if (error) throw error; },
+
+  // ── VENTA DE EQUIPOS A CUOTAS ──
+  // Crea el plan y genera automáticamente 1 factura tipo "equipo" por cada cuota,
+  // una por mes consecutivo a partir de mes/año de inicio. No afecta la facturación
+  // normal del servicio (son facturas independientes, con su propio conteo).
+  async crearPlanEquipo(p) {
+    const { data: planData, error: planError } = await sb.from("equipos_planes").insert({
+      cliente_id: p.clienteId, cliente_nombre: p.clienteNombre, zona_id: p.zonaId,
+      descripcion: p.descripcion, precio_total: p.precioTotal, num_cuotas: p.numCuotas,
+      monto_cuota: p.montoCuota, mes_inicio: p.mesInicio, anio_inicio: p.anioInicio,
+      aplazamiento_usado: false, estado: "activo", creado_por: p.creadoPor || null,
+    }).select().single();
+    if (planError) throw planError;
+    const plan = mapPlanEquipo(planData);
+
+    let mes = plan.mesInicio, anio = plan.anioInicio;
+    const cuotasFacturas = [];
+    for (let i = 1; i <= plan.numCuotas; i++) {
+      cuotasFacturas.push({
+        cliente_id: p.clienteId, cliente_nombre: p.clienteNombre,
+        cliente_cedula: p.clienteCedula || null, cliente_direccion: p.clienteDireccion || null,
+        zona_id: p.zonaId, mes, anio,
+        concepto: `Cuota equipo ${i}/${plan.numCuotas} — ${p.descripcion}`,
+        monto: plan.montoCuota, saldo_pendiente: plan.montoCuota, estado: "Pendiente",
+        fecha_emision: fechaLocal(), creado_por: p.creadoPor || null,
+        tipo: "equipo", equipo_plan_id: plan.id, numero_cuota: i, total_cuotas: plan.numCuotas,
+      });
+      mes++; if (mes > 12) { mes = 1; anio++; }
+    }
+    const { error: factError } = await sb.from("facturas").insert(cuotasFacturas);
+    if (factError) throw factError;
+    return plan;
+  },
+  async getPlanesEquipo(zonaId = null) {
+    let query = sb.from("equipos_planes").select("*").order("created_at", { ascending: false });
+    if (zonaId) query = query.eq("zona_id", zonaId);
+    const { data, error } = await query;
+    if (error) throw error;
+    return (data || []).map(mapPlanEquipo);
+  },
+  async getPlanesEquipoPorCliente(clienteId) {
+    const { data, error } = await sb.from("equipos_planes").select("*").eq("cliente_id", clienteId).order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapPlanEquipo);
+  },
+  // Corre UNA cuota pendiente (y todas las que le siguen sin pagar de ese mismo plan) un mes
+  // hacia adelante. Solo se permite una vez por plan en toda su vida.
+  async aplazarCuotaEquipo(plan, facturaId) {
+    if (plan.aplazamientoUsado) throw new Error("Este plan ya usó su único aplazamiento disponible.");
+    const { data: facturasPlan, error: fErr } = await sb.from("facturas").select("*").eq("equipo_plan_id", plan.id);
+    if (fErr) throw fErr;
+    const objetivo = facturasPlan.find(f => f.id === facturaId);
+    if (!objetivo) throw new Error("No se encontró la cuota.");
+    // Todas las cuotas pendientes desde la aplazada en adelante (incluida) se corren 1 mes.
+    const aCorrer = facturasPlan
+      .filter(f => f.estado !== "Pagado" && f.estado !== "Anulada" && (f.numero_cuota || 0) >= (objetivo.numero_cuota || 0))
+      .sort((a, b) => (a.numero_cuota || 0) - (b.numero_cuota || 0));
+    for (const f of aCorrer) {
+      let mes = (f.mes || 1) + 1, anio = f.anio;
+      if (mes > 12) { mes = 1; anio++; }
+      const { error } = await sb.from("facturas").update({ mes, anio }).eq("id", f.id);
+      if (error) throw error;
+    }
+    const { error: pErr } = await sb.from("equipos_planes").update({ aplazamiento_usado: true }).eq("id", plan.id);
+    if (pErr) throw pErr;
+  },
   async buscarFacturasPorNombre(q, zonaId = null) {
     if (!q || q.trim().length < 2) return [];
     const term = q.trim().replace(/\s+/g, " ");
@@ -927,6 +1010,7 @@ const ZONA_CONTACTO = {
   "tulua": { direccion: "Calle 25 # 5-06 Las Americas", telefono: "316 4753169", nombreEmpresa: "OFICINA TELECABLE LAS AMERICAS" },
   "comuneros": { direccion: "Calle 72L # 28B2-101 Comuneros 2", telefono: "3102901878", nombreEmpresa: "TELECABLE COMUNEROS" },
   "la paz": { direccion: "Calle 72U # 26L-42 La Paz", telefono: "3181381108", nombreEmpresa: "TELECABLE LA PAZ" },
+  "san antonio": { direccion: "Calle 6 # 7-39 barrio centro", telefono: "3012201067", nombreEmpresa: "CABLE CAUCA - OFICINA SAN ANTONIO DE LOS CABALLEROS" },
 };
 const normalizarZona = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 const getContactoZona = (nombreZona) => ZONA_CONTACTO[normalizarZona(nombreZona)] || null;
@@ -2121,10 +2205,12 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
 // ══════════════════════════════════════════════════════════════
 // PORTAL SECRETARIO
 // ══════════════════════════════════════════════════════════════
-function ClienteAcciones({ c, wisproLoading, setWisproLoading, setUsuarios, setEditCliente, setShowFormCliente, setModalOrdenServicio, setConfirmElimSecretario, deleteCliente, toggleCliente, zonas, db }) {
+function ClienteAcciones({ c, wisproLoading, setWisproLoading, setUsuarios, setEditCliente, setShowFormCliente, setModalOrdenServicio, setConfirmElimSecretario, deleteCliente, toggleCliente, zonas, db, usuarioId }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [modalPromesa, setModalPromesa] = useState(false);
   const [promesa, setPromesa] = useState({ fechaPromesa: "", montoPrometer: "", notas: "" });
+  const [modalPlanEquipo, setModalPlanEquipo] = useState(false);
+  const zonaCliente = zonas.find(z => z.id === c.zonaId);
 
   const cortarServicio = async () => {
     if (!confirm(`Cortar el servicio de ${c.nombre}?`)) return;
@@ -2210,6 +2296,7 @@ function ClienteAcciones({ c, wisproLoading, setWisproLoading, setUsuarios, setE
               }] : []),
               { label: c.activo ? "Desactivar cliente" : "Activar cliente", icon: c.activo ? "🔴" : "🟢", onClick: () => { toggleCliente(c.id); setMenuAbierto(false); } },
               { label: "Ver orden servicio", icon: "📄", onClick: () => { setModalOrdenServicio(c); setMenuAbierto(false); } },
+              ...(zonaCliente?.equipoCuotasActivo ? [{ label: "Vender equipo a cuotas", icon: "💻", color: "#7c3aed", onClick: () => { setMenuAbierto(false); setModalPlanEquipo(true); } }] : []),
               { label: "Cambiar clave acceso", icon: "🔑", onClick: async () => {
                 setMenuAbierto(false);
                 const nuevaClave = prompt(`Nueva clave para ${c.nombre}:`);
@@ -2261,6 +2348,169 @@ function ClienteAcciones({ c, wisproLoading, setWisproLoading, setUsuarios, setE
           </div>
         </div>
       )}
+
+      {/* Modal vender equipo a cuotas */}
+      {modalPlanEquipo && (
+        <PlanEquipoModal cliente={c} usuarioId={usuarioId} db={db} onClose={() => setModalPlanEquipo(false)} />
+      )}
+    </div>
+  );
+}
+
+// ── VENTA DE EQUIPO A CUOTAS ──
+// Modal para crear un plan de financiación de equipo para un cliente. Genera automáticamente
+// una factura tipo "equipo" por cada cuota (independiente de la facturación del servicio).
+function PlanEquipoModal({ cliente, usuarioId, db, onClose, onCreado }) {
+  const hoy = new Date();
+  const [form, setForm] = useState({
+    descripcion: "", precioTotal: "", numCuotas: 3,
+    mesInicio: hoy.getMonth() + 1, anioInicio: hoy.getFullYear(),
+  });
+  const [guardando, setGuardando] = useState(false);
+  const MESES_N = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+  const precio = Number(form.precioTotal) || 0;
+  const cuotas = Number(form.numCuotas) || 1;
+  const montoCuota = cuotas > 0 ? Math.round(precio / cuotas) : 0;
+
+  const guardar = async () => {
+    if (!form.descripcion.trim()) { alert("Describe el equipo (ej: Router TP-Link)."); return; }
+    if (precio <= 0) { alert("El precio total debe ser mayor a 0."); return; }
+    if (cuotas < 1) { alert("El número de cuotas debe ser al menos 1."); return; }
+    setGuardando(true);
+    try {
+      await db.crearPlanEquipo({
+        clienteId: cliente.id, clienteNombre: cliente.nombre,
+        clienteCedula: cliente.cedula, clienteDireccion: cliente.direccion,
+        zonaId: cliente.zonaId, descripcion: form.descripcion.trim(),
+        precioTotal: precio, numCuotas: cuotas, montoCuota,
+        mesInicio: Number(form.mesInicio), anioInicio: Number(form.anioInicio),
+        creadoPor: usuarioId || null,
+      });
+      alert(`✅ Plan creado: ${cuotas} cuotas de ${formatCOP(montoCuota)} para ${cliente.nombre}.`);
+      if (onCreado) onCreado();
+      onClose();
+    } catch (err) { alert("Error: " + err.message); }
+    setGuardando(false);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 440, boxShadow: "0 20px 60px #00000033", overflow: "hidden" }}>
+        <div style={{ padding: "18px 20px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16, color: GC.ink }}>💻 Vender equipo a cuotas</div>
+            <div style={{ fontSize: 12, color: GC.ink3, marginTop: 2 }}>{cliente.nombre}</div>
+          </div>
+          <button onClick={onClose} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
+        </div>
+        <div style={{ padding: 20 }}>
+          <div style={{ fontSize: 12, color: "#7c3aed", background: "#ede9fe", border: "1px solid #ddd6fe", borderRadius: 8, padding: "8px 12px", marginBottom: 16 }}>
+            Las cuotas del equipo son independientes de la mensualidad: no cuentan como mora del servicio ni generan corte por sí solas.
+          </div>
+          <Field label="Descripción del equipo">
+            <Inp value={form.descripcion} onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))} placeholder="Ej: Router TP-Link Archer C6" />
+          </Field>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+            <Field label="Precio total">
+              <Inp type="number" value={form.precioTotal} onChange={e => setForm(f => ({ ...f, precioTotal: e.target.value }))} placeholder="Ej: 180000" />
+            </Field>
+            <Field label="Número de cuotas">
+              <Inp type="number" min="1" value={form.numCuotas} onChange={e => setForm(f => ({ ...f, numCuotas: e.target.value }))} />
+            </Field>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+            <Field label="Mes de la 1ª cuota">
+              <Sel value={form.mesInicio} onChange={e => setForm(f => ({ ...f, mesInicio: e.target.value }))}>
+                {MESES_N.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </Sel>
+            </Field>
+            <Field label="Año de la 1ª cuota">
+              <Inp type="number" value={form.anioInicio} onChange={e => setForm(f => ({ ...f, anioInicio: e.target.value }))} />
+            </Field>
+          </div>
+          <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 13, color: GC.ink2 }}>Valor de cada cuota:</span>
+            <span style={{ fontWeight: 800, fontSize: 18, color: GC.brand }}>{formatCOP(montoCuota)}</span>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn onClick={guardar} disabled={guardando} style={{ flex: 1 }}>{guardando ? "⏳ Creando..." : `📥 Crear plan (${cuotas} cuotas)`}</Btn>
+            <button onClick={onClose} style={{ padding: "10px 16px", background: GC.bg3, border: "none", borderRadius: 9, cursor: "pointer", fontSize: 13, color: GC.ink2, fontFamily: "inherit" }}>Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Muestra los planes de equipo de un cliente (progreso de cuotas) y permite correr UNA cuota
+// pendiente al mes siguiente (solo una vez por plan, en toda su vida).
+function PlanesEquipoCliente({ cliente, usuarioId, db }) {
+  const [planes, setPlanes] = useState(null);
+  const [facturasPorPlan, setFacturasPorPlan] = useState({});
+  const [cargando, setCargando] = useState(false);
+  const MESES_N = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
+  const cargar = async () => {
+    try {
+      const ps = await db.getPlanesEquipoPorCliente(cliente.id);
+      setPlanes(ps);
+      const todasFact = await db.getFacturasByCliente(cliente.id);
+      const porPlan = {};
+      todasFact.filter(f => f.tipo === "equipo").forEach(f => {
+        if (!porPlan[f.equipoPlanId]) porPlan[f.equipoPlanId] = [];
+        porPlan[f.equipoPlanId].push(f);
+      });
+      Object.values(porPlan).forEach(arr => arr.sort((a, b) => (a.numeroCuota || 0) - (b.numeroCuota || 0)));
+      setFacturasPorPlan(porPlan);
+    } catch (err) { console.error("Error cargando planes de equipo:", err); }
+  };
+  useEffect(() => { cargar(); }, [cliente.id]);
+
+  const correrCuota = async (plan, factura) => {
+    if (!confirm(`¿Correr la cuota ${factura.numeroCuota}/${factura.totalCuotas} un mes? Solo se puede hacer una vez por plan.`)) return;
+    setCargando(true);
+    try {
+      await db.aplazarCuotaEquipo(plan, factura.id);
+      await cargar();
+    } catch (err) { alert("Error: " + err.message); }
+    setCargando(false);
+  };
+
+  if (!planes || planes.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      {planes.map(plan => {
+        const cuotas = facturasPorPlan[plan.id] || [];
+        const pagadas = cuotas.filter(f => f.estado === "Pagado").length;
+        const proximaPendiente = cuotas.find(f => f.estado !== "Pagado" && f.estado !== "Anulada");
+        return (
+          <div key={plan.id} style={{ background: "#faf5ff", border: "1px solid #ddd6fe", borderRadius: 10, padding: "10px 14px", marginBottom: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: "#6b21a8" }}>💻 {plan.descripcion}</div>
+                <div style={{ fontSize: 12, color: GC.ink3 }}>{pagadas}/{plan.numCuotas} cuotas pagadas · {formatCOP(plan.montoCuota)}/cuota</div>
+              </div>
+              {proximaPendiente && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: GC.ink3 }}>Próxima: {MESES_N[(proximaPendiente.mes || 1) - 1]} {proximaPendiente.anio}</span>
+                  {!plan.aplazamientoUsado ? (
+                    <button onClick={() => correrCuota(plan, proximaPendiente)} disabled={cargando}
+                      style={{ background: "#fef3c7", color: "#d97706", border: "none", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
+                      ⏭️ Correr cuota
+                    </button>
+                  ) : (
+                    <span style={{ fontSize: 11, color: GC.ink4 }}>Aplazamiento ya usado</span>
+                  )}
+                </div>
+              )}
+              {!proximaPendiente && <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 700 }}>✅ Pagado en su totalidad</span>}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -2284,6 +2534,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
   const [wisproLoading, setWisproLoading] = useState({}); // { clienteId: "cortando"|"reconectando" }
   const [modalOrdenServicio, setModalOrdenServicio] = useState(null); // cliente recién creado
   const [prontoPagos, setProntoPagos] = useState([]);
+  const [showExportModal, setShowExportModal] = useState(false);
   useEffect(() => { db.getProntoPago().then(setProntoPagos).catch(console.error); }, []);
 
   // La zona del secretario
@@ -2772,8 +3023,25 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
               <option value="inactivo">Inactivos</option>
             </Sel>
             <Btn onClick={() => { setEditCliente(emptyCliente); setShowFormCliente(true); }} style={{ fontSize: 13 }}>+ Nuevo</Btn>
+            <button onClick={() => setShowExportModal(true)}
+              style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", borderRadius: 9, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
+              📋 Exportar clientes
+            </button>
           </div>
           <div style={{ color: GC.ink3, fontSize: 12, marginBottom: 10 }}>{clientesFiltrados.length} de {clientes.length} clientes</div>
+
+          {/* Modal exportar clientes (solo la zona de este secretario) */}
+          {showExportModal && (
+            <ExportClientesModal
+              usuarios={clientes}
+              zonas={zonaSecretario ? [zonaSecretario] : []}
+              planes={planes}
+              perfilesPago={perfilesPago}
+              db={db}
+              onClose={() => setShowExportModal(false)}
+            />
+          )}
+
           {showFormCliente && editCliente && (
             <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && (setShowFormCliente(false), setEditCliente(null))}>
             <div style={{ background: "#ffffff", borderRadius: 16, width: "100%", maxWidth: 560, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
@@ -2782,6 +3050,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
               <button onClick={() => { setShowFormCliente(false); setEditCliente(null); }} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 34, height: 34, cursor: "pointer", fontSize: 20, color: GC.ink3 }}>×</button>
             </div>
             <div style={{ padding: 20 }}>
+              {editCliente.id && <PlanesEquipoCliente cliente={editCliente} usuarioId={usuario.id} db={db} />}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 16px" }}>
                 <Field label="Nombre completo"><Inp value={editCliente.nombre} onChange={e => setEditCliente({ ...editCliente, nombre: e.target.value })} /></Field>
                 <Field label="Tipo de cliente">
@@ -2891,6 +3160,7 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
                   toggleCliente={toggleCliente}
                   zonas={zonas}
                   db={db}
+                  usuarioId={usuario.id}
                 />
               </div>
             ))}
@@ -5881,7 +6151,8 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     .filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i)
     .filter(f => {
       const clienteF = usuarios.find(u => u.id === f.clienteId);
-      return f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
+      return f.tipo !== "equipo" && // las cuotas de equipo no cuentan para mora del servicio
+        f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
         (f.anio < anioActual || (f.anio === anioActual && f.mes <= mesActual)) &&
         clienteEnZona(f.clienteId, f.zonaId) &&
         clienteF?.activo !== false;
@@ -6211,7 +6482,8 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         const todas = [...facturasHistoricas, ...facturas].filter((f,i,arr) => arr.findIndex(x=>x.id===f.id)===i);
         const pendientes = todas.filter(f => {
           const clienteF = usuarios.find(u => u.id === f.clienteId);
-          return f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
+          return f.tipo !== "equipo" &&
+            f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
             (f.anio < anioActual || (f.anio === anioActual && f.mes <= mesActual)) &&
             clienteEnZona(f.clienteId, f.zonaId) &&
             clienteF?.activo !== false;
@@ -7384,7 +7656,10 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
       {clienteBuscado && resumenCliente && resumenCliente.deudaTotal > 0 && (
         <PanelAbonoMasivo
           clienteBuscado={clienteBuscado}
-          facturasCliente={facturasAudit.filter(f => f.clienteId === clienteBuscado.id && f.saldoPendiente > 0 && f.estado !== "Anulada").sort((a,b) => (a.anio*12+a.mes) - (b.anio*12+b.mes))}
+          facturasCliente={facturasAudit.filter(f => f.clienteId === clienteBuscado.id && f.saldoPendiente > 0 && f.estado !== "Anulada")
+            // El abono cubre primero TODA la mensualidad pendiente (servicio) antes de tocar
+            // las cuotas de equipo, para que la deuda del equipo nunca "atrape" el pago del mes.
+            .sort((a,b) => (a.tipo === "equipo" ? 1 : 0) - (b.tipo === "equipo" ? 1 : 0) || (a.anio*12+a.mes) - (b.anio*12+b.mes))}
           deudaTotal={resumenCliente.deudaTotal}
           usuario={usuario}
           setFacturas={setFacturas}
@@ -9843,7 +10118,7 @@ function ExportClientesModal({ usuarios, zonas, planes, perfilesPago, db, onClos
       // mes/año igual que en la exportación final, para no contar duplicados como si fueran
       // dos facturas distintas.
       const contarFacturasPendientes = (clienteId) => {
-        const facturasCliente = todasFacturas.filter(f => f.clienteId === clienteId && f.estado !== "Anulada");
+        const facturasCliente = todasFacturas.filter(f => f.clienteId === clienteId && f.estado !== "Anulada" && f.tipo !== "equipo");
         const porMes = new Map();
         for (const f of facturasCliente) {
           const key = `${f.anio}-${String(f.mes).padStart(2, "0")}`;
@@ -10372,7 +10647,8 @@ function exportarMorosos(facturasHistoricas, facturasMes, usuarios, zonas, anioA
       const zonaCliente = clienteF ? clienteF.zonaId : f.zonaId;
       if (zonaCliente !== zonaFiltroActiva) return false;
     }
-    return f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
+    return f.tipo !== "equipo" &&
+      f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
       (f.anio < anioActual || (f.anio === anioActual && f.mes <= mesActual)) &&
       clienteF?.activo !== false;
   });
@@ -10532,6 +10808,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   // Pronto pago
   const [prontoPagos, setProntoPagos] = useState([]);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [modalPlanEquipoAdmin, setModalPlanEquipoAdmin] = useState(null); // cliente seleccionado
   const [showFormPP, setShowFormPP] = useState(null); // zonaId del panel abierto
   const [editPP, setEditPP] = useState({ zonaId: "", planId: "", planNombre: "", descuento: "", diaLimite: 10, activo: true });
   useEffect(() => { db.getProntoPago().then(setProntoPagos).catch(console.error); }, []);
@@ -10685,6 +10962,12 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
     if (!z) return;
     try { await db.toggleZona(id, !z.activa); setZonas(p => p.map(x => x.id === id ? { ...x, activa: !x.activa } : x)); }
     catch (err) { console.error("Error toggling zona:", err); }
+  };
+  const toggleEquipoCuotasZona = async (id) => {
+    const z = zonas.find(x => x.id === id);
+    if (!z) return;
+    try { await db.toggleEquipoCuotasZona(id, !z.equipoCuotasActivo); setZonas(p => p.map(x => x.id === id ? { ...x, equipoCuotasActivo: !x.equipoCuotasActivo } : x)); }
+    catch (err) { console.error("Error toggling cuotas de equipo de zona:", err); }
   };
 
   const savePropa = async (p) => {
@@ -11040,6 +11323,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                     </div>
                     <div style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => toggleZona(z.id)} style={{ background: z.activa ? "#22c55e22" : "#e2e8f0", color: z.activa ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{z.activa ? "Activa" : "Inactiva"}</button>
+                      <button onClick={() => toggleEquipoCuotasZona(z.id)} title="Permite vender equipos a cuotas en esta zona" style={{ background: z.equipoCuotasActivo ? "#ede9fe" : "#e2e8f0", color: z.equipoCuotasActivo ? "#7c3aed" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>🧾 {z.equipoCuotasActivo ? "Cuotas equipo ON" : "Cuotas equipo OFF"}</button>
                       <button onClick={() => setShowFormPP(showFormPP === z.id ? null : z.id)} style={{ background: "#fef3c7", color: "#d97706", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>🏷️ Pronto pago</button>
                       <button onClick={() => { setEditZona(z); setFormTipo("zona"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>
                       <button onClick={() => { const msg = "Se eliminará la zona " + z.nombre + ". Esta acción no se puede deshacer."; setConfirmEliminar({ accion: () => deleteZona(z.id), titulo: "¿Eliminar zona?", mensaje: msg }); }} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>
@@ -11097,6 +11381,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
             </div>
             <div style={{ padding: 20 }}>
               <p style={{ color: GC.ink3, fontSize: 12, margin: "0 0 16px" }}>Selecciona el tipo de usuario y configura sus privilegios</p>
+              {editU.id && editU.rol === "cliente" && <PlanesEquipoCliente cliente={editU} usuarioId={sesion?.id} db={db} />}
 
               {/* PASO 1: Tipo de usuario */}
               <div style={{ background: GC.bg3, borderRadius: 12, padding: 14, marginBottom: 16 }}>
@@ -11357,6 +11642,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   <div style={{ display: "flex", gap: 6 }}>
                     {u.rol !== "superusuario" && <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>}
                     {u.rol !== "superusuario" && <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [], zonasIds: u.zonasIds || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>}
+                    {u.rol === "cliente" && zonas.find(z => z.id === u.zonaId)?.equipoCuotasActivo && <button onClick={() => setModalPlanEquipoAdmin(u)} title="Vender equipo a cuotas" style={{ background: "#ede9fe", color: "#7c3aed", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>💻</button>}
                     {u.rol !== "superusuario" && (u.rol !== "admin" || sesion.rol === "superusuario") && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                   </div>
                 </div>
@@ -11402,6 +11688,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                         <div style={{ display: "flex", gap: 6 }}>
                           {u.rol !== "superusuario" && <button onClick={() => toggleU(u.id)} style={{ background: u.activo ? "#22c55e22" : "#e2e8f0", color: u.activo ? "#22c55e" : "#64748b", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{u.activo ? "Activo" : "Inactivo"}</button>}
                           {u.rol !== "superusuario" && <button onClick={() => { setEditU({ ...u, privilegios: u.privilegios || [], zonasIds: u.zonasIds || [] }); setFormTipo("usuario"); setShowForm(true); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>✏️</button>}
+                          {u.rol === "cliente" && zonas.find(z => z.id === u.zonaId)?.equipoCuotasActivo && <button onClick={() => setModalPlanEquipoAdmin(u)} title="Vender equipo a cuotas" style={{ background: "#ede9fe", color: "#7c3aed", border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>💻</button>}
                           {u.rol !== "superusuario" && (u.rol !== "admin" || sesion.rol === "superusuario") && <button onClick={() => setConfirmEliminar({ accion: () => deleteU(u.id), titulo: "¿Eliminar usuario?", mensaje: `Se eliminará a "${u.nombre}" del sistema. Esta acción no se puede deshacer.` })} style={{ background: GC.bg3, color: GC.danger, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer" }}>🗑️</button>}
                         </div>
                       </div>
@@ -11412,6 +11699,11 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
             </div>
           )}
         </div>
+      )}
+
+      {/* Modal vender equipo a cuotas (Admin) */}
+      {modalPlanEquipoAdmin && (
+        <PlanEquipoModal cliente={modalPlanEquipoAdmin} usuarioId={sesion?.id} db={db} onClose={() => setModalPlanEquipoAdmin(null)} />
       )}
 
       {/* ── TAB AVISOS ── */}
@@ -11676,7 +11968,7 @@ function PortalDueno({ zonas }) {
 
     // Morosos: clientes activos con 2+ meses pendientes hasta el mes/año de referencia
     const pendientes = facturas.filter(f =>
-      enZona(f.zonaId) && f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
+      enZona(f.zonaId) && f.tipo !== "equipo" && f.estado !== "Anulada" && f.estado !== "Pagado" && f.saldoPendiente > 0 &&
       (f.anio < a || (f.anio === a && f.mes <= m))
     );
     const mesesPorCliente = {};
