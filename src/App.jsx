@@ -11990,6 +11990,8 @@ function PortalDueno({ zonas }) {
   const [fechaDia, setFechaDia] = useState(fechaLocal());
   const [abonosDia, setAbonosDia] = useState([]);
   const [cargandoDia, setCargandoDia] = useState(false);
+  // "Cobrado hoy" y "Total en caja" (hoy) — fijos, no dependen del selector de fecha de abajo
+  const [abonosHoyFijo, setAbonosHoyFijo] = useState([]);
 
   useEffect(() => {
     setCargando(true);
@@ -12006,6 +12008,12 @@ function PortalDueno({ zonas }) {
       .catch(err => { console.error("Error cargando abonos del día:", err); setAbonosDia([]); })
       .finally(() => setCargandoDia(false));
   }, [fechaDia, zonaSel]);
+
+  useEffect(() => {
+    db.getAbonosByFecha(fechaLocal(), zonaSel === "todas" ? zonasPermitidasIds : zonaSel)
+      .then(setAbonosHoyFijo)
+      .catch(err => { console.error("Error cargando cobrado hoy:", err); setAbonosHoyFijo([]); });
+  }, [zonaSel, zonasPermitidasIds.join(",")]);
 
   // mes/año anterior al seleccionado
   const mesAnt = mes === 1 ? 12 : mes - 1;
@@ -12071,7 +12079,10 @@ function PortalDueno({ zonas }) {
     const egresosTotal = movimientos.filter(mv => enZona(mv.zonaId) && mv.tipo === "Egreso").reduce((s, mv) => s + mv.monto, 0);
     const totalCaja = saldoBaseZ + cobradoHistoricoTotal + ingresosManualTotal - egresosTotal;
 
-    return { activos, inactivos, morosos, totalOrdenes, instalaciones, ingresos, egresos, totalCaja };
+    // Pendiente del mes: facturas de ese mes/año que aún no están 100% pagadas (excluye anuladas)
+    const pendienteMes = facturasDelMes.filter(f => f.estado !== "Pagado").reduce((s, f) => s + f.saldoPendiente, 0);
+
+    return { activos, inactivos, morosos, totalOrdenes, instalaciones, ingresos, egresos, totalCaja, pendienteMes };
   };
 
   const zonaIdSel = zonaSel === "todas" ? null : zonaSel;
@@ -12098,6 +12109,17 @@ function PortalDueno({ zonas }) {
       return { label: z.nombre, a: st.ingresos, b: st.morosos * (st.ingresos > 0 ? st.ingresos / Math.max(1, st.activos) : 0) };
     });
   }, [usuarios, ordenes, facturas, movimientos, zonaSel, mes, anio, zonas]);
+
+  // "Cobrado hoy" y "Total en caja (hoy)" — mismos nombres y fórmula que en Facturación,
+  // para que el dueño vea exactamente la misma info sin tener que aprender otro lenguaje.
+  const hoyFinanzas = React.useMemo(() => {
+    const enZona = (zid) => zonaSel === "todas" ? zonasPermitidasIds.includes(zid) : zid === zonaSel;
+    const cobradoHoy = abonosHoyFijo.filter(a => a.facturaEstado !== "Anulada").reduce((s, a) => s + a.monto, 0);
+    const movHoy = movimientos.filter(m => enZona(m.zonaId) && m.fecha === fechaLocal());
+    const ingresosHoy = movHoy.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
+    const egresosHoy = movHoy.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
+    return { cobradoHoy, totalCajaHoy: cobradoHoy + ingresosHoy - egresosHoy };
+  }, [abonosHoyFijo, movimientos, zonaSel, zonasPermitidasIds.join(",")]);
 
   // Vista por día específico — misma lógica que el "Informe Diario" del Panel Superusuario:
   // saldo anterior (todo lo acumulado ANTES del día) + lo del día = saldo con el que cerró la caja ese día.
@@ -12162,8 +12184,32 @@ function PortalDueno({ zonas }) {
         <SeccionDueno titulo="👥 CLIENTES" color="#0e7490" bg="#ecfeff">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
             <StatCardDueno label="Clientes activos" valor={actual.activos} anterior={anterior.activos} icono="✅" />
-            <StatCardDueno label="Clientes inactivos" valor={actual.inactivos} anterior={anterior.inactivos} icono="🚫" invertirColor />
             <StatCardDueno label="Morosos" valor={actual.morosos} anterior={anterior.morosos} icono="🔴" invertirColor />
+          </div>
+        </SeccionDueno>
+
+        {/* Sección: Finanzas — mismos nombres y cifras que en el módulo de Facturación */}
+        <SeccionDueno titulo="💰 FINANZAS" color="#b45309" bg="#fffbeb">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+            <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📅 Cobrado hoy</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: GC.purple }}>{formatCOP(hoyFinanzas.cobradoHoy)}</div>
+            </div>
+            <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>🏦 Total en caja (hoy)</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: GC.brand }}>{formatCOP(hoyFinanzas.totalCajaHoy)}</div>
+            </div>
+            <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>🌐 Total global (acumulado)</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#0891b2" }}>{formatCOP(actual.totalCaja)}</div>
+            </div>
+            <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>⏳ Pendiente ({MESES[mes - 1]})</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: GC.warning }}>{formatCOP(actual.pendienteMes)}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: "#92400e", marginTop: 10, lineHeight: 1.5 }}>
+            Son los mismos 4 datos que ves en Facturación: "Cobrado hoy" y "Total en caja" se reinician cada día; "Total global" es la plata acumulada de siempre (nunca vuelve a cero); "Pendiente" es lo que falta de cobrar del mes seleccionado arriba.
           </div>
         </SeccionDueno>
 
@@ -12172,19 +12218,6 @@ function PortalDueno({ zonas }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
             <StatCardDueno label="Órdenes creadas" valor={actual.totalOrdenes} anterior={anterior.totalOrdenes} icono="🧾" />
             <StatCardDueno label="Instalaciones" valor={actual.instalaciones} anterior={anterior.instalaciones} icono="🔌" />
-          </div>
-        </SeccionDueno>
-
-        {/* Sección: Finanzas del mes */}
-        <SeccionDueno titulo="💰 FINANZAS DEL MES" color="#b45309" bg="#fffbeb"
-          nota="⚠️ El saldo inicial de caja aún no está sincronizado — ver nota abajo">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-            <StatCardDueno label="Ingresos del mes" valor={actual.ingresos} anterior={anterior.ingresos} icono="💰" esMoneda />
-            <StatCardDueno label="Egresos del mes" valor={actual.egresos} anterior={anterior.egresos} icono="📤" esMoneda invertirColor />
-            <StatCardDueno label="Total en caja (acumulado)" valor={actual.totalCaja} anterior={anterior.totalCaja} icono="🏦" esMoneda />
-          </div>
-          <div style={{ fontSize: 11, color: "#92400e", marginTop: 10, lineHeight: 1.5 }}>
-            "Total en caja" aquí puede no coincidir exactamente con la pantalla de Facturación, porque el saldo inicial de caja está guardado solo en el navegador donde se configuró, no en la base de datos. Pídele a soporte que lo migre para que este número sea 100% exacto.
           </div>
         </SeccionDueno>
 
@@ -12234,8 +12267,6 @@ function PortalDueno({ zonas }) {
                     <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#475569" }}>
                       <span>👥 {st.activos} activos</span>
                       <span>🔴 {st.morosos} morosos</span>
-                      <span>💰 {formatCOP(st.ingresos)}</span>
-                      <span>🏦 {formatCOP(st.totalCaja)}</span>
                     </div>
                   </div>
                 );
