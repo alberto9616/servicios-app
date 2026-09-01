@@ -204,7 +204,7 @@ const db = {
     let all = [];
     let from = 0;
     while (true) {
-      const { data, error } = await sb.from("usuarios").select("*").order("nombre").range(from, from + PAGE - 1);
+      const { data, error } = await sb.from("usuarios").select("*").order("nombre").order("id").range(from, from + PAGE - 1);
       if (error) throw error;
       all = all.concat(data);
       if (data.length < PAGE) break;
@@ -260,7 +260,7 @@ const db = {
     const paginar = async (tabla, orderCol, ascending) => {
       let all = []; let from = 0;
       while (true) {
-        const { data, error } = await sb.from(tabla).select("*").order(orderCol, { ascending }).range(from, from + PAGE - 1);
+        const { data, error } = await sb.from(tabla).select("*").order(orderCol, { ascending }).order("id").range(from, from + PAGE - 1);
         if (error) throw error;
         all = all.concat(data || []);
         if (!data || data.length < PAGE) break;
@@ -290,7 +290,7 @@ const db = {
     let all = [];
     let from = 0;
     while (true) {
-      const { data, error } = await sb.from("ordenes").select("*").order("fecha_creacion", { ascending: false }).range(from, from + PAGE - 1);
+      const { data, error } = await sb.from("ordenes").select("*").order("fecha_creacion", { ascending: false }).order("id").range(from, from + PAGE - 1);
       if (error) throw error;
       all = all.concat(data || []);
       if (!data || data.length < PAGE) break;
@@ -374,10 +374,11 @@ const db = {
     const pageSize = 1000;
     while (true) {
       let query = sb.from("facturas")
-        .select("monto, saldo_pendiente, descuento_pronto_pago")
+        .select("monto, saldo_pendiente, descuento_pronto_pago, id")
         .neq("estado", "Anulada")
         .not("fecha_pago", "is", null)
-        .lt("fecha_pago", fecha);
+        .lt("fecha_pago", fecha)
+        .order("id");
       if (zonaId) query = query.eq("zona_id", zonaId);
       const { data, error } = await query.range(from, from + pageSize - 1);
       if (error) throw error;
@@ -396,6 +397,7 @@ const db = {
     while (true) {
       const { data, error } = await sb.from("facturas").select("*")
         .order("fecha_emision", { ascending: false })
+        .order("id")
         .range(from, from + pageSize - 1);
       if (error) throw error;
       todas.push(...(data || []));
@@ -506,7 +508,7 @@ const db = {
       const all = [];
       let from = 0;
       while (true) {
-        const { data, error } = await query.range(from, from + PAGE - 1);
+        const { data, error } = await query.order("id").range(from, from + PAGE - 1);
         if (error || !data || data.length === 0) break;
         all.push(...data);
         if (data.length < PAGE) break;
@@ -695,6 +697,7 @@ const db = {
       const { data, error } = await sb.from("facturas").select("*")
         .eq("mes", mes).eq("anio", anio)
         .order("fecha_emision", { ascending: false })
+        .order("id")
         .range(from, from + PAGE - 1);
       if (error) throw error;
       all = all.concat(data || []);
@@ -730,6 +733,7 @@ const db = {
           .neq("estado", "Pagado")
           .gt("saldo_pendiente", 0)
           .or(`anio.lt.${anioActual},and(anio.eq.${anioActual},mes.lte.${mesActual})`)
+          .order("id")
           .range(from, from + PAGE - 1);
         if (error) throw error;
         all = all.concat(data || []);
@@ -749,6 +753,7 @@ const db = {
             const { data, error } = await sb.from("facturas").select("*")
               .eq("mes", d.getMonth() + 1).eq("anio", d.getFullYear())
               .neq("estado", "Anulada")
+              .order("id")
               .range(from, from + PAGE - 1);
             if (!error && data) resultados.push(...data.map(mapFactura));
             if (error || !data || data.length < PAGE) break;
@@ -814,7 +819,8 @@ const db = {
     while (true) {
       let query = sb.from("abonos")
         .select("monto, facturas!inner(estado, zona_id)")
-        .neq("facturas.estado", "Anulada");
+        .neq("facturas.estado", "Anulada")
+        .order("id");
       if (zonaId) query = query.eq("facturas.zona_id", zonaId);
       const { data, error } = await query.range(from, from + pageSize - 1);
       if (error) throw error;
@@ -832,7 +838,7 @@ const db = {
     while (true) {
       let query = sb.from("caja_movimientos").select("*");
       if (zonaId) query = query.eq("zona_id", zonaId);
-      const { data, error } = await query.order("fecha", { ascending: false }).order("created_at", { ascending: false }).range(from, from + PAGE - 1);
+      const { data, error } = await query.order("fecha", { ascending: false }).order("created_at", { ascending: false }).order("id").range(from, from + PAGE - 1);
       if (error) throw error;
       all = all.concat(data || []);
       if (!data || data.length < PAGE) break;
