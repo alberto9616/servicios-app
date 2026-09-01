@@ -549,7 +549,8 @@ const db = {
     let query = sb.from("abonos")
       .select("*, facturas!inner(cliente_id, cliente_nombre, concepto, numero_recibo, zona_id, estado)")
       .eq("fecha", fecha);
-    if (zonaId) query = query.eq("facturas.zona_id", zonaId);
+    if (Array.isArray(zonaId)) { if (zonaId.length > 0) query = query.in("facturas.zona_id", zonaId); }
+    else if (zonaId) query = query.eq("facturas.zona_id", zonaId);
     const { data, error } = await query.order("created_at", { ascending: false });
     if (error) throw error;
     return data.map(mapAbono);
@@ -784,6 +785,10 @@ const db = {
       p_items: f.items ? JSON.stringify(f.items) : null,
       p_fecha_emision: f.fechaEmision||fechaLocal(),
       p_notas: f.notas||"", p_creado_por: creadoPorVal,
+      p_tipo: f.tipo || "servicio",
+      p_equipo_plan_id: f.equipoPlanId || null,
+      p_numero_cuota: f.numeroCuota || null,
+      p_total_cuotas: f.totalCuotas || null,
     });
     if (error) throw error;
     return mapFactura(data);
@@ -5902,7 +5907,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   const [generandoMasivo, setGenerandoMasivo] = useState(false);
   const [showFormManual, setShowFormManual] = useState(false);
   const [zonaFiltroManual, setZonaFiltroManual] = useState("todas"); // filtro de zona dentro del modal de factura manual
-  const [facturaManual, setFacturaManual] = useState({ clienteId: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [] });
+  const [facturaManual, setFacturaManual] = useState({ clienteId: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [], equiposItems: [] });
   const [guardandoManual, setGuardandoManual] = useState(false);
   const [tirilla, setTirilla] = useState(null);
   const [modalExport, setModalExport] = useState(null);
@@ -6268,23 +6273,44 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     const cliente = usuarios.find(u => u.id === facturaManual.clienteId);
     if (!cliente) { alert("Selecciona un cliente."); return; }
     if (!cliente.zonaId) { alert("⚠️ Este cliente no tiene zona asignada. Corrígelo en la ficha del cliente antes de crear la factura, para que quede contabilizada correctamente."); return; }
-    if (!facturaManual.items || facturaManual.items.length === 0) { alert("Agrega al menos un servicio."); return; }
+    const equiposItems = (facturaManual.equiposItems || []).filter(i => i.concepto && Number(i.monto) > 0);
+    if ((!facturaManual.items || facturaManual.items.length === 0) && equiposItems.length === 0) { alert("Agrega al menos un servicio o un equipo."); return; }
     const montoTotal = facturaManual.items.reduce((s, i) => s + (Number(i.monto) || 0), 0);
-    if (montoTotal <= 0) { alert("El monto debe ser mayor a 0."); return; }
+    if (facturaManual.items.length > 0 && montoTotal <= 0) { alert("El monto debe ser mayor a 0."); return; }
     setGuardandoManual(true);
     try {
-      const nueva = await db.crearFacturaAtomica({
-        clienteId: cliente.id, clienteNombre: cliente.nombre, clienteCedula: cliente.cedula,
-        clienteDireccion: cliente.direccion, zonaId: cliente.zonaId,
-        mes: facturaManual.mes, anio: facturaManual.anio,
-        concepto: facturaManual.items.map(i => i.concepto).join(" + "),
-        items: facturaManual.items, monto: montoTotal,
-        fechaEmision: hoyStr, creadoPor: usuario.id,
-        notas: facturaManual.notas,
-      });
-      setFacturas(prev => [nueva, ...prev]);
+      const nuevas = [];
+      if (facturaManual.items.length > 0) {
+        const nueva = await db.crearFacturaAtomica({
+          clienteId: cliente.id, clienteNombre: cliente.nombre, clienteCedula: cliente.cedula,
+          clienteDireccion: cliente.direccion, zonaId: cliente.zonaId,
+          mes: facturaManual.mes, anio: facturaManual.anio,
+          concepto: facturaManual.items.map(i => i.concepto).join(" + "),
+          items: facturaManual.items, monto: montoTotal,
+          fechaEmision: hoyStr, creadoPor: usuario.id,
+          notas: facturaManual.notas,
+        });
+        nuevas.push(nueva);
+      }
+      // Los equipos se facturan aparte, tipo "equipo": pagados de una sola vez este mes,
+      // no cuentan como mora del servicio ni se mezclan con la mensualidad.
+      if (equiposItems.length > 0) {
+        const montoEquipos = equiposItems.reduce((s, i) => s + (Number(i.monto) || 0), 0);
+        const nuevaEquipo = await db.crearFacturaAtomica({
+          clienteId: cliente.id, clienteNombre: cliente.nombre, clienteCedula: cliente.cedula,
+          clienteDireccion: cliente.direccion, zonaId: cliente.zonaId,
+          mes: facturaManual.mes, anio: facturaManual.anio,
+          concepto: equiposItems.map(i => i.concepto).join(" + "),
+          items: equiposItems, monto: montoEquipos,
+          fechaEmision: hoyStr, creadoPor: usuario.id,
+          notas: facturaManual.notas,
+          tipo: "equipo", numeroCuota: 1, totalCuotas: 1,
+        });
+        nuevas.push(nuevaEquipo);
+      }
+      setFacturas(prev => [...nuevas, ...prev]);
       setShowFormManual(false);
-      setFacturaManual({ clienteId: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [] });
+      setFacturaManual({ clienteId: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [], equiposItems: [] });
     } catch (e) { alert(mensajeErrorAmigable(e)); }
     setGuardandoManual(false);
   };
@@ -6935,9 +6961,38 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
                 </div>
               )}
             </div>
+            {(() => {
+              const clienteSel = usuarios.find(u => u.id === facturaManual.clienteId);
+              const zonaSel = clienteSel ? zonas.find(z => z.id === clienteSel.zonaId) : null;
+              if (!zonaSel?.equipoCuotasActivo) return null;
+              return (
+                <div style={{ marginBottom: 14, background: "#faf5ff", border: "1px solid #ddd6fe", borderRadius: 10, padding: "10px 12px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <label style={{ fontSize: 11, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>💻 Equipos a vender</label>
+                    <button onClick={() => setFacturaManual({ ...facturaManual, equiposItems: [...(facturaManual.equiposItems||[]), { concepto: "", monto: 0 }] })}
+                      style={{ background: "#ede9fe", color: "#7c3aed", border: "1px solid #ddd6fe", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>+ Equipo</button>
+                  </div>
+                  {(facturaManual.equiposItems||[]).map((item, idx) => (
+                    <div key={idx} style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-start" }}>
+                      <Inp value={item.concepto} onChange={e => { const n = [...facturaManual.equiposItems]; n[idx] = { ...n[idx], concepto: e.target.value }; setFacturaManual({ ...facturaManual, equiposItems: n }); }} placeholder="Ej: Router TP-Link Archer C6" style={{ flex: 2 }} />
+                      <Inp type="number" value={item.monto||""} onChange={e => { const n = [...facturaManual.equiposItems]; n[idx] = { ...n[idx], monto: Number(e.target.value) }; setFacturaManual({ ...facturaManual, equiposItems: n }); }} placeholder="Valor" style={{ flex: 1 }} />
+                      <button onClick={() => { const n = facturaManual.equiposItems.filter((_,i) => i !== idx); setFacturaManual({ ...facturaManual, equiposItems: n }); }} style={{ background: "#fee2e2", color: "#dc2626", border: "none", borderRadius: 8, padding: "9px 10px", cursor: "pointer" }}>✕</button>
+                    </div>
+                  ))}
+                  {(facturaManual.equiposItems||[]).length > 0 && (
+                    <>
+                      <div style={{ textAlign: "right", fontWeight: 800, color: "#7c3aed", fontSize: 15 }}>
+                        Total equipos: {formatCOP(facturaManual.equiposItems.reduce((s,i) => s + (Number(i.monto)||0), 0))}
+                      </div>
+                      <div style={{ fontSize: 11, color: GC.ink3, marginTop: 4 }}>Se factura por separado, pagada de una vez este mes. No cuenta como mora del servicio. Para vender a cuotas usa "💻 Vender equipo a cuotas" desde la ficha del cliente.</div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
             <Field label="Notas"><Inp value={facturaManual.notas||""} onChange={e => setFacturaManual({ ...facturaManual, notas: e.target.value })} /></Field>
             <div style={{ display: "flex", gap: 8 }}>
-              <Btn onClick={crearFacturaManual} disabled={!facturaManual.clienteId || facturaManual.items.length === 0 || guardandoManual} style={{ flex: 1 }}>
+              <Btn onClick={crearFacturaManual} disabled={!facturaManual.clienteId || (facturaManual.items.length === 0 && (!facturaManual.equiposItems || facturaManual.equiposItems.length === 0)) || guardandoManual} style={{ flex: 1 }}>
                 {guardandoManual ? "⏳ Creando..." : "Crear factura"}
               </Btn>
               <Btn variant="ghost" onClick={() => setShowFormManual(false)}>Cancelar</Btn>
@@ -11389,7 +11444,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
                   {[
                     { val: "admin", emoji: "🛡️", label: "Administrador", desc: "Acceso total al sistema" },
-                    ...(esSuperusuario ? [{ val: "dueno", emoji: "👔", label: "Dueño", desc: "Solo ve estadísticas de todas las zonas" }] : []),
+                    ...(esSuperusuario ? [{ val: "dueno", emoji: "👔", label: "Dueño", desc: "Ve estadísticas de las zonas asignadas" }] : []),
                     { val: "secretario", emoji: "🗂️", label: "Secretario/a", desc: "Gestión de clientes y tickets" },
                     { val: "tecnico", emoji: "🔧", label: "Técnico", desc: "Visualiza y ejecuta órdenes" },
                     { val: "cliente", emoji: "👤", label: "Cliente", desc: "Acceso al portal del cliente" },
@@ -11413,7 +11468,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                   <Field label="Usuario (login)"><Inp value={editU.usuario} onChange={e => setEditU({ ...editU, usuario: e.target.value })} /></Field>
                   <Field label="Teléfono 2 (opcional)"><Inp value={editU.telefono2 || ""} onChange={e => setEditU({ ...editU, telefono2: e.target.value })} placeholder="Segundo número" /></Field>
                   <Field label="Clave"><Inp type="text" value={editU.clave} onChange={e => setEditU({ ...editU, clave: e.target.value })} /></Field>
-                  {(editU.rol === "admin" || editU.rol === "tecnico") && (
+                  {(editU.rol === "admin" || editU.rol === "tecnico" || editU.rol === "dueno") && (
                     <Field label="Zonas asignadas (puede seleccionar varias)">
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
                         {zonas.filter(z => z.activa).map(z => {
@@ -11622,8 +11677,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                     <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{u.nombre}</div>
                     <div style={{ fontSize: 12, color: GC.ink3 }}>
                       @{u.usuario}
-                      {(u.rol === "admin" || u.rol === "tecnico") && (u.zonasIds || []).length > 0 && (u.zonasIds || []).map(id => { const z = zonas.find(x => x.id === id); return z ? <span key={id} style={{ color: z.color, marginLeft: 6 }}>📍 {z.nombre}</span> : null; })}
-                      {u.rol !== "admin" && !(u.rol === "tecnico" && (u.zonasIds || []).length > 0) && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
+                      {(u.rol === "admin" || u.rol === "tecnico" || u.rol === "dueno") && (u.zonasIds || []).length > 0 && (u.zonasIds || []).map(id => { const z = zonas.find(x => x.id === id); return z ? <span key={id} style={{ color: z.color, marginLeft: 6 }}>📍 {z.nombre}</span> : null; })}
+                      {u.rol !== "admin" && u.rol !== "dueno" && !(u.rol === "tecnico" && (u.zonasIds || []).length > 0) && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
                       {u.telefono && <span style={{ color: GC.info, marginLeft: 6 }}>📞 {u.telefono}</span>}
                       {u.rol === "cliente" && u.direccion && <span style={{ marginLeft: 6 }}>· {u.direccion}</span>}
                     </div>
@@ -11666,8 +11721,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                           <div style={{ fontWeight: 700, color: GC.ink, fontSize: 14 }}>{u.nombre}</div>
                           <div style={{ fontSize: 12, color: GC.ink3 }}>
                             @{u.usuario}
-                            {(u.rol === "admin" || u.rol === "tecnico") && (u.zonasIds || []).length > 0 && (u.zonasIds || []).map(id => { const z = zonas.find(x => x.id === id); return z ? <span key={id} style={{ color: z.color, marginLeft: 6 }}>📍 {z.nombre}</span> : null; })}
-                            {u.rol !== "admin" && u.rol !== "cliente" && !(u.rol === "tecnico" && (u.zonasIds || []).length > 0) && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
+                            {(u.rol === "admin" || u.rol === "tecnico" || u.rol === "dueno") && (u.zonasIds || []).length > 0 && (u.zonasIds || []).map(id => { const z = zonas.find(x => x.id === id); return z ? <span key={id} style={{ color: z.color, marginLeft: 6 }}>📍 {z.nombre}</span> : null; })}
+                            {u.rol !== "admin" && u.rol !== "cliente" && u.rol !== "dueno" && !(u.rol === "tecnico" && (u.zonasIds || []).length > 0) && u.zonaId && <span style={{ color: zonas.find(z => z.id === u.zonaId)?.color || "#64748b", marginLeft: 6 }}>📍 {getNombreZona(u.zonaId)}</span>}
                             {u.telefono && <span style={{ color: GC.info, marginLeft: 6 }}>📞 {u.telefono}</span>}
                           </div>
                           {u.rol === "cliente" && u.direccion && <div style={{ fontSize: 11, color: GC.ink3 }}>📍 {u.direccion}</div>}
@@ -11909,6 +11964,19 @@ function SeccionDueno({ titulo, color, bg, children, nota }) {
 }
 
 function PortalDueno({ zonas }) {
+  // zonas ya viene filtrada a las zonas asignadas a este dueño (ver punto de llamado).
+  const zonasPermitidasIds = React.useMemo(() => zonas.map(z => z.id), [zonas]);
+  if (zonas.length === 0) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#f8fafc", padding: "20px 16px 60px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ maxWidth: 440, textAlign: "center", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 32 }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>👔</div>
+          <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a", marginBottom: 6 }}>Sin zonas asignadas</div>
+          <div style={{ fontSize: 13, color: "#64748b" }}>Aún no tienes ninguna zona asignada para ver sus estadísticas. Pídele al superusuario que te asigne al menos una zona desde Usuarios.</div>
+        </div>
+      </div>
+    );
+  }
   const [usuarios, setUsuarios] = useState([]);
   const [ordenes, setOrdenes] = useState([]);
   const [facturas, setFacturas] = useState([]);
@@ -11933,7 +12001,7 @@ function PortalDueno({ zonas }) {
 
   useEffect(() => {
     setCargandoDia(true);
-    db.getAbonosByFecha(fechaDia, zonaSel === "todas" ? null : zonaSel)
+    db.getAbonosByFecha(fechaDia, zonaSel === "todas" ? zonasPermitidasIds : zonaSel)
       .then(setAbonosDia)
       .catch(err => { console.error("Error cargando abonos del día:", err); setAbonosDia([]); })
       .finally(() => setCargandoDia(false));
@@ -11961,7 +12029,7 @@ function PortalDueno({ zonas }) {
 
   // Calcula todas las métricas para una zona (o null = todas) y un mes/año dados
   const calcularStats = (zonaId, m, a) => {
-    const enZona = (zid) => !zonaId || zid === zonaId;
+    const enZona = (zid) => zonaId ? zid === zonaId : zonasPermitidasIds.includes(zid);
     const clientes = usuarios.filter(u => u.rol === "cliente" && enZona(u.zonaId));
     const activos = clientes.filter(c => c.activo !== false).length;
     const inactivos = clientes.filter(c => c.activo === false).length;
@@ -12034,7 +12102,7 @@ function PortalDueno({ zonas }) {
   // Vista por día específico — misma lógica que el "Informe Diario" del Panel Superusuario:
   // saldo anterior (todo lo acumulado ANTES del día) + lo del día = saldo con el que cerró la caja ese día.
   const statsDia = React.useMemo(() => {
-    const enZona = (zid) => zonaSel === "todas" || zid === zonaSel;
+    const enZona = (zid) => zonaSel === "todas" ? zonasPermitidasIds.includes(zid) : zid === zonaSel;
     // Igual que en Facturación y Caja: el saldo base solo se suma en la vista "todas las zonas".
     const saldoBaseZ = zonaSel === "todas" ? zonas.reduce((s, z) => s + (z.saldoBase || 0), 0) : 0;
 
@@ -12498,7 +12566,7 @@ export default function App() {
         <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} setUsuarios={setUsuarios} inventarioItems={inventarioItems} setInventarioItems={setInventarioItems} inventarioStock={inventarioStock} setInventarioStock={setInventarioStock} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
       {sesion && sesion.rol === "dueno" && (
-        <PortalDueno zonas={zonas} />
+        <PortalDueno zonas={zonas.filter(z => zonasDeUsuario(sesion).includes(z.id))} />
       )}
       {sesion && (sesion.rol === "admin" || sesion.rol === "superusuario") && (
         <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} inventarioItems={inventarioItems} setInventarioItems={setInventarioItems} inventarioStock={inventarioStock} setInventarioStock={setInventarioStock} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
