@@ -214,7 +214,7 @@ const db = {
   },
   async upsertUsuario(u) {
     const privilegiosBase = u.privilegios || [];
-    const zonasEntries = (u.rol === "admin" || u.rol === "superusuario" || u.rol === "tecnico")
+    const zonasEntries = (u.rol === "admin" || u.rol === "superusuario" || u.rol === "tecnico" || u.rol === "dueno")
       ? (u.zonasIds || []).map(id => "zona:" + id)
       : [];
     const row = {
