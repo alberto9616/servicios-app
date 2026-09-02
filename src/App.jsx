@@ -11972,21 +11972,11 @@ function SeccionDueno({ titulo, color, bg, children, nota }) {
 function PortalDueno({ zonas }) {
   // zonas ya viene filtrada a las zonas asignadas a este dueño (ver punto de llamado).
   const zonasPermitidasIds = React.useMemo(() => zonas.map(z => z.id), [zonas]);
-  if (zonas.length === 0) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#f8fafc", padding: "20px 16px 60px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ maxWidth: 440, textAlign: "center", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 32 }}>
-          <div style={{ fontSize: 40, marginBottom: 10 }}>👔</div>
-          <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a", marginBottom: 6 }}>Sin zonas asignadas</div>
-          <div style={{ fontSize: 13, color: "#64748b" }}>Aún no tienes ninguna zona asignada para ver sus estadísticas. Pídele al superusuario que te asigne al menos una zona desde Usuarios.</div>
-        </div>
-      </div>
-    );
-  }
   const [usuarios, setUsuarios] = useState([]);
   const [ordenes, setOrdenes] = useState([]);
   const [facturas, setFacturas] = useState([]);
   const [movimientos, setMovimientos] = useState([]);
+  const [totalCobradoPorZona, setTotalCobradoPorZona] = useState({});
   const [cargando, setCargando] = useState(true);
   const [zonaSel, setZonaSel] = useState("todas");
   const hoy = new Date();
@@ -12001,8 +11991,10 @@ function PortalDueno({ zonas }) {
 
   useEffect(() => {
     setCargando(true);
-    Promise.all([db.getUsuarios(), db.getOrdenes(), db.getFacturas(), db.getMovimientosCaja()])
-      .then(([u, o, f, m]) => { setUsuarios(u); setOrdenes(o); setFacturas(f); setMovimientos(m); })
+    // getTotalCobradoPorZona: usa la MISMA fuente que Facturación (suma real de abonos, vía RPC),
+    // en vez de inferir el cobro desde la factura — así los dos módulos nunca se desincronizan.
+    Promise.all([db.getUsuarios(), db.getOrdenes(), db.getFacturas(), db.getMovimientosCaja(), db.getTotalCobradoPorZona()])
+      .then(([u, o, f, m, tcz]) => { setUsuarios(u); setOrdenes(o); setFacturas(f); setMovimientos(m); setTotalCobradoPorZona(tcz || {}); })
       .catch(err => console.error("Error cargando estadísticas:", err))
       .finally(() => setCargando(false));
   }, []);
@@ -12079,8 +12071,10 @@ function PortalDueno({ zonas }) {
     // Igual que en Facturación y Caja: el saldo base es de toda la oficina, solo se suma
     // en la vista "todas las zonas" — para una zona específica NO se reparte.
     const saldoBaseZ = zonaId ? 0 : zonas.reduce((s, z) => s + (z.saldoBase || 0), 0);
-    const cobradoHistoricoTotal = facturas.filter(f => enZona(f.zonaId) && f.estado !== "Anulada")
-      .reduce((s, f) => s + Math.max(0, f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0)), 0);
+    // Cobrado histórico real: suma de abonos (misma fuente que Facturación), no inferido de la factura.
+    const cobradoHistoricoTotal = zonaId
+      ? (totalCobradoPorZona[zonaId] || 0)
+      : zonasPermitidasIds.reduce((s, zid) => s + (totalCobradoPorZona[zid] || 0), 0);
     const ingresosManualTotal = movimientos.filter(mv => enZona(mv.zonaId) && mv.tipo === "Ingreso").reduce((s, mv) => s + mv.monto, 0);
     const egresosTotal = movimientos.filter(mv => enZona(mv.zonaId) && mv.tipo === "Egreso").reduce((s, mv) => s + mv.monto, 0);
     const totalCaja = saldoBaseZ + cobradoHistoricoTotal + ingresosManualTotal - egresosTotal;
@@ -12155,6 +12149,18 @@ function PortalDueno({ zonas }) {
 
   if (cargando) {
     return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b" }}>Cargando estadísticas…</div>;
+  }
+
+  if (zonas.length === 0) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#f8fafc", padding: "20px 16px 60px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ maxWidth: 440, textAlign: "center", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 32 }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>👔</div>
+          <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a", marginBottom: 6 }}>Sin zonas asignadas</div>
+          <div style={{ fontSize: 13, color: "#64748b" }}>Aún no tienes ninguna zona asignada para ver sus estadísticas. Pídele al superusuario que te asigne al menos una zona desde Usuarios.</div>
+        </div>
+      </div>
+    );
   }
 
   return (
