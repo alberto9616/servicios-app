@@ -11986,8 +11986,6 @@ function PortalDueno({ zonas }) {
   const [fechaDia, setFechaDia] = useState(fechaLocal());
   const [abonosDia, setAbonosDia] = useState([]);
   const [cargandoDia, setCargandoDia] = useState(false);
-  // "Cobrado hoy" y "Total en caja" (hoy) — fijos, no dependen del selector de fecha de abajo
-  const [abonosHoyFijo, setAbonosHoyFijo] = useState([]);
 
   useEffect(() => {
     setCargando(true);
@@ -12006,12 +12004,6 @@ function PortalDueno({ zonas }) {
       .catch(err => { console.error("Error cargando abonos del día:", err); setAbonosDia([]); })
       .finally(() => setCargandoDia(false));
   }, [fechaDia, zonaSel]);
-
-  useEffect(() => {
-    db.getAbonosByFecha(fechaLocal(), zonaSel === "todas" ? zonasPermitidasIds : zonaSel)
-      .then(setAbonosHoyFijo)
-      .catch(err => { console.error("Error cargando cobrado hoy:", err); setAbonosHoyFijo([]); });
-  }, [zonaSel, zonasPermitidasIds.join(",")]);
 
   // mes/año anterior al seleccionado
   const mesAnt = mes === 1 ? 12 : mes - 1;
@@ -12082,7 +12074,7 @@ function PortalDueno({ zonas }) {
     // Pendiente del mes: facturas de ese mes/año que aún no están 100% pagadas (excluye anuladas)
     const pendienteMes = facturasDelMes.filter(f => f.estado !== "Pagado").reduce((s, f) => s + f.saldoPendiente, 0);
 
-    return { activos, inactivos, morosos, totalOrdenes, instalaciones, ingresos, egresos, totalCaja, pendienteMes };
+    return { activos, inactivos, morosos, totalOrdenes, instalaciones, ingresos, egresos, totalCaja, egresosTotal, pendienteMes };
   };
 
   const zonaIdSel = zonaSel === "todas" ? null : zonaSel;
@@ -12109,17 +12101,6 @@ function PortalDueno({ zonas }) {
       return { label: z.nombre, a: st.ingresos, b: st.morosos * (st.ingresos > 0 ? st.ingresos / Math.max(1, st.activos) : 0) };
     });
   }, [usuarios, ordenes, facturas, movimientos, zonaSel, mes, anio, zonas]);
-
-  // "Cobrado hoy" y "Total en caja (hoy)" — mismos nombres y fórmula que en Facturación,
-  // para que el dueño vea exactamente la misma info sin tener que aprender otro lenguaje.
-  const hoyFinanzas = React.useMemo(() => {
-    const enZona = (zid) => zonaSel === "todas" ? zonasPermitidasIds.includes(zid) : zid === zonaSel;
-    const cobradoHoy = abonosHoyFijo.filter(a => a.facturaEstado !== "Anulada").reduce((s, a) => s + a.monto, 0);
-    const movHoy = movimientos.filter(m => enZona(m.zonaId) && m.fecha === fechaLocal());
-    const ingresosHoy = movHoy.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
-    const egresosHoy = movHoy.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
-    return { cobradoHoy, egresosHoy, totalCajaHoy: cobradoHoy + ingresosHoy - egresosHoy };
-  }, [abonosHoyFijo, movimientos, zonaSel, zonasPermitidasIds.join(",")]);
 
   // Vista por día específico — misma lógica que el "Informe Diario" del Panel Superusuario:
   // saldo anterior (todo lo acumulado ANTES del día) + lo del día = saldo con el que cerró la caja ese día.
@@ -12200,21 +12181,27 @@ function PortalDueno({ zonas }) {
           </div>
         </SeccionDueno>
 
-        {/* Sección: Finanzas — idéntico a las tarjetas de Facturación */}
-        <SeccionDueno titulo="💰 FINANZAS" color="#b45309" bg="#fffbeb">
+        {/* Sección: Finanzas — igual a Facturación, con filtro por día + egresos generales acumulados */}
+        <SeccionDueno titulo="💰 FINANZAS" color="#b45309" bg="#fffbeb"
+          nota={<input type="date" value={fechaDia} onChange={e => setFechaDia(e.target.value)} max={fechaLocal()} style={{ padding: "5px 9px", borderRadius: 7, border: "1px solid #fde68a", fontSize: 12, fontFamily: "inherit" }} />}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
             <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
-              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📅 Cobrado hoy</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: GC.purple }}>{formatCOP(hoyFinanzas.cobradoHoy)}</div>
+              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📅 Cobrado {fechaDia === fechaLocal() ? "hoy" : "ese día"}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: GC.purple }}>{formatCOP(statsDia.totalIngresosDia)}</div>
             </div>
             <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
               <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>🏦 Total en caja</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: GC.brand }}>{formatCOP(hoyFinanzas.totalCajaHoy)}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: GC.brand }}>{formatCOP(statsDia.totalIngresosDia - statsDia.egresosCajaDia)}</div>
               <div style={{ fontSize: 10, color: "#94a3b8" }}>se reinicia cada día</div>
             </div>
             <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
-              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📤 Egresos hoy</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: "#dc2626" }}>{formatCOP(hoyFinanzas.egresosHoy)}</div>
+              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📤 Egresos {fechaDia === fechaLocal() ? "hoy" : "ese día"}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#dc2626" }}>{formatCOP(statsDia.egresosCajaDia)}</div>
+            </div>
+            <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>💸 Egresos generales</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#b91c1c" }}>{formatCOP(actual.egresosTotal)}</div>
+              <div style={{ fontSize: 10, color: "#94a3b8" }}>acumulado de siempre</div>
             </div>
             <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
               <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>🌐 Total global</div>
