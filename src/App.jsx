@@ -12200,28 +12200,42 @@ function PortalDueno({ zonas }) {
           </div>
         </SeccionDueno>
 
-        {/* Sección: Finanzas — mismos nombres y cifras que en el módulo de Facturación */}
-        <SeccionDueno titulo="💰 FINANZAS" color="#b45309" bg="#fffbeb">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
-            <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
-              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📅 Cobrado hoy</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: GC.purple }}>{formatCOP(hoyFinanzas.cobradoHoy)}</div>
+        {/* Sección: Finanzas — mismos nombres y cifras que en el módulo de Facturación, con filtro por día */}
+        <SeccionDueno titulo="💰 FINANZAS" color="#b45309" bg="#fffbeb"
+          nota={<input type="date" value={fechaDia} onChange={e => setFechaDia(e.target.value)} max={fechaLocal()} style={{ padding: "5px 9px", borderRadius: 7, border: "1px solid #fde68a", fontSize: 12, fontFamily: "inherit" }} />}>
+          {cargandoDia ? (
+            <div style={{ color: "#94a3b8", fontSize: 13, padding: "10px 0" }}>Cargando…</div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 12 }}>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📅 Cobrado {fechaDia === fechaLocal() ? "hoy" : "ese día"}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: GC.purple }}>{formatCOP(statsDia.totalIngresosDia)}</div>
+                <div style={{ fontSize: 11, color: "#94a3b8" }}>{statsDia.cantidadAbonos} pago{statsDia.cantidadAbonos !== 1 ? "s" : ""} de factura{statsDia.ingresosCajaDia ? " + ingresos manuales" : ""}</div>
+              </div>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📤 Egresos {fechaDia === fechaLocal() ? "hoy" : "ese día"}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#dc2626" }}>{formatCOP(statsDia.egresosCajaDia)}</div>
+              </div>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📦 Caja con la que empezó ese día</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#475569" }}>{formatCOP(statsDia.saldoAnterior)}</div>
+              </div>
+              <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "#047857", fontWeight: 600 }}>🏦 Caja al cierre de ese día</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#047857" }}>{formatCOP(statsDia.saldoCierreDia)}</div>
+              </div>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>🌐 Total global (acumulado)</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#0891b2" }}>{formatCOP(actual.totalCaja)}</div>
+              </div>
+              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>⏳ Pendiente ({MESES[mes - 1]})</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: GC.warning }}>{formatCOP(actual.pendienteMes)}</div>
+              </div>
             </div>
-            <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
-              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>🏦 Total en caja (hoy)</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: GC.brand }}>{formatCOP(hoyFinanzas.totalCajaHoy)}</div>
-            </div>
-            <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
-              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>🌐 Total global (acumulado)</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: "#0891b2" }}>{formatCOP(actual.totalCaja)}</div>
-            </div>
-            <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
-              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>⏳ Pendiente ({MESES[mes - 1]})</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: GC.warning }}>{formatCOP(actual.pendienteMes)}</div>
-            </div>
-          </div>
+          )}
           <div style={{ fontSize: 11, color: "#92400e", marginTop: 10, lineHeight: 1.5 }}>
-            Son los mismos 4 datos que ves en Facturación: "Cobrado hoy" y "Total en caja" se reinician cada día; "Total global" es la plata acumulada de siempre (nunca vuelve a cero); "Pendiente" es lo que falta de cobrar del mes seleccionado arriba.
+            "Cobrado", "Egresos" y "Caja" de arriba corresponden al día elegido en el calendario (por defecto hoy). "Total global" es la plata acumulada de siempre (nunca vuelve a cero). "Pendiente" es lo que falta de cobrar del mes seleccionado arriba de todo.
           </div>
         </SeccionDueno>
 
@@ -12231,34 +12245,6 @@ function PortalDueno({ zonas }) {
             <StatCardDueno label="Órdenes creadas" valor={actual.totalOrdenes} anterior={anterior.totalOrdenes} icono="🧾" />
             <StatCardDueno label="Instalaciones" valor={actual.instalaciones} anterior={anterior.instalaciones} icono="🔌" />
           </div>
-        </SeccionDueno>
-
-        {/* Sección: Cierre de un día específico */}
-        <SeccionDueno titulo={"📅 CIERRE DE UN DÍA ESPECÍFICO" + (zonaSel === "todas" ? "" : " — " + zonas.find(z => z.id === zonaSel)?.nombre)} color="#0f766e" bg="#f0fdfa"
-          nota={<input type="date" value={fechaDia} onChange={e => setFechaDia(e.target.value)} max={fechaLocal()} style={{ padding: "5px 9px", borderRadius: 7, border: "1px solid #99f6e4", fontSize: 12, fontFamily: "inherit" }} />}>
-          {cargandoDia ? (
-            <div style={{ color: "#94a3b8", fontSize: 13, padding: "10px 0" }}>Cargando…</div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
-              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>💵 Recaudado ese día</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: "#16a34a" }}>{formatCOP(statsDia.totalIngresosDia)}</div>
-                <div style={{ fontSize: 11, color: "#94a3b8" }}>{statsDia.cantidadAbonos} pago{statsDia.cantidadAbonos !== 1 ? "s" : ""} de factura{statsDia.ingresosCajaDia ? " + ingresos manuales" : ""}</div>
-              </div>
-              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📤 Egresos ese día</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: "#dc2626" }}>{formatCOP(statsDia.egresosCajaDia)}</div>
-              </div>
-              <div style={{ background: "#f8fafc", borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>📦 Saldo con el que empezó</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: "#475569" }}>{formatCOP(statsDia.saldoAnterior)}</div>
-              </div>
-              <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ fontSize: 11, color: "#047857", fontWeight: 600 }}>🏦 Caja al cierre de ese día</div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: "#047857" }}>{formatCOP(statsDia.saldoCierreDia)}</div>
-              </div>
-            </div>
-          )}
         </SeccionDueno>
       </div>
     </div>
