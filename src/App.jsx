@@ -12260,32 +12260,6 @@ function PortalDueno({ zonas }) {
             </div>
           )}
         </SeccionDueno>
-
-        {/* Sección: Tendencias */}
-        <SeccionDueno titulo="📈 TENDENCIAS Y COMPARACIONES" color="#334155" bg="#f1f5f9">
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 8 }}>
-            Ingresos vs Egresos — últimos 6 meses {zonaSel === "todas" ? "(todas las zonas)" : "(" + zonas.find(z => z.id === zonaSel)?.nombre + ")"}
-          </div>
-          <BarChartComparativo data={ultimos6} colorA="#16a34a" colorB="#dc2626" labelA="Ingresos" labelB="Egresos" />
-
-          {zonaSel === "todas" && zonas.length > 1 && (
-            <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid #e2e8f0" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#475569", marginBottom: 10 }}>Comparación entre zonas — {MESES[mes - 1]} {anio}</div>
-              {zonas.map(z => {
-                const st = calcularStats(z.id, mes, anio);
-                return (
-                  <div key={z.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 4px", borderBottom: "1px solid #f1f5f9", flexWrap: "wrap", gap: 8 }}>
-                    <div style={{ fontWeight: 700, color: z.color || "#0f172a", fontSize: 13 }}>📍 {z.nombre}</div>
-                    <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#475569" }}>
-                      <span>👥 {st.activos} activos</span>
-                      <span>🔴 {st.morosos} morosos</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </SeccionDueno>
       </div>
     </div>
   );
