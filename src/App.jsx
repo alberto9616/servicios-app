@@ -12236,6 +12236,54 @@ function PortalDueno({ zonas }) {
 // APP PRINCIPAL
 
 // Wrapper que conecta SideNav con el portal activo
+// Nota rápida imprimible: solo lo que el usuario escribe, sin ningún dato de la empresa.
+function NotaImprimibleModal({ onClose }) {
+  const [texto, setTexto] = useState("");
+
+  const imprimir = () => {
+    if (!texto.trim()) { alert("Escribe algo antes de imprimir."); return; }
+    const w = window.open("", "_blank", "width=420,height=600");
+    const escapado = texto
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/\n/g, "<br>");
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Nota</title>
+    <style>
+      @page { size: 80mm auto; margin: 4mm; }
+      body { font-family: 'Courier New', monospace; font-size: 12pt; line-height: 1.5; color: #000; margin: 0; padding: 8px; white-space: pre-wrap; word-break: break-word; }
+      .btn-print { display: block; margin: 16px auto 0; padding: 8px 20px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; }
+      @media print { .btn-print { display: none; } }
+    </style></head><body>
+      <div>${escapado}</div>
+      <button class="btn-print" onclick="window.print()">🖨️ Imprimir</button>
+    </body></html>`);
+    w.document.close();
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 420, boxShadow: "0 20px 60px #00000033", overflow: "hidden" }}>
+        <div style={{ padding: "18px 20px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a" }}>📝 Nota rápida</div>
+          <button onClick={onClose} style={{ background: "#f1f5f9", border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: "#64748b" }}>×</button>
+        </div>
+        <div style={{ padding: 20 }}>
+          <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
+            Escribe lo que necesites. Al imprimir, solo sale este texto — sin nombre, logo ni datos de la empresa.
+          </div>
+          <textarea value={texto} onChange={e => setTexto(e.target.value)} autoFocus
+            placeholder="Escribe tu nota aquí..." rows={10}
+            style={{ width: "100%", border: "1px solid #cbd5e1", borderRadius: 10, padding: "10px 12px", fontSize: 14, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }} />
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <Btn onClick={imprimir} style={{ flex: 1 }}>🖨️ Imprimir nota</Btn>
+            <button onClick={onClose} style={{ padding: "10px 16px", background: "#f1f5f9", border: "none", borderRadius: 9, cursor: "pointer", fontSize: 13, color: "#334155", fontFamily: "inherit" }}>Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SideNavTrigger({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy }) {
   return <SideNav sesion={sesion} tab={tab} setTab={setTab} cerrarSesion={cerrarSesion} ticketsNuevos={ticketsNuevos} ordenesHoy={ordenesHoy} />;
 }
@@ -12252,6 +12300,7 @@ export default function App() {
   const [propaganda, setPropaganda] = useState([]);
   const [inventarioItems, setInventarioItems] = useState([]);
   const [inventarioStock, setInventarioStock] = useState([]);
+  const [showNotaImprimible, setShowNotaImprimible] = useState(false);
   const [sesion, setSesionRaw] = useState(null);
   const [loginUser, setLoginUser] = useState(() => {
     try { return localStorage.getItem("gc_remember_user") || ""; } catch { return ""; }
@@ -12463,6 +12512,12 @@ export default function App() {
         </div>
         {sesion && (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {(sesion.rol === "secretario" || sesion.rol === "admin") && (
+              <button onClick={() => setShowNotaImprimible(true)} title="Generar una nota imprimible"
+                style={{ background: "rgba(255,255,255,.08)", color: "#fff", border: "1px solid rgba(255,255,255,.15)", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontSize: 12, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
+                📝 <span style={{ display: window.innerWidth < 480 ? "none" : "inline" }}>Nota</span>
+              </button>
+            )}
             {sesion.rol === "tecnico" && ordenesHoyTecnico > 0 && (
               <span style={{ background: GC.warningBg, color: GC.warning, border: "1px solid " + GC.warningBdr, borderRadius: 20, padding: "2px 9px", fontSize: 11, fontWeight: 700 }}>{ordenesHoyTecnico} hoy</span>
             )}
@@ -12478,6 +12533,9 @@ export default function App() {
           </div>
         )}
       </header>
+
+      {/* Modal: Generar nota imprimible (solo secretario/admin) — sin ningún dato de la empresa al imprimir */}
+      {showNotaImprimible && <NotaImprimibleModal onClose={() => setShowNotaImprimible(false)} />}
 
       {/* LOGIN */}
       {!sesion && (
