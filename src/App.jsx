@@ -5498,23 +5498,30 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   };
 
   const abrirDetalle = async (f) => {
-    // Verificar deuda anterior: combina facturas del mes actual + históricas
-    const todasFacturasCliente = [...facturas, ...facturasHistoricas]
-      .filter((x, i, arr) => arr.findIndex(y => y.id === x.id) === i); // dedup
-    const mesFactura = f.anio * 12 + f.mes;
-    const deudaAnterior = todasFacturasCliente.filter(x =>
-      x.clienteId === f.clienteId &&
-      x.id !== f.id &&
-      x.estado !== "Anulada" &&
-      x.saldoPendiente > 0 &&
-      (x.anio * 12 + x.mes) < mesFactura
-    ).sort((a, b) => (a.anio * 12 + a.mes) - (b.anio * 12 + b.mes));
+    // Verificar deuda anterior: SOLO aplica a facturas de servicio (mensualidad).
+    // Las facturas de equipo son independientes: no bloquean ni se ven bloqueadas
+    // por la mensualidad, y no se comparan entre sí por mes/año (cada equipo tiene
+    // su propio plan de cuotas, con su propio orden vía numeroCuota).
+    if ((f.tipo || "servicio") === "servicio") {
+      // Verificar deuda anterior: combina facturas del mes actual + históricas
+      const todasFacturasCliente = [...facturas, ...facturasHistoricas]
+        .filter((x, i, arr) => arr.findIndex(y => y.id === x.id) === i); // dedup
+      const mesFactura = f.anio * 12 + f.mes;
+      const deudaAnterior = todasFacturasCliente.filter(x =>
+        x.clienteId === f.clienteId &&
+        x.id !== f.id &&
+        (x.tipo || "servicio") === "servicio" && // nunca comparar contra facturas de equipo
+        x.estado !== "Anulada" &&
+        x.saldoPendiente > 0 &&
+        (x.anio * 12 + x.mes) < mesFactura
+      ).sort((a, b) => (a.anio * 12 + a.mes) - (b.anio * 12 + b.mes));
 
-    if (deudaAnterior.length > 0) {
-      const mesesDeuda = deudaAnterior.map(x => `${MESES[(x.mes||1)-1]} ${x.anio}: ${formatCOP(x.saldoPendiente)}`).join("\n");
-      const totalDeuda = deudaAnterior.reduce((s, x) => s + x.saldoPendiente, 0);
-      alert(`⚠️ ${f.clienteNombre} tiene ${deudaAnterior.length} mes(es) sin pagar anteriores.\n\nDebe pagar primero:\n${mesesDeuda}\n\nDeuda anterior total: ${formatCOP(totalDeuda)}\n\nCobra los meses anteriores antes de cobrar este.`);
-      return;
+      if (deudaAnterior.length > 0) {
+        const mesesDeuda = deudaAnterior.map(x => `${MESES[(x.mes||1)-1]} ${x.anio}: ${formatCOP(x.saldoPendiente)}`).join("\n");
+        const totalDeuda = deudaAnterior.reduce((s, x) => s + x.saldoPendiente, 0);
+        alert(`⚠️ ${f.clienteNombre} tiene ${deudaAnterior.length} mes(es) sin pagar anteriores.\n\nDebe pagar primero:\n${mesesDeuda}\n\nDeuda anterior total: ${formatCOP(totalDeuda)}\n\nCobra los meses anteriores antes de cobrar este.`);
+        return;
+      }
     }
 
     setModalAbono(f);
