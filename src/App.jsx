@@ -955,6 +955,8 @@ const ZONA_CONTACTO = {
   "comuneros": { direccion: "Calle 72L # 28B2-101 Comuneros 2", telefono: "3102901878", nombreEmpresa: "TELECABLE COMUNEROS" },
   "la paz": { direccion: "Calle 72U # 26L-42 La Paz", telefono: "3181381108", nombreEmpresa: "TELECABLE LA PAZ" },
   "san antonio": { direccion: "Calle 6 # 7-39 barrio centro", telefono: "3012201067", nombreEmpresa: "CABLE CAUCA - OFICINA SAN ANTONIO DE LOS CABALLEROS" },
+  "television omar torrijos": { direccion: "Carrera 27 # 72Y-18 Barrio Omar Torrijos", telefono: "3124458927", nombreEmpresa: "TELECABLE OMAR TORRIJOS" },
+  "combo omar torrijos": { direccion: "Carrera 27 # 72Y-18 Barrio Omar Torrijos", telefono: "3124458927", nombreEmpresa: "TELECABLE OMAR TORRIJOS" },
 };
 const normalizarZona = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 const getContactoZona = (nombreZona) => ZONA_CONTACTO[normalizarZona(nombreZona)] || null;
@@ -7384,6 +7386,10 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
 
   const imprimirTirilla = (cliente, listaFact) => {
     const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
+    const zonaCliente = zonas.find(z => z.id === cliente?.zonaId);
+    const contactoZona = getContactoZona(zonaCliente?.nombre);
+    const empresaTirilla = contactoZona?.nombreEmpresa || zonaCliente?.nombreEmpresa || nombreEmpresa;
+    const telTirilla = contactoZona?.telefono || "318-8255601";
     const listaFactActiva = listaFact.filter(f => f.estado !== "Anulada");
     const totalCli = listaFactActiva.reduce((s,f) => s + f.monto, 0);
     const cobradoCli = listaFactActiva.reduce((s,f) => s + ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0))), 0);
@@ -7407,7 +7413,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
       .btn-print { display: block; margin: 12px auto; padding: 8px 20px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 700; }
       @media print { .btn-print { display: none; } body { width: 64mm; padding: 0; } }
     </style></head><body>
-    <div class="center"><div class="bold" style="font-size:10.5pt;text-transform:uppercase">${nombreEmpresa}</div><div style="font-size:8pt">Tel: 318-8255601</div></div>
+    <div class="center"><div class="bold" style="font-size:10.5pt;text-transform:uppercase">${empresaTirilla}</div><div style="font-size:8pt">Tel: ${telTirilla}</div></div>
     <hr class="sep"/>
     <div class="center bold" style="font-size:9pt">HISTORIAL DE PAGOS</div>
     <div class="center" style="font-size:7.5pt;margin:2px 0">${new Date().toLocaleDateString("es-CO")}</div>
