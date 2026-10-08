@@ -402,6 +402,28 @@ const db = {
     if (error) throw error;
     return data.map(mapFactura);
   },
+  // IDs de clientes que YA tienen factura de servicio (no anulada) en ese mes/año. Consulta la base de datos,
+  // no el estado local, para que dos secretarios generando a la vez no dupliquen la mensualidad.
+  async getClientesConFacturaServicio(mes, anio, clienteIds) {
+    const ya = new Set();
+    for (let i = 0; i < clienteIds.length; i += 100) {
+      const chunk = clienteIds.slice(i, i + 100);
+      const { data, error } = await sb.from("facturas").select("cliente_id")
+        .in("cliente_id", chunk).eq("mes", mes).eq("anio", anio)
+        .neq("estado", "Anulada").or("tipo.is.null,tipo.eq.servicio").limit(1000);
+      if (error) throw error;
+      (data || []).forEach(r => ya.add(r.cliente_id));
+    }
+    return ya;
+  },
+  // Mensualidades (Internet/TV) ya existentes de un cliente en un mes/año.
+  async getMensualidadesExistentes(clienteId, mes, anio) {
+    const { data, error } = await sb.from("facturas").select("*")
+      .eq("cliente_id", clienteId).eq("mes", mes).eq("anio", anio)
+      .neq("estado", "Anulada").or("tipo.is.null,tipo.eq.servicio");
+    if (error) throw error;
+    return (data || []).map(mapFactura).filter(f => esConceptoMensualidad(f.concepto));
+  },
   async crearFactura(f) {
     const { data, error } = await sb.from("facturas").insert({
       cliente_id: f.clienteId, cliente_nombre: f.clienteNombre,
@@ -2020,6 +2042,29 @@ function PortalCliente({ usuario, tickets, setTickets, avisos, usuarios, setUsua
 // ══════════════════════════════════════════════════════════════
 // PORTAL SECRETARIO
 // ══════════════════════════════════════════════════════════════
+// Una "mensualidad" es la factura del servicio del mes (Internet / TV / combo).
+// Otros cobros manuales (traslado, material, reconexión...) NO cuentan como mensualidad.
+const esConceptoMensualidad = (concepto) => /\b(internet|tv|televisi[oó]n|mensualidad|combo|cable)\b/i.test(concepto || "");
+
+// Al crear un cliente NUEVO: avisa si ya existe uno DESACTIVADO con la misma cédula o el mismo nombre.
+// Devuelve true si se puede continuar creándolo, false si el usuario decide cancelar.
+function avisarClienteDesactivado(usuarios, u) {
+  const normTxt = t => String(t || "").trim().toUpperCase().replace(/\s+/g, " ");
+  const ced = String(u.cedula || "").trim();
+  const nom = normTxt(u.nombre);
+  const desactivados = usuarios.filter(x =>
+    x.rol === "cliente" && x.activo === false && x.id !== u.id &&
+    ((ced && String(x.cedula || "").trim() === ced) || (nom && normTxt(x.nombre) === nom))
+  );
+  if (desactivados.length === 0) return true;
+  const lista = desactivados.map(x => `• ${x.nombre} — cédula ${x.cedula || "sin cédula"} — ${x.direccion || "sin dirección"}`).join("\n");
+  return confirm(
+    `⚠️ Ya existe un cliente DESACTIVADO con esos datos:\n\n${lista}\n\n` +
+    `Si es la misma persona, lo correcto es REACTIVARLO (menú ⋮ del cliente → "Activar cliente") en vez de crear otro contrato.\n\n` +
+    `¿Crear un contrato NUEVO de todas formas?\n\nAceptar = crear contrato nuevo\nCancelar = no crear`
+  );
+}
+
 function ClienteAcciones({ c, accionLoading, setAccionLoading, setUsuarios, setEditCliente, setShowFormCliente, setModalOrdenServicio, setConfirmElimSecretario, deleteCliente, toggleCliente, zonas, db, usuarioId }) {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const [modalPromesa, setModalPromesa] = useState(false);
@@ -2101,7 +2146,11 @@ function ClienteAcciones({ c, accionLoading, setAccionLoading, setUsuarios, setE
                 color: "#16a34a",
                 onClick: () => { setMenuAbierto(false); reconectarServicio(); }
               }] : []),
-              { label: c.activo ? "Desactivar cliente" : "Activar cliente", icon: c.activo ? "🔴" : "🟢", onClick: () => { toggleCliente(c.id); setMenuAbierto(false); } },
+              { label: c.activo ? "Desactivar cliente" : "Activar cliente", icon: c.activo ? "🔴" : "🟢", onClick: () => {
+                setMenuAbierto(false);
+                if (c.activo && !confirm(`¿Desactivar a ${c.nombre}?\n\nNo se borra nada: sus facturas y pagos se conservan y lo puedes volver a activar cuando quieras.`)) return;
+                toggleCliente(c.id);
+              } },
               { label: "Ver orden servicio", icon: "📄", onClick: () => { setModalOrdenServicio(c); setMenuAbierto(false); } },
               ...(zonaCliente?.equipoCuotasActivo ? [{ label: "Vender equipo a cuotas", icon: "💻", color: "#7c3aed", onClick: () => { setMenuAbierto(false); setModalPlanEquipo(true); } }] : []),
               { label: "Cambiar clave acceso", icon: "🔑", onClick: async () => {
@@ -2111,7 +2160,6 @@ function ClienteAcciones({ c, accionLoading, setAccionLoading, setUsuarios, setE
                 try { await db.upsertUsuario({ ...c, clave: nuevaClave.trim() }); setUsuarios(p => p.map(u => u.id === c.id ? { ...u, clave: nuevaClave.trim() } : u)); alert(`Clave actualizada.`); }
                 catch (err) { alert("Error: " + err.message); }
               }},
-              { label: "Eliminar cliente", icon: "🗑️", color: "#ef4444", onClick: () => { setMenuAbierto(false); setConfirmElimSecretario({ accion: () => deleteCliente(c.id), titulo: "Eliminar cliente?", mensaje: `Se eliminara a "${c.nombre}" del sistema.` }); } },
             ].map(item => (
               <button key={item.label} onClick={item.onClick}
                 style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", fontSize: 13, color: item.color || GC.ink, textAlign: "left", fontFamily: "inherit" }}
@@ -2357,6 +2405,9 @@ function PortalSecretario({ usuario, tickets, setTickets, ordenes, setOrdenes, u
 
   const saveCliente = async (u) => {
     if (!u.nombre?.trim()) { alert("El nombre es obligatorio."); return; }
+
+    // Cliente NUEVO: avisar si ya existe uno desactivado con la misma cédula/nombre
+    if (!u.id && !avisarClienteDesactivado(usuarios, u)) return;
 
     // Validar IP única (solo si se ingresó)
     if (u.ip?.trim()) {
@@ -5271,6 +5322,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
         x.id !== f.id &&
         (x.tipo || "servicio") === "servicio" && // nunca comparar contra facturas de equipo
         x.estado !== "Anulada" &&
+        x.estado !== "Pagado" && // una factura Pagado no es deuda, aunque su saldoPendiente haya quedado sucio
         x.saldoPendiente > 0 &&
         (x.anio * 12 + x.mes) < mesFactura
       ).sort((a, b) => (a.anio * 12 + a.mes) - (b.anio * 12 + b.mes));
@@ -5977,7 +6029,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       const clientesBase = (esAdmin && zonas.length > 1 && filtroZona !== "todas")
         ? usuarios.filter(u => u.rol === "cliente" && u.activo && u.zonaId === filtroZona)
         : clientesVisibles;
-      const clientesTarget = clientesBase.filter(c => {
+      const clientesCandidatos = clientesBase.filter(c => {
         if (!c.monto) return false;
         // DPP, DPS y Cortesía NO generan factura
         if (ESTADOS_SIN_FACTURA.has(c.estado)) return false;
@@ -5987,13 +6039,22 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
           if (filtroAnio < anioInicio || (filtroAnio === anioInicio && filtroMes < mesInicio)) return false;
         }
         // Verificar tanto en estado local como en las recién creadas en esta misma ejecución
-        const yaExiste = facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio)
+        // Solo cuentan facturas de SERVICIO no anuladas (una factura de equipo no debe impedir la mensualidad)
+        const yaExiste = facturas.some(f => f.clienteId === c.id && f.mes === filtroMes && f.anio === filtroAnio
+                                            && (f.tipo || "servicio") === "servicio" && f.estado !== "Anulada")
                       || clientesCreados.some(x => x.id === c.id);
         if (yaExiste) return false;
         if (perfilFiltro === null) return true;
         if (perfilFiltro === "sin_perfil") return !c.perfilPagoId;
         return c.perfilPagoId === perfilFiltro;
       });
+      // Revisión final contra la BASE DE DATOS (el estado local puede estar incompleto o desactualizado)
+      const yaConFacturaDB = await db.getClientesConFacturaServicio(filtroMes, filtroAnio, clientesCandidatos.map(c => c.id));
+      const clientesTarget = clientesCandidatos.filter(c => !yaConFacturaDB.has(c.id));
+      const omitidosPorDuplicado = clientesCandidatos.length - clientesTarget.length;
+      const avisoOmitidos = omitidosPorDuplicado > 0
+        ? `\n\nℹ️ ${omitidosPorDuplicado} cliente(s) ya tenían su factura de ${MESES[filtroMes - 1]} ${filtroAnio} y se omitieron (no se duplicó nada).`
+        : "";
       for (const c of clientesTarget) {
         const mesNombre = MESES[filtroMes - 1];
         let fechaVencimiento = null;
@@ -6026,7 +6087,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         const conTelefono = clientesCreados.filter(c => c.telefono?.trim()).length;
         const sinTelefono = clientesCreados.length - conTelefono;
         const enviar = confirm(
-          `✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.${avisoZona}\n\n` +
+          `✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.${avisoZona}${avisoOmitidos}\n\n` +
           `📱 ¿Deseas enviar recordatorio por WhatsApp?\n` +
           `• ${conTelefono} clientes con teléfono registrado\n` +
           (sinTelefono > 0 ? `• ${sinTelefono} clientes sin teléfono (se omitirán)\n` : "") +
@@ -6034,7 +6095,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         );
         if (enviar) await enviarWhatsAppFacturas(clientesCreados);
       } else {
-        alert(`✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.`);
+        alert(`✅ Se generaron ${creadas} facturas para ${MESES[filtroMes - 1]} ${filtroAnio}.${avisoOmitidos}`);
       }
     } catch (e) { alert(mensajeErrorAmigable(e)); }
     finally { setGenerandoMasivo(false); }
@@ -6051,6 +6112,16 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     if (facturaManual.items.length > 0 && montoTotal <= 0) { alert("El monto debe ser mayor a 0."); return; }
     setGuardandoManual(true);
     try {
+      // No permitir una 2ª mensualidad del mismo mes (Internet/TV). Traslados, material, etc. sí se pueden.
+      if (facturaManual.items.some(i => esConceptoMensualidad(i.concepto))) {
+        const existentes = await db.getMensualidadesExistentes(cliente.id, facturaManual.mes, facturaManual.anio);
+        if (existentes.length > 0) {
+          const lista = existentes.map(x => `• #${x.numeroRecibo || "s/n"} — ${x.concepto} — ${formatCOP(x.monto)} — ${x.estado}`).join("\n");
+          alert(`⚠️ ${cliente.nombre} ya tiene la mensualidad de ${MESES[facturaManual.mes - 1]} ${facturaManual.anio}:\n\n${lista}\n\nNo se puede crear otra del mismo mes.\nSi esa factura está mal, anúlala o edítala. Si necesitas cobrar algo extra (traslado, material, etc.), ponle otro concepto.`);
+          setGuardandoManual(false);
+          return;
+        }
+      }
       const nuevas = [];
       if (facturaManual.items.length > 0) {
         const nueva = await db.crearFacturaAtomica({
@@ -10611,6 +10682,8 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
   const emptyPropa = { id: "", categoria: "promocion", titulo: "", descripcion: "", activo: true, fecha: "", imagen: "🎁", color: GC.info };
 
   const saveU = async (u) => {
+    // Cliente NUEVO: avisar si ya existe uno desactivado con la misma cédula/nombre
+    if (!u.id && u.rol === "cliente" && !avisarClienteDesactivado(usuarios, u)) return;
     // Validar IP única (solo si se ingresó y es cliente)
     if (u.rol === "cliente" && u.ip?.trim()) {
       const ipDuplicada = usuarios.find(x => x.id !== u.id && x.ip?.trim() === u.ip.trim());
