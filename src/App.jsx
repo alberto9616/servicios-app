@@ -570,6 +570,26 @@ const db = {
     if (error) throw error;
     return data.map(mapAbono);
   },
+  // Abonos (plata que realmente entró) entre dos fechas "YYYY-MM-DD", sin facturas anuladas.
+  // Paginado para superar el límite de 1000 filas de Supabase.
+  async getAbonosRango(desde, hasta) {
+    const out = [];
+    const pageSize = 1000;
+    let from = 0;
+    while (true) {
+      const { data, error } = await sb.from("abonos")
+        .select("monto, fecha, facturas!inner(zona_id, estado)")
+        .gte("fecha", desde).lte("fecha", hasta)
+        .neq("facturas.estado", "Anulada")
+        .order("fecha", { ascending: true }).order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      (data || []).forEach(r => out.push({ monto: Number(r.monto || 0), fecha: r.fecha, zonaId: r.facturas?.zona_id || null }));
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+    return out;
+  },
   // Trae los abonos CON observación para un grupo de facturas (sin importar el día).
   // Se usa para mostrar la "novedad" de cada factura en la lista, incluso de meses pasados.
   async getAbonosConObservacionPorFacturas(facturaIds) {
@@ -11755,6 +11775,22 @@ function PortalDueno({ zonas }) {
   const mesAnt = mes === 1 ? 12 : mes - 1;
   const anioAnt = mes === 1 ? anio - 1 : anio;
 
+  // Abonos del mes seleccionado y del mes anterior (para ingresos reales por mes y la comparación)
+  const [abonosRango, setAbonosRango] = useState([]);
+  const [cargandoRango, setCargandoRango] = useState(false);
+  useEffect(() => {
+    const pad = n => String(n).padStart(2, "0");
+    const desde = `${anioAnt}-${pad(mesAnt)}-01`;
+    const hasta = `${anio}-${pad(mes)}-${pad(new Date(anio, mes, 0).getDate())}`;
+    let vigente = true;
+    setCargandoRango(true);
+    db.getAbonosRango(desde, hasta)
+      .then(r => { if (vigente) setAbonosRango(r); })
+      .catch(err => { console.error("Error cargando ingresos del mes:", err); if (vigente) setAbonosRango([]); })
+      .finally(() => { if (vigente) setCargandoRango(false); });
+    return () => { vigente = false; };
+  }, [mes, anio]);
+
   // Para timestamps numéricos (ej. ordenes.fechaCreacion)
   const enRangoFecha = (timestamp, m, a) => {
     if (!timestamp) return false;
@@ -11848,6 +11884,21 @@ function PortalDueno({ zonas }) {
     });
   }, [usuarios, ordenes, facturas, movimientos, zonaSel, mes, anio, zonas]);
 
+  // Ingresos, egresos y balance del MES seleccionado y del anterior.
+  // Ingresos = plata que entró en ese mes (abonos por fecha de pago) + ingresos manuales de caja.
+  // Egresos = egresos de caja con fecha en ese mes.
+  const finanzasMes = React.useMemo(() => {
+    const enZona = (zid) => zonaSel === "todas" ? zonasPermitidasIds.includes(zid) : zid === zonaSel;
+    const calc = (m, a) => {
+      const cobros = abonosRango.filter(x => enZona(x.zonaId) && enRangoFechaStr(x.fecha, m, a)).reduce((sum, x) => sum + x.monto, 0);
+      const movs = movimientos.filter(mv => enZona(mv.zonaId) && enRangoFechaStr(mv.fecha, m, a));
+      const ingCaja = movs.filter(mv => mv.tipo === "Ingreso").reduce((sum, mv) => sum + mv.monto, 0);
+      const egresos = movs.filter(mv => mv.tipo === "Egreso").reduce((sum, mv) => sum + mv.monto, 0);
+      return { cobros, ingCaja, ingresos: cobros + ingCaja, egresos, balance: cobros + ingCaja - egresos };
+    };
+    return { actual: calc(mes, anio), anterior: calc(mesAnt, anioAnt) };
+  }, [abonosRango, movimientos, zonaSel, mes, anio, zonasPermitidasIds]);
+
   // Vista por día específico — misma lógica que el "Informe Diario" del Panel Superusuario:
   // saldo anterior (todo lo acumulado ANTES del día) + lo del día = saldo con el que cerró la caja ese día.
   const statsDia = React.useMemo(() => {
@@ -11924,6 +11975,20 @@ function PortalDueno({ zonas }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
             <StatCardDueno label="Clientes activos" valor={actual.activos} anterior={anterior.activos} icono="✅" />
             <StatCardDueno label="Morosos" valor={actual.morosos} anterior={anterior.morosos} icono="🔴" invertirColor />
+          </div>
+        </SeccionDueno>
+
+        {/* Sección: Ingresos y egresos del MES seleccionado */}
+        <SeccionDueno titulo={`📆 INGRESOS Y EGRESOS — ${MESES[mes - 1].toUpperCase()} ${anio}`} color="#15803d" bg="#f0fdf4"
+          nota={cargandoRango ? "Cargando…" : "Se cuenta por la fecha en que entró o salió el dinero"}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+            <StatCardDueno label="Ingresos del mes" valor={finanzasMes.actual.ingresos} anterior={finanzasMes.anterior.ingresos} esMoneda icono="📥" />
+            <StatCardDueno label="Egresos del mes" valor={finanzasMes.actual.egresos} anterior={finanzasMes.anterior.egresos} esMoneda icono="📤" invertirColor />
+            <StatCardDueno label="Balance del mes (ingresos − egresos)" valor={finanzasMes.actual.balance} anterior={finanzasMes.anterior.balance} esMoneda icono="⚖️" />
+          </div>
+          <div style={{ fontSize: 11, color: "#64748b", marginTop: 10 }}>
+            Ingresos = cobros de facturas {formatCOP(finanzasMes.actual.cobros)} + ingresos de caja {formatCOP(finanzasMes.actual.ingCaja)}.
+            {" "}Mes anterior ({MESES[mesAnt - 1]}): ingresos {formatCOP(finanzasMes.anterior.ingresos)} · egresos {formatCOP(finanzasMes.anterior.egresos)}.
           </div>
         </SeccionDueno>
 
