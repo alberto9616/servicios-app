@@ -1436,6 +1436,11 @@ function SideNav({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, ordenesHoy,
       { key: "usuarios",    icon: "👥", label: "Usuarios" },
       { key: "facturacion", icon: "🧾", label: "Facturación y Caja" },
     ],
+    dueno: [
+      { key: "ordenes",     icon: "📋", label: "Órdenes" },
+      { key: "usuarios",    icon: "👥", label: "Usuarios" },
+      { key: "facturacion", icon: "🧾", label: "Facturación y Caja" },
+    ],
     superusuario: [
       { key: "tickets",      icon: "🎫", label: "Tickets" },
       { key: "ordenes",      icon: "📋", label: "Órdenes" },
@@ -5213,7 +5218,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   const agregarAbonoHoyRef = useRef(null);
 
   const esSuperusuario = usuario.rol === "superusuario";
-  const esAdmin = usuario.rol === "admin" || usuario.rol === "jefe" || esSuperusuario;
+  const esAdmin = usuario.rol === "admin" || usuario.rol === "jefe" || usuario.rol === "dueno" || esSuperusuario;
   const esSecretario = usuario.rol === "secretario";
   const zonaId = usuario.zonaId;
   const zonaUsuario = zonas.find(z => z.id === zonaId);
@@ -10696,7 +10701,7 @@ function exportarMorosos(facturasHistoricas, facturasMes, usuarios, zonas, anioA
 }
 
 function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTickets, ordenes, setOrdenes, planes, setPlanes, perfilesPago = [], setPerfilesPago, zonas, setZonas, propaganda, setPropaganda, sesion, setSesion, tabExterno, setTabExterno, inventarioItems, setInventarioItems, inventarioStock, setInventarioStock }) {
-  const [tabLocal, setTabLocal] = useState("usuarios"); const esJefe = sesion?.rol === "jefe"; const TABS_JEFE = ["ordenes", "usuarios", "facturacion"]; const tabCruda = tabExterno || tabLocal; const tab = esJefe && !TABS_JEFE.includes(tabCruda) ? "usuarios" : tabCruda; const setTab = (v) => { if (esJefe && !TABS_JEFE.includes(v)) return; setTabLocal(v); if (setTabExterno) setTabExterno(v); };
+  const [tabLocal, setTabLocal] = useState("usuarios"); const esJefe = ["jefe", "dueno"].includes(sesion?.rol); const TABS_JEFE = ["ordenes", "usuarios", "facturacion"]; const tabCruda = tabExterno || tabLocal; const tab = esJefe && !TABS_JEFE.includes(tabCruda) ? "usuarios" : tabCruda; const setTab = (v) => { if (esJefe && !TABS_JEFE.includes(v)) return; setTabLocal(v); if (setTabExterno) setTabExterno(v); };
   const [editU, setEditU] = useState(null);
   const [editA, setEditA] = useState(null);
   const [editPlan, setEditPlan] = useState(null);
@@ -11268,7 +11273,7 @@ function PortalAdmin({ usuarios, setUsuarios, avisos, setAvisos, tickets, setTic
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
                   {[
                     { val: "admin", emoji: "🛡️", label: "Administrador", desc: "Acceso total al sistema" },
-                    ...(esSuperusuario ? [{ val: "dueno", emoji: "👔", label: "Dueño", desc: "Ve estadísticas de las zonas asignadas" }, { val: "jefe", emoji: "🧑‍💼", label: "Jefe", desc: "Solo ve Usuarios, Órdenes y Facturación (solo lectura)" }] : []),
+                    ...(esSuperusuario ? [{ val: "dueno", emoji: "👔", label: "Dueño", desc: "Solo ve Usuarios, Órdenes y Facturación (solo lectura)" }] : []),
                     { val: "secretario", emoji: "🗂️", label: "Secretario/a", desc: "Gestión de clientes y tickets" },
                     { val: "tecnico", emoji: "🔧", label: "Técnico", desc: "Visualiza y ejecuta órdenes" },
                     { val: "cliente", emoji: "👤", label: "Cliente", desc: "Acceso al portal del cliente" },
@@ -12211,7 +12216,7 @@ export default function App() {
   const [showNotaImprimible, setShowNotaImprimible] = useState(false);
   const [sesion, setSesionRaw] = useState(null);
   // Solo lectura: se recalcula en cada render, así también aplica al restaurar una sesión guardada.
-  MODO_SOLO_LECTURA = sesion?.rol === "jefe";
+  MODO_SOLO_LECTURA = ["jefe", "dueno"].includes(sesion?.rol);
   const [loginUser, setLoginUser] = useState(() => {
     try { return localStorage.getItem("gc_remember_user") || ""; } catch { return ""; }
   });
@@ -12507,7 +12512,7 @@ export default function App() {
       )}
 
       {/* PORTALES */}
-      {sesion && sesion.rol === "jefe" && <ModoSoloLectura />}
+      {sesion && ["jefe", "dueno"].includes(sesion.rol) && <ModoSoloLectura />}
       {sesion && sesion.rol === "cliente" && (
         <PortalCliente usuario={sesion} tickets={tickets} setTickets={setTickets} avisos={avisos} usuarios={usuarios} setUsuarios={setUsuarios} zonas={zonas} propaganda={propaganda} perfilesPago={perfilesPago} />
       )}
@@ -12517,10 +12522,7 @@ export default function App() {
       {sesion && sesion.rol === "tecnico" && (
         <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} setUsuarios={setUsuarios} inventarioItems={inventarioItems} setInventarioItems={setInventarioItems} inventarioStock={inventarioStock} setInventarioStock={setInventarioStock} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
-      {sesion && sesion.rol === "dueno" && (
-        <PortalDueno zonas={zonas.filter(z => zonasDeUsuario(sesion).includes(z.id))} />
-      )}
-      {sesion && (sesion.rol === "admin" || sesion.rol === "superusuario" || sesion.rol === "jefe") && (
+      {sesion && (sesion.rol === "admin" || sesion.rol === "superusuario" || sesion.rol === "jefe" || sesion.rol === "dueno") && (
         <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} inventarioItems={inventarioItems} setInventarioItems={setInventarioItems} inventarioStock={inventarioStock} setInventarioStock={setInventarioStock} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
     </div>
