@@ -5199,7 +5199,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   const [subTab, setSubTab] = useState("emitidas");
   const [filtroMes, setFiltroMes]   = useState(new Date().getMonth() + 1);
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
-  const [filtroZona, setFiltroZona] = useState("todas");
+  const [filtroZona, setFiltroZona] = useState(usuario.rol === "dueno" ? (zonasDeUsuario(usuario)[0] || "sin-zona") : "todas");
 
   // ── estados compartidos ──
   const [modalAbono, setModalAbono] = useState(null);
@@ -5231,7 +5231,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   });
   const COLOR_ESTADO = { "Pendiente": "#f59e0b", "Pagado": "#22c55e", "Abono parcial": "#0ea5e9", "Vencido": "#ef4444", "Anulada": "#94a3b8" };
 
-  const filtrarZona = data => esAdmin ? data : data.filter(f => {
+  const filtrarZona = data => usuario.rol === "dueno" ? data.filter(f => usuarios.some(u => u.id === f.clienteId)) : esAdmin ? data : data.filter(f => {
     const c = usuarios.find(u => u.id === f.clienteId);
     return c?.zonaId === zonaId;
   });
@@ -5254,7 +5254,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       .then(data => setFacturasHistoricas(filtrarZona(data)))
       .catch(() => {});
     db.getFacturasAnuladas()
-      .then(data => setFacturasAnuladas(data)) // sin filtrarZona — las anuladas se muestran sin filtro de zona
+      .then(data => setFacturasAnuladas(usuario.rol === "dueno" ? filtrarZona(data) : data)) // sin filtrarZona — las anuladas se muestran sin filtro de zona
       .catch(() => {});
   }, []);
 
@@ -5471,7 +5471,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
               onChange={e => setFiltroZona(e.target.value)}
               style={{ border: "1px solid " + colorBanner + "55", background: "#fff", color: colorBanner, fontSize: 13, fontWeight: 700, borderRadius: 7, padding: "4px 8px", cursor: "pointer" }}
             >
-              <option value="todas">🌐 Todas las zonas</option>
+              {usuario.rol !== "dueno" && <option value="todas">🌐 Todas las zonas</option>}
               {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
             </select>
             <span style={{ color: GC.ink3, fontSize: 12 }}>
@@ -6458,7 +6458,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         </Sel>
         {esAdmin && zonas.length > 1 && (
           <Sel value={filtroZona} onChange={e => setFiltroZona(e.target.value)} style={{ width: "auto", minWidth: 120 }}>
-            <option value="todas">🌐 Todas</option>
+            {usuario.rol !== "dueno" && <option value="todas">🌐 Todas</option>}
             {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
           </Sel>
         )}
@@ -6716,7 +6716,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
                   {esAdmin && zonas.length > 1 && (
                     <Sel value={filtroZona} onChange={e => setFiltroZona(e.target.value)}
                       style={{ fontSize: 12, padding: "5px 8px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc", minWidth: 110 }}>
-                      <option value="todas">🌐 Todas</option>
+                      {usuario.rol !== "dueno" && <option value="todas">🌐 Todas</option>}
                       {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
                     </Sel>
                   )}
@@ -12523,7 +12523,7 @@ export default function App() {
         <PortalTecnico usuario={sesion} ordenes={ordenes} setOrdenes={setOrdenes} tickets={tickets} setTickets={setTickets} zonas={zonas} usuarios={usuarios} setUsuarios={setUsuarios} inventarioItems={inventarioItems} setInventarioItems={setInventarioItems} inventarioStock={inventarioStock} setInventarioStock={setInventarioStock} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
       {sesion && (sesion.rol === "admin" || sesion.rol === "superusuario" || sesion.rol === "jefe" || sesion.rol === "dueno") && (
-        <PortalAdmin usuarios={usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} inventarioItems={inventarioItems} setInventarioItems={setInventarioItems} inventarioStock={inventarioStock} setInventarioStock={setInventarioStock} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
+        <PortalAdmin usuarios={sesion.rol === "dueno" ? usuarios.filter(u => u.id === sesion.id || zonasDeUsuario(u).some(z => zonasDeUsuario(sesion).includes(z))) : usuarios} setUsuarios={setUsuarios} avisos={avisos} setAvisos={setAvisos} tickets={tickets} setTickets={setTickets} ordenes={sesion.rol === "dueno" ? ordenes.filter(o => zonasDeUsuario(sesion).includes(o.zonaId)) : ordenes} setOrdenes={setOrdenes} planes={planes} setPlanes={setPlanes} perfilesPago={perfilesPago} setPerfilesPago={setPerfilesPago} zonas={sesion.rol === "dueno" ? zonas.filter(z => zonasDeUsuario(sesion).includes(z.id)) : zonas} setZonas={setZonas} propaganda={propaganda} setPropaganda={setPropaganda} sesion={sesion} setSesion={setSesion} inventarioItems={inventarioItems} setInventarioItems={setInventarioItems} inventarioStock={inventarioStock} setInventarioStock={setInventarioStock} tabExterno={tabActual} setTabExterno={(t) => { setTabActual(t); try { localStorage.setItem("gc_last_tab", t); } catch {} }} />
       )}
     </div>
   );
