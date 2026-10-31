@@ -8394,6 +8394,8 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
   const [nuevoMov, setNuevoMov] = useState({ tipo: "Ingreso", concepto: "", monto: "", fecha: fechaLocal(), observacion: "" });
   const [errMsg, setErrMsg] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("todos");
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
   const [confirmDel, setConfirmDel] = useState(null);
   // Saldo base: ahora vive en la BD, por zona (tabla zonas.saldo_base) — ya no en localStorage,
   // que era compartido entre cualquier zona/computador y no reflejaba la caja real de cada oficina.
@@ -8635,6 +8637,32 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
     db.getTotalCobradoGlobal(zonaUsuario).then(setCobradoFacturasHistorico).catch(() => setCobradoFacturasHistorico(0));
   }, [zonaUsuario]);
 
+  // ── Rango de fechas (Desde / Hasta) ──
+  const [cobradoRango, setCobradoRango] = useState(null);
+  useEffect(() => {
+    if (!desde && !hasta) { setCobradoRango(null); return; }
+    let vivo = true;
+    db.getAbonosRango(desde || "2000-01-01", hasta || "2100-12-31")
+      .then(rows => { if (vivo) setCobradoRango(rows.filter(r => !zonaUsuario || r.zonaId === zonaUsuario).reduce((a, r) => a + r.monto, 0)); })
+      .catch(() => { if (vivo) setCobradoRango(0); });
+    return () => { vivo = false; };
+  }, [desde, hasta, zonaUsuario]);
+  const hayRango = !!(desde || hasta);
+  const rangoInvalido = !!(desde && hasta && desde > hasta);
+  const enRango = hayRango ? movimientos.filter(m => (!desde || m.fecha >= desde) && (!hasta || m.fecha <= hasta)) : movimientos;
+  const ingresosRango = enRango.filter(m => m.tipo === "Ingreso").reduce((a, m) => a + m.monto, 0);
+  const egresosRango = enRango.filter(m => m.tipo === "Egreso").reduce((a, m) => a + m.monto, 0);
+  const iso = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const ultimoDia = (y, m) => new Date(y, m + 1, 0).getDate();
+  const aplicarAtajo = (tipo) => {
+    const hoy = new Date(); const y = hoy.getFullYear(); const m = hoy.getMonth();
+    if (tipo === "hoy") { setDesde(fechaLocal()); setHasta(fechaLocal()); }
+    else if (tipo === "mes") { setDesde(iso(y, m, 1)); setHasta(iso(y, m, ultimoDia(y, m))); }
+    else if (tipo === "mesPasado") { const p = new Date(y, m - 1, 1); setDesde(iso(p.getFullYear(), p.getMonth(), 1)); setHasta(iso(p.getFullYear(), p.getMonth(), ultimoDia(p.getFullYear(), p.getMonth()))); }
+    else if (tipo === "q1") { setDesde(iso(y, m, 1)); setHasta(iso(y, m, 15)); }
+    else if (tipo === "q2") { setDesde(iso(y, m, 16)); setHasta(iso(y, m, ultimoDia(y, m))); }
+  };
+
   const totalIngresos = movimientos.filter(m => m.tipo === "Ingreso").reduce((s, m) => s + m.monto, 0);
   const totalEgresos = movimientos.filter(m => m.tipo === "Egreso").reduce((s, m) => s + m.monto, 0);
   // Saldo real disponible = base + TODO lo cobrado en facturas históricamente + ingresos manuales − egresos manuales.
@@ -8663,7 +8691,7 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
     catch(e) { alert("Error: " + e.message); }
   };
 
-  const filtrados = filtroTipo === "todos" ? movimientos : movimientos.filter(m => m.tipo === filtroTipo);
+  const filtrados = filtroTipo === "todos" ? enRango : enRango.filter(m => m.tipo === filtroTipo);
 
   return (
     <div>
@@ -8719,6 +8747,20 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
           <option value="Ingreso">Solo ingresos</option>
           <option value="Egreso">Solo egresos</option>
         </Sel>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, background: GC.bg2, border: "1px solid " + GC.border, borderRadius: 8, padding: "4px 10px", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: GC.ink3, whiteSpace: "nowrap" }}>📅 Desde:</span>
+          <Inp type="date" value={desde} onChange={e => setDesde(e.target.value)} style={{ width: 140, padding: "5px 8px", fontSize: 12 }} />
+          <span style={{ fontSize: 12, color: GC.ink3, whiteSpace: "nowrap" }}>Hasta:</span>
+          <Inp type="date" value={hasta} onChange={e => setHasta(e.target.value)} style={{ width: 140, padding: "5px 8px", fontSize: 12 }} />
+          {hayRango && (
+            <button onClick={() => { setDesde(""); setHasta(""); }} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 7, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Limpiar</button>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {[["hoy", "Hoy"], ["mes", "Este mes"], ["mesPasado", "Mes pasado"], ["q1", "1–15"], ["q2", "16–fin"]].map(([k, l]) => (
+            <button key={k} onClick={() => aplicarAtajo(k)} style={{ background: "#fff", color: GC.ink2, border: "1px solid " + GC.border, borderRadius: 20, padding: "5px 11px", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>{l}</button>
+          ))}
+        </div>
         <div style={{ flex: 1 }} />
         {/* Informe diario */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, background: GC.bg2, border: "1px solid " + GC.border, borderRadius: 8, padding: "4px 10px" }}>
@@ -8740,6 +8782,34 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
         </button>
         </>)}
       </div>
+
+      {/* Resumen del rango de fechas */}
+      {hayRango && (
+        <div style={{ background: "#fff", border: "1px solid " + GC.border, borderRadius: 12, padding: "14px 16px", marginBottom: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: GC.ink, marginBottom: 10 }}>
+            📅 {desde ? new Date(desde + "T12:00:00").toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }) : "Inicio"} → {hasta ? new Date(hasta + "T12:00:00").toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }) : "Hoy"}
+            <span style={{ fontWeight: 500, color: GC.ink3, marginLeft: 8 }}>· {enRango.length} movimientos de caja</span>
+          </div>
+          {rangoInvalido ? (
+            <div style={{ color: "#dc2626", fontSize: 13, fontWeight: 600 }}>⚠️ La fecha "Desde" es mayor que la fecha "Hasta".</div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 10 }}>
+              {[
+                ["🧾 Cobrado en facturas", cobradoRango === null ? "…" : formatCOP(cobradoRango), "#0891b2"],
+                ["💚 Ingresos de caja", formatCOP(ingresosRango), "#22c55e"],
+                ["🔴 Egresos (gastos)", formatCOP(egresosRango), "#ef4444"],
+                ["⚖️ Balance del período", cobradoRango === null ? "…" : formatCOP(cobradoRango + ingresosRango - egresosRango), (cobradoRango || 0) + ingresosRango - egresosRango >= 0 ? "#0ea5e9" : "#ef4444"],
+              ].map(([label, val, color]) => (
+                <div key={label} style={{ background: GC.bg2, border: "1px solid " + color + "33", borderTop: "3px solid " + color, borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 11, color: GC.ink3, marginBottom: 3 }}>{label}</div>
+                  <div style={{ fontWeight: 800, color, fontSize: 15 }}>{val}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: GC.ink4, marginTop: 8 }}>Balance = cobrado en facturas + ingresos de caja − egresos, solo dentro de estas fechas (no incluye el saldo base).</div>
+        </div>
+      )}
 
       {/* Modal nuevo movimiento */}
       {showForm && (
