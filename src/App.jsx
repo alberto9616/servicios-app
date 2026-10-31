@@ -23,6 +23,8 @@ const sbRaw = createClient(SUPABASE_URL, SUPABASE_ANON);
 // Mientras esté activo, cualquier insert / update / upsert / delete, cualquier RPC que no sea
 // de consulta y cualquier subida de archivos devuelve un error en vez de tocar la base de datos.
 let MODO_SOLO_LECTURA = false;
+// Zonas visibles del rol Dueño (null = sin restricción). Si no tiene ninguna asignada, no ve ninguna.
+let ZONAS_DUENO = null;
 const RPC_SOLO_LECTURA = ["verificar_espacio_numeracion_zonas", "informe_gerencia_detallado", "get_total_cobrado_por_zona"];
 const avisarSoloLectura = () => { try { window.dispatchEvent(new CustomEvent("gc-solo-lectura")); } catch {} };
 const resultadoBloqueado = () => {
@@ -390,7 +392,7 @@ const db = {
   async getInformeGerenciaDetallado(fecha) {
     const { data, error } = await sb.rpc("informe_gerencia_detallado", { p_fecha: fecha });
     if (error) throw error;
-    return (data || []).map(r => ({
+    return (data || []).filter(r => !ZONAS_DUENO || ZONAS_DUENO.includes(r.zona_id)).map(r => ({
       zonaId: r.zona_id, zonaNombre: r.zona_nombre,
       secretarioId: r.secretario_id, secretarioNombre: r.secretario_nombre,
       cobradoDia: Number(r.cobrado_dia), egresosDia: Number(r.egresos_dia), ingresosCajaDia: Number(r.ingresos_caja_dia),
@@ -411,7 +413,7 @@ const db = {
         .not("fecha_pago", "is", null)
         .lt("fecha_pago", fecha)
         .order("id");
-      if (zonaId) query = query.eq("zona_id", zonaId);
+      if (zonaId) query = query.eq("zona_id", zonaId); else if (ZONAS_DUENO) query = query.in("zona_id", ZONAS_DUENO);
       const { data, error } = await query.range(from, from + pageSize - 1);
       if (error) throw error;
       for (const f of (data || [])) {
@@ -573,7 +575,7 @@ const db = {
     // Si se pasa zonaId (usuario no-admin, o admin con una zona específica seleccionada),
     // se filtra DIRECTO en el servidor por zona_id — así nunca se traen datos de otra zona,
     // sin depender de un filtro posterior en el cliente.
-    const aplicarZona = (query) => zonaId ? query.eq("zona_id", zonaId) : query;
+    const aplicarZona = (query) => zonaId ? query.eq("zona_id", zonaId) : (ZONAS_DUENO ? query.in("zona_id", ZONAS_DUENO) : query);
     // Búsqueda amplia: se traen candidatos que contengan CUALQUIERA de las palabras escritas
     // (una consulta ilike por palabra). Esto da buen "recall" aunque el usuario escriba solo
     // el primer nombre y el apellido, se salte un segundo nombre, o los escriba en otro orden.
@@ -605,6 +607,7 @@ const db = {
     let query = sb.from("abonos")
       .select("*, facturas!inner(cliente_id, cliente_nombre, concepto, numero_recibo, zona_id, estado)")
       .eq("fecha", fecha);
+    if ((!zonaId || (Array.isArray(zonaId) && !zonaId.length)) && ZONAS_DUENO) zonaId = ZONAS_DUENO;
     if (Array.isArray(zonaId)) { if (zonaId.length > 0) query = query.in("facturas.zona_id", zonaId); }
     else if (zonaId) query = query.eq("facturas.zona_id", zonaId);
     const { data, error } = await query.order("created_at", { ascending: false });
@@ -625,7 +628,7 @@ const db = {
         .order("fecha", { ascending: true }).order("id", { ascending: true })
         .range(from, from + pageSize - 1);
       if (error) throw error;
-      (data || []).forEach(r => out.push({ monto: Number(r.monto || 0), fecha: r.fecha, zonaId: r.facturas?.zona_id || null }));
+      (data || []).filter(r => !ZONAS_DUENO || ZONAS_DUENO.includes(r.facturas?.zona_id)).forEach(r => out.push({ monto: Number(r.monto || 0), fecha: r.fecha, zonaId: r.facturas?.zona_id || null }));
       if (!data || data.length < pageSize) break;
       from += pageSize;
     }
@@ -658,7 +661,7 @@ const db = {
   async getCobrosRuta({ tecnicoId = null, zonaId = null, fecha = null, estado = null } = {}) {
     let q = sb.from("cobros_ruta").select("*").order("created_at", { ascending: false });
     if (tecnicoId) q = q.eq("tecnico_id", tecnicoId);
-    if (zonaId) q = q.eq("zona_id", zonaId);
+    if (zonaId) q = q.eq("zona_id", zonaId); else if (ZONAS_DUENO) q = q.in("zona_id", ZONAS_DUENO);
     if (fecha) q = q.eq("fecha", fecha);
     if (estado) q = q.eq("estado", estado);
     const { data, error } = await q;
@@ -880,7 +883,7 @@ const db = {
     if (error) throw error;
     const totales = {};
     (data || []).forEach(r => {
-      if (r.zona_id) totales[r.zona_id] = Number(r.total || 0);
+      if (r.zona_id && (!ZONAS_DUENO || ZONAS_DUENO.includes(r.zona_id))) totales[r.zona_id] = Number(r.total || 0);
     });
     return totales;
   },
@@ -895,7 +898,7 @@ const db = {
         .select("monto, facturas!inner(estado, zona_id)")
         .neq("facturas.estado", "Anulada")
         .order("id");
-      if (zonaId) query = query.eq("facturas.zona_id", zonaId);
+      if (zonaId) query = query.eq("facturas.zona_id", zonaId); else if (ZONAS_DUENO) query = query.in("facturas.zona_id", ZONAS_DUENO);
       const { data, error } = await query.range(from, from + pageSize - 1);
       if (error) throw error;
       if (!data || data.length === 0) break;
@@ -911,7 +914,7 @@ const db = {
     let from = 0;
     while (true) {
       let query = sb.from("caja_movimientos").select("*");
-      if (zonaId) query = query.eq("zona_id", zonaId);
+      if (zonaId) query = query.eq("zona_id", zonaId); else if (ZONAS_DUENO) query = query.in("zona_id", ZONAS_DUENO);
       const { data, error } = await query.order("fecha", { ascending: false }).order("created_at", { ascending: false }).order("id").range(from, from + PAGE - 1);
       if (error) throw error;
       all = all.concat(data || []);
@@ -5199,7 +5202,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
   const [subTab, setSubTab] = useState("emitidas");
   const [filtroMes, setFiltroMes]   = useState(new Date().getMonth() + 1);
   const [filtroAnio, setFiltroAnio] = useState(new Date().getFullYear());
-  const [filtroZona, setFiltroZona] = useState(usuario.rol === "dueno" ? (zonasDeUsuario(usuario)[0] || "sin-zona") : "todas");
+  const [filtroZona, setFiltroZona] = useState("todas");
 
   // ── estados compartidos ──
   const [modalAbono, setModalAbono] = useState(null);
@@ -5473,7 +5476,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
               onChange={e => setFiltroZona(e.target.value)}
               style={{ border: "1px solid " + colorBanner + "55", background: "#fff", color: colorBanner, fontSize: 13, fontWeight: 700, borderRadius: 7, padding: "4px 8px", cursor: "pointer" }}
             >
-              {usuario.rol !== "dueno" && <option value="todas">🌐 Todas las zonas</option>}
+              <option value="todas">🌐 Todas las zonas</option>
               {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
             </select>
             <span style={{ color: GC.ink3, fontSize: 12 }}>
@@ -6460,7 +6463,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
         </Sel>
         {esAdmin && zonas.length > 1 && (
           <Sel value={filtroZona} onChange={e => setFiltroZona(e.target.value)} style={{ width: "auto", minWidth: 120 }}>
-            {usuario.rol !== "dueno" && <option value="todas">🌐 Todas</option>}
+            <option value="todas">🌐 Todas</option>
             {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
           </Sel>
         )}
@@ -6720,7 +6723,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
                   {esAdmin && zonas.length > 1 && (
                     <Sel value={filtroZona} onChange={e => setFiltroZona(e.target.value)}
                       style={{ fontSize: 12, padding: "5px 8px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#f8fafc", minWidth: 110 }}>
-                      {usuario.rol !== "dueno" && <option value="todas">🌐 Todas</option>}
+                      <option value="todas">🌐 Todas</option>
                       {zonas.map(z => <option key={z.id} value={z.id}>📍 {z.nombre}</option>)}
                     </Sel>
                   )}
@@ -12224,6 +12227,7 @@ export default function App() {
   const [sesion, setSesionRaw] = useState(null);
   // Solo lectura: se recalcula en cada render, así también aplica al restaurar una sesión guardada.
   MODO_SOLO_LECTURA = ["jefe", "dueno"].includes(sesion?.rol);
+  ZONAS_DUENO = sesion?.rol === "dueno" ? (zonasDeUsuario(sesion).length ? zonasDeUsuario(sesion) : ["__sin_zona__"]) : null;
   const [loginUser, setLoginUser] = useState(() => {
     try { return localStorage.getItem("gc_remember_user") || ""; } catch { return ""; }
   });
