@@ -5486,7 +5486,7 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
         );
       })()}
       {/* ── Mini menú ── */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: GC.bg3, borderRadius: 12, padding: 4 }}>
+      <div className="gc-scroll-x" style={{ display: "flex", gap: 4, marginBottom: 20, background: GC.bg3, borderRadius: 12, padding: 4 }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setSubTab(t.key)}
             style={{ flex: 1, padding: "9px 6px", borderRadius: 9, border: "none", cursor: "pointer",
@@ -6454,7 +6454,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   return (
     <div>
       {/* Controles top */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+      <div className="gc-toolbar" style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
         <Sel value={filtroMes} onChange={e => setFiltroMes(Number(e.target.value))} style={{ width: "auto", minWidth: 120 }}>
           {MESES.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
         </Sel>
@@ -9850,7 +9850,7 @@ function PanelCortes({ usuarios, perfilesPago, sesion, db }) {
   return (
     <div>
       {/* Sub-tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 20, background: GC.bg3, borderRadius: 12, padding: 4 }}>
+      <div className="gc-scroll-x" style={{ display: "flex", gap: 4, marginBottom: 20, background: GC.bg3, borderRadius: 12, padding: 4 }}>
         {[["config","⚙️ Configuración"],["excepciones","📆 Excepciones"],["promesas","🤝 Promesas de pago"]].map(([k,l]) => (
           <button key={k} onClick={() => setSubTab(k)} style={{ flex: 1, padding: "9px 6px", borderRadius: 9, border: "none", cursor: "pointer", background: subTab === k ? GC.ink : "transparent", color: subTab === k ? "#fff" : GC.ink3, fontWeight: subTab === k ? 700 : 500, fontSize: 13, fontFamily: "inherit" }}>{l}</button>
         ))}
@@ -12479,10 +12479,23 @@ export default function App() {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: GC.bg2, color: GC.ink, fontFamily: "'Plus Jakarta Sans', 'Segoe UI', sans-serif" }}>
+    <div style={{ minHeight: "100vh", maxWidth: "100%", overflowX: "clip", background: GC.bg2, color: GC.ink, fontFamily: "'Plus Jakarta Sans', 'Segoe UI', sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
         * { box-sizing: border-box; }
+        html, body { margin: 0; max-width: 100%; overflow-x: hidden; -webkit-text-size-adjust: 100%; }
+        /* Barras de pestañas: se deslizan con el dedo en vez de estirar toda la página */
+        .gc-scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; max-width: 100%; }
+        .gc-scroll-x::-webkit-scrollbar { display: none; }
+        .gc-scroll-x > button { flex: 1 0 auto !important; white-space: nowrap; }
+        @media (max-width: 720px) {
+          /* Barra de filtros/botones: se reparte el ancho y no deja botones sueltos */
+          .gc-toolbar > select, .gc-toolbar > button { flex: 1 1 auto; }
+          .gc-toolbar > div:empty { display: none; }
+          /* Cualquier tabla ancha se desliza dentro de su cuadro, sin ensanchar la página */
+          div:has(> table) { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+          img, video { max-width: 100%; height: auto; }
+        }
         ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #FDF5E6; } ::-webkit-scrollbar-thumb { background: ${GC.border2}; border-radius: 3px; }
         input:focus, select:focus, textarea:focus { border-color: ${GC.brand} !important; box-shadow: 0 0 0 3px ${GC.brandLight}; }
         button { transition: opacity 0.15s; } button:active { opacity: 0.8; }
