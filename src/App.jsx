@@ -5427,20 +5427,22 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
           👁️ Ver
         </button>
       )}
+      {!esSoloLecturaRol(usuario) && (
       <button onClick={async () => {
         const abs = await db.getAbonos(f.id).catch(() => []);
         setModalRecibo({ factura: f, abonos: abs });
       }} style={{ background: GC.brandLight, color: GC.brand, border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
         🖨️
       </button>
+      )}
       {/* Anular: solo admin y superusuario */}
-      {f.estado !== "Anulada" && (esSuperusuario || esAdmin) && (
+      {f.estado !== "Anulada" && (esSuperusuario || esAdmin) && !esSoloLecturaRol(usuario) && (
         <button onClick={() => setConfirmAnular({ id: f.id, nombre: f.clienteNombre })}
           style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
           title="Anular factura">🚫</button>
       )}
       {/* Eliminar: admin y superusuario */}
-      {esAdmin && (
+      {esAdmin && !esSoloLecturaRol(usuario) && (
         <button onClick={() => setConfirmDelete({ id: f.id, nombre: f.clienteNombre })}
           style={{ background: "#fef2f2", color: GC.danger, border: "none", borderRadius: 7, padding: "5px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
           title="Eliminar permanentemente">🗑️</button>
@@ -6463,12 +6465,14 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
           </Sel>
         )}
         <div style={{ flex: 1 }} />
-        {esAdmin && <>
+        {esAdmin && !esSoloLecturaRol(usuario) && <>
           <button onClick={() => setModalExport("mes")} style={{ padding: "7px 11px", borderRadius: 8, border: "1px solid #22c55e", background: GC.brandLight, color: GC.brand, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel mes</button>
           <button onClick={() => setModalExport("anio")} style={{ padding: "7px 11px", borderRadius: 8, border: "1px solid #0ea5e9", background: "#eff6ff", color: GC.info, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>📊 Excel año</button>
         </>}
+        {!esSoloLecturaRol(usuario) && (<>
         <button onClick={() => setShowFormManual(true)} style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #8b5cf6", background: "#f5f3ff", color: "#7c3aed", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>+ Manual</button>
         <Btn onClick={() => setShowGenerarMasivo(true)} style={{ fontSize: 13 }}>⚡ Generar</Btn>
+        </>)}
       </div>
 
       {/* Tarjetas */}
@@ -7782,13 +7786,13 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
                 <td style={{ padding: "8px 6px" }}>
                   <div style={{ display: "flex", gap: 4 }}>
                     <button onClick={verFact} style={{ background: GC.infoBg, color: GC.info, border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 12 }} title="Ver factura">🧾</button>
-                    {(esAdmin || esSuperusuario) && f.estado !== "Anulada" && (
+                    {(esAdmin || esSuperusuario) && !esSoloLecturaRol(usuario) && f.estado !== "Anulada" && (
                       <button onClick={() => {
                         setEditFactData({ concepto: f.concepto, monto: f.monto, saldoPendiente: f.saldoPendiente, estado: f.estado, fechaPago: f.fechaPago || "", notas: f.notas || "" });
                         setModalEditFact(f);
                       }} style={{ background: "#eff6ff", color: "#1d4ed8", border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 12 }} title="Editar factura">✏️</button>
                     )}
-                    {f.estado !== "Anulada" && (esAdmin || esSuperusuario) && (
+                    {f.estado !== "Anulada" && (esAdmin || esSuperusuario) && !esSoloLecturaRol(usuario) && (
                       <button onClick={() => setConfirmAnular({ id: f.id, nombre: f.clienteNombre })}
                         style={{ background: "#fffbeb", color: "#d97706", border: "none", borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontSize: 12 }} title="Anular">🚫</button>
                     )}
@@ -8722,6 +8726,7 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
             🖨️ Generar
           </button>
         </div>
+        {!esSoloLecturaRol(usuario) && (<>
         <button onClick={() => { setNuevoMov({ tipo: "Ingreso", concepto: "", monto: "", fecha: fechaLocal(), observacion: "" }); setShowForm(true); setErrMsg(""); }}
           style={{ background: GC.brandLight, color: GC.brand, border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
           💚 + Ingreso
@@ -8730,6 +8735,7 @@ function ModuloCaja({ usuario, esAdmin = false, facturas = [], nombreEmpresa = "
           style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
           🔴 + Egreso
         </button>
+        </>)}
       </div>
 
       {/* Modal nuevo movimiento */}
@@ -12159,8 +12165,9 @@ function SideNavTrigger({ sesion, tab, setTab, cerrarSesion, ticketsNuevos, orde
 //  3) Oculta los botones de acción de escritura (Nuevo, Editar, Eliminar, Guardar, Anular, Abonar...)
 //     para que el jefe ni siquiera los vea. Es solo cosmético: el bloqueo real está en `sb`.
 // ══════════════════════════════════════════════════════════════
-const ACCIONES_ESCRITURA = /^(\+|nuevo|nueva|crear|agregar|anadir|editar|modificar|eliminar|borrar|quitar|guardar|anular|abonar|abono|registrar|cobrar|pagar|reactivar|desactivar|activar|suspender|reconectar|asignar|reasignar|completar|enviar|importar|emitir|aprobar|restaurar|duplicar|reabrir|cargar saldo|corregir)\b/;
-const ICONOS_ESCRITURA = /[✏🗑➕]/u;
+const esSoloLecturaRol = (u) => ["jefe", "dueno"].includes(u?.rol);
+const ACCIONES_ESCRITURA = /^(\+|(nuevo|nueva|crear|agregar|anadir|editar|modificar|eliminar|borrar|quitar|guardar|anular|abonar|abono|registrar|cobrar|pagar|reactivar|desactivar|activar|suspender|reconectar|asignar|reasignar|completar|enviar|importar|emitir|aprobar|restaurar|duplicar|reabrir|cargar saldo|corregir)\b)/;
+const ICONOS_ESCRITURA = /[✏🗑➕🚫🖨]/u;
 function ModoSoloLectura() {
   const [toast, setToast] = useState(false);
 
