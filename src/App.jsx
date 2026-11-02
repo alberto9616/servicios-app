@@ -4456,6 +4456,142 @@ function ModalConfirm({ titulo, mensaje, icono, onConfirm, onCancel }) {
   );
 }
 
+// ══════════════════════════════════════════════════════════════
+// TIRILLAS EN TEXTO (ESC/POS) — mismo sistema que el recibo de pago:
+// vista previa en pantalla + botón "Este equipo" (QZ Tray) + cola de impresora remota.
+// Lo que ves en la vista previa es EXACTAMENTE lo que sale en la impresora térmica.
+// ══════════════════════════════════════════════════════════════
+const T_COLS = 40; // TM-U220D: 40 columnas
+const tDash = () => "-".repeat(T_COLS) + "\n";
+const tCenter = (txt) => { const t = String(txt ?? "").slice(0, T_COLS); return " ".repeat(Math.max(0, Math.floor((T_COLS - t.length) / 2))) + t + "\n"; };
+const tCols = (izq, der) => {
+  const r = String(der ?? "");
+  const l = String(izq ?? "").slice(0, Math.max(1, T_COLS - r.length - 1));
+  return l + " ".repeat(Math.max(1, T_COLS - l.length - r.length)) + r + "\n";
+};
+const tMoney = (n) => { const v = Math.round(Number(n) || 0); return (v < 0 ? "-" : "") + "$" + Math.abs(v).toLocaleString("en-US").replace(/,/g, "."); };
+const tWrap = (txt, indent = 0) => {
+  const ancho = T_COLS - indent, pad = " ".repeat(indent), out = [];
+  let linea = "";
+  String(txt ?? "").split(/\s+/).filter(Boolean).forEach(p => {
+    if ((linea + " " + p).trim().length > ancho) { if (linea) out.push(linea); linea = p.slice(0, ancho); }
+    else linea = (linea + " " + p).trim();
+  });
+  if (linea) out.push(linea);
+  return out.map(l => pad + l + "\n").join("");
+};
+
+// Envía texto crudo a la impresora térmica con QZ Tray (lanza error si algo falla)
+async function imprimirRawQZ(data, jobName = "GC HOGAR - Tirilla") {
+  if (!window.qz) {
+    await new Promise((res, rej) => {
+      let n = 0;
+      const c = setInterval(() => { n++; if (window.qz) { clearInterval(c); res(); } else if (n > 30) { clearInterval(c); rej(new Error("QZ_NO_CARGADO")); } }, 100);
+    });
+  }
+  const q = window.qz;
+  configurarSeguridadQZ();
+  if (!q.websocket.isActive()) await q.websocket.connect({ retries: 3, delay: 1 });
+  let impresora = null;
+  try { const l = await q.printers.find("TM-U220"); impresora = Array.isArray(l) ? l[0] : l; } catch {}
+  if (!impresora) impresora = await q.printers.getDefault();
+  if (!impresora) throw new Error("Sin impresora detectada");
+  const config = q.configs.create(impresora, { encoding: "Cp1252", copies: 1, jobName });
+  await q.print(config, [{ type: "raw", format: "plain", data }]);
+}
+
+function TirillaTexto({ titulo, texto, onClose, usuario, facturaId = null }) {
+  const [qzEstado, setQzEstado] = useState("idle");
+  const [impresoras, setImpresoras] = useState([]);
+  const [impresoraSel, setImpresoraSel] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    db.getImpresoras().then(list => {
+      const activas = list.filter(p => p.activa);
+      setImpresoras(activas);
+      if (activas.length === 1) setImpresoraSel(activas[0].id);
+    }).catch(() => {});
+  }, []);
+
+  const escpos = () => "\x1B@\n\x1Ba\x00" + texto + "\n\n\n\x1DV\x41\x03";
+
+  const imprimirQZ = async () => {
+    setQzEstado("conectando");
+    try {
+      await imprimirRawQZ(escpos(), "GC HOGAR - " + titulo);
+      setQzEstado("ok");
+      setTimeout(() => setQzEstado("idle"), 2500);
+    } catch (e) {
+      console.error("QZ Error:", e);
+      setQzEstado("error");
+      setTimeout(() => setQzEstado("idle"), 3000);
+      const msg = String(e.message || e);
+      if (msg === "QZ_NO_CARGADO" || msg.includes("object Event") || msg.includes("No cargado")) alert("El archivo qz-tray.js no está cargado.\n\nRecarga la página o usa el botón del navegador (🌐).");
+      else if (msg.includes("Unable to establish") || msg.includes("websocket")) alert("QZ Tray no responde.\nVerifica que esté corriendo (icono en la barra de tareas).");
+      else if (msg.includes("certificate") || msg.includes("unsigned")) alert("Error de certificado.\nClic derecho en QZ Tray → Advanced → Allow unsigned content");
+      else alert("Error: " + msg + "\n\nUsa el botón del navegador (🌐).");
+    }
+  };
+
+  const imprimirNavegador = () => {
+    const ventana = window.open("", "_blank", "width=380,height=750");
+    if (!ventana) return;
+    const seguro = texto.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    ventana.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 76mm; }
+      body { padding: 2mm 3mm; }
+      pre { font-family: 'Courier New', Courier, monospace; font-size: 9.5pt; line-height: 1.25; color: #000; }
+      @page { size: 76mm auto; margin: 2mm 3mm; }
+    </style></head><body><pre>${seguro}</pre></body></html>`);
+    ventana.document.close(); ventana.focus();
+    setTimeout(() => { ventana.print(); ventana.close(); }, 600);
+  };
+
+  const colorQz = { idle: GC.brand, conectando: "#f59e0b", ok: "#16a34a", error: "#ef4444" }[qzEstado];
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#00000077", zIndex: 9600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: "#fff", borderRadius: 16, width: "100%", maxWidth: 380, maxHeight: "95vh", overflowY: "auto", boxShadow: "0 20px 60px #00000033" }}>
+        <div style={{ display: "flex", gap: 8, padding: "14px 16px", borderBottom: "1px solid #e2e8f0", flexWrap: "wrap" }}>
+          {impresoras.length > 1 && (
+            <Sel value={impresoraSel} onChange={e => setImpresoraSel(e.target.value)} style={{ flex: 2, fontSize: 12 }}>
+              <option value="">Seleccionar impresora...</option>
+              {impresoras.map(p => <option key={p.id} value={p.id}>{p.nombre} {p.zona_nombre ? "· " + p.zona_nombre : ""}</option>)}
+            </Sel>
+          )}
+          {impresoras.length > 0 && (
+            <button onClick={async () => {
+              if (!impresoraSel) { alert("Selecciona una impresora."); return; }
+              setEnviando(true);
+              try { await db.encolarImpresion(impresoraSel, escpos(), facturaId, usuario?.usuario); alert("Trabajo enviado a la impresora. Se imprimirá automáticamente."); }
+              catch (e) { alert("Error al enviar: " + e.message); }
+              setEnviando(false);
+            }} disabled={enviando || !impresoraSel}
+              style={{ flex: 1, background: "#7c3aed", color: "#fff", border: "none", borderRadius: 9, padding: "10px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, fontFamily: "inherit", opacity: enviando ? 0.7 : 1 }}>
+              {enviando ? "⏳ Enviando..." : "📡 " + (impresoras.length === 1 ? impresoras[0].nombre : "Enviar a impresora")}
+            </button>
+          )}
+          <button onClick={imprimirQZ} disabled={qzEstado === "conectando"}
+            style={{ flex: impresoras.length > 0 ? 1 : 2, background: colorQz, color: "#fff", border: "none", borderRadius: 9, padding: "10px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, fontFamily: "inherit" }}>
+            {{ idle: "🖨️ Este equipo", conectando: "⏳ Conectando...", ok: "✅ ¡Impreso!", error: "❌ Error" }[qzEstado]}
+          </button>
+          <button onClick={imprimirNavegador} title="Imprimir desde el navegador"
+            style={{ background: GC.bg3, color: GC.ink3, border: "none", borderRadius: 9, padding: "10px 10px", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>🌐</button>
+          <button onClick={onClose} style={{ background: GC.bg3, border: "none", borderRadius: 8, padding: "9px 14px", cursor: "pointer", fontWeight: 700, fontSize: 13, color: GC.ink3 }}>Cerrar</button>
+        </div>
+        <div style={{ background: "#fef3c7", borderBottom: "1px solid #fde047", padding: "6px 14px", fontSize: 11, color: "#92400e" }}>
+          💡 Impresión nítida ESC/POS vía <a href="https://qz.io" target="_blank" rel="noreferrer" style={{ color: "#d97706", fontWeight: 700 }}>QZ Tray</a>
+          {window.qz ? " — listo ✅" : " — no detectado, intenta igual o usa 🌐"}
+        </div>
+        <div style={{ padding: "10px 12px", display: "flex", justifyContent: "center" }}>
+          <pre style={{ margin: 0, fontFamily: "'Courier New', monospace", fontSize: 12, lineHeight: 1.3, color: "#000", whiteSpace: "pre", overflowX: "auto", maxWidth: "100%" }}>{texto}</pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReciboImprimible({ factura, abonos, nombreEmpresa, telefono, telefono2, direccion, onClose, db, usuario }) {
   // El abono más reciente (este pago) vs. el total histórico abonado a la factura — son cosas distintas.
   // abonos viene ordenado por fecha y numeroPago descendente, así que abonos[0] es siempre el más reciente.
@@ -5811,6 +5947,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   const [facturaManual, setFacturaManual] = useState({ clienteId: "", mes: new Date().getMonth() + 1, anio: new Date().getFullYear(), notas: "", items: [], equiposItems: [] });
   const [guardandoManual, setGuardandoManual] = useState(false);
   const [tirilla, setTirilla] = useState(null);
+  const [tirillaTxt, setTirillaTxt] = useState(null);
   const [modalExport, setModalExport] = useState(null);
   const [exportando, setExportando] = useState(false);
   const [movimientosCaja, setMovimientosCaja] = useState([]);
@@ -6587,6 +6724,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
       )}
 
       {/* Modal tirilla */}
+      {tirillaTxt && <TirillaTexto titulo={tirillaTxt.titulo} texto={tirillaTxt.texto} usuario={usuario} onClose={() => setTirillaTxt(null)} />}
       {tirilla && (
         <div onClick={e => e.target === e.currentTarget && setTirilla(null)}
           style={{ position: "fixed", inset: 0, background: "#00000066", zIndex: 9500, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px 16px" }}>
@@ -6603,62 +6741,24 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
                       📊 Excel morosos
                     </button>
                   )}
-                  <button onClick={async () => {
-                    const fecha = new Date().toLocaleDateString("es-CO", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
-                    const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
-                    // La tirilla impresa muestra EXACTAMENTE lo mismo que el modal en pantalla
-                    // tirilla.filas ya contiene todos los datos correctos (cobros + ingresos + egresos)
-                    // tirilla.total es el total calculado igual que en pantalla
-                    const filasTirilla = tirilla.filas.map(f => {
-                      const esEgreso = f.monto < 0;
-                      const colorBg = f.estado === "Cobrado" ? "#dcfce7" : f.estado === "Ingreso" ? "#dbeafe" : f.estado === "Egreso" ? "#fee2e2" : {"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2","Anulada":"#f1f5f9"}[f.estado]||"#f1f5f9";
-                      const colorTxt = f.estado === "Cobrado" ? "#16a34a" : f.estado === "Ingreso" ? "#0369a1" : f.estado === "Egreso" ? "#b91c1c" : {"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c","Anulada":"#64748b"}[f.estado]||"#555";
-                      return `<tr><td class="td-nombre">${f.nombre}</td><td class="td-concepto">${f.detalle}</td><td class="td-estado"><span style="background:${colorBg};color:${colorTxt}">${f.estado}</span></td><td class="td-monto">${esEgreso ? cop(f.monto) : cop(f.monto)}</td></tr>`;
-                    }).join("");
-                    // Total es exactamente el mismo valor que muestra el modal
-                    const totalFinal = tirilla.total;
-                    const filasCaja = []; // ya incluido en tirilla.filas
-                    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Tirilla</title>
-                    <style>
-                      @page { size: 76mm auto; margin: 8mm 6mm; }
-                      * { box-sizing: border-box; margin: 0; padding: 0; }
-                      body { font-family: "Courier New", Courier, monospace; font-size: 9pt; color: #000; width: 64mm; background: #fff; padding: 4mm; line-height: 1.4; }
-                      .center { text-align: center; } .bold { font-weight: bold; }
-                      .empresa { font-size: 10.5pt; font-weight: 900; text-transform: uppercase; }
-                      .sep { border: none; border-top: 1px dashed #555; margin: 6px 0; }
-                      .sep-solid { border: none; border-top: 1px solid #000; margin: 5px 0; }
-                      .info { font-size: 8pt; margin: 3px 0; }
-                      table { width: 100%; border-collapse: collapse; margin: 4px 0; }
-                      th { font-size: 7.5pt; text-transform: uppercase; border-bottom: 1px solid #000; padding: 3px; text-align: left; }
-                      th.r { text-align: right; }
-                      .td-nombre { font-size: 8pt; font-weight: bold; padding: 4px 3px 2px; width: 35%; word-break: break-word; }
-                      .td-concepto { font-size: 7pt; color: #222; padding: 4px 3px 2px; width: 29%; word-break: break-word; }
-                      .td-estado span { font-size: 6.5pt; padding: 1px 3px; border-radius: 2px; font-weight: bold; }
-                      .td-estado { padding: 4px 3px 2px; width: 18%; }
-                      .td-monto { text-align: right; font-weight: bold; font-size: 8pt; padding: 4px 0 2px 3px; width: 18%; }
-                      tr { border-bottom: 1px dotted #aaa; }
-                      .subtotal-row td { font-size: 8pt; padding: 5px 3px; border-top: 1px dashed #555; border-bottom: none; }
-                      .total-row td { font-size: 10.5pt; font-weight: 900; padding: 6px 3px; border-top: 2px solid #000; }
-                      .footer { font-size: 7.5pt; text-align: center; margin-top: 8px; color: #222; }
-                      .btn-print { display: block; margin: 14px auto; padding: 9px 28px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; }
-                      @media print { .no-print { display: none !important; } body { width: 64mm; padding: 0; } }
-                    </style></head><body>
-                    <div class="center"><div class="empresa">${nombreEmpresa}</div><div class="info">Tel: 318-8255601</div><div class="info">Fecha: ${fecha}</div></div>
-                    <hr class="sep"/>
-                    <div class="center bold" style="font-size:9pt;margin:3px 0">${tirilla.titulo}</div>
-                    <div class="center" style="font-size:7.5pt;color:#444;margin-bottom:3px">${tirilla.subtitulo}</div>
-                    <hr class="sep"/>
-                    <table><thead><tr><th>Cliente / Concepto</th><th>Detalle</th><th>Estado</th><th class="r">Valor</th></tr></thead>
-                    <tbody>${filasTirilla}</tbody>
-                    <tr class="subtotal-row"><td colspan="3" class="bold">${tirilla.filas.length} registro${tirilla.filas.length !== 1 ? "s" : ""}</td><td style="text-align:right;font-weight:900">${cop(totalFinal)}</td></tr></table>
-                    <hr class="sep-solid"/>
-                    <table><tbody><tr class="total-row"><td colspan="3">${tirilla.labelTotal || "TOTAL"}</td><td style="text-align:right">${cop(totalFinal)}</td></tr></tbody></table>
-                    <hr class="sep"/><div class="footer">Firma: ______________________</div>
-                    <div class="footer" style="margin-top:8px">Gracias por su pago</div>
-                    <br/><button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir tirilla</button>
-                    </body></html>`;
-                    const w = window.open("", "_blank", "width=340,height=700");
-                    w.document.write(html); w.document.close();
+                  <button onClick={() => {
+                    const fecha = new Date().toLocaleString("es-CO", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+                    let t = "";
+                    t += tCenter(String(nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase()) + tCenter("Tel: 318-8255601") + tCenter(fecha) + tDash();
+                    t += tCenter(tirilla.titulo);
+                    if (tirilla.subtitulo) t += tWrap(tirilla.subtitulo);
+                    t += tDash();
+                    tirilla.filas.forEach(f => {
+                      t += tWrap(f.nombre);
+                      if (f.detalle) t += tWrap(f.detalle, 2);
+                      t += tCols("  " + f.estado, tMoney(f.monto));
+                      t += "\n";
+                    });
+                    t += tDash();
+                    t += tCols(tirilla.filas.length + " registro" + (tirilla.filas.length !== 1 ? "s" : ""), tMoney(tirilla.total));
+                    t += tCols(String(tirilla.labelTotal || "TOTAL").toUpperCase(), tMoney(tirilla.total));
+                    t += tDash() + "\n" + tCenter("Firma: ______________________") + "\n" + tCenter("Gracias por su pago");
+                    setTirillaTxt({ titulo: tirilla.titulo, texto: t });
                   }} style={{ background: GC.brandLight, color: GC.brand, border: "none", borderRadius: 8, padding: "0 12px", height: 32, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>🖨️ Imprimir</button>
                   <button onClick={() => setTirilla(null)} style={{ background: GC.bg3, border: "none", borderRadius: 8, width: 32, height: 32, cursor: "pointer", fontSize: 18, color: GC.ink3 }}>×</button>
                 </div>
@@ -7428,6 +7528,7 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
   const [clienteDetalle, setClienteDetalle] = useState(null);
   const [abonosDetalle, setAbonosDetalle] = useState({});
   const [modalEditFact, setModalEditFact] = useState(null); // factura a editar
+  const [tirillaTexto, setTirillaTexto] = useState(null);
   const [editFactData, setEditFactData] = useState({});
   const [guardandoEdit, setGuardandoEdit] = useState(false);
   const [abonosDia, setAbonosDia] = useState([]);
@@ -7545,59 +7646,41 @@ function SeccionHistorial({ usuario, facturas, setFacturas, facturasHistoricas =
   };
 
   const imprimirTirilla = (cliente, listaFact) => {
-    const cop = v => v.toLocaleString("es-CO", { style: "currency", currency: "COP", minimumFractionDigits: 0 });
     const zonaCliente = zonas.find(z => z.id === cliente?.zonaId);
     const contactoZona = getContactoZona(zonaCliente?.nombre);
-    const empresaTirilla = contactoZona?.nombreEmpresa || zonaCliente?.nombreEmpresa || nombreEmpresa;
+    const empresaTirilla = (contactoZona?.nombreEmpresa || zonaCliente?.nombreEmpresa || nombreEmpresa || "GC HOGAR.NET SAS").toUpperCase();
     const telTirilla = contactoZona?.telefono || "318-8255601";
-    const listaFactActiva = listaFact.filter(f => f.estado !== "Anulada");
-    const totalCli = listaFactActiva.reduce((s,f) => s + f.monto, 0);
-    const cobradoCli = listaFactActiva.reduce((s,f) => s + ((f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0))), 0);
+    const activas = listaFact.filter(f => f.estado !== "Anulada");
+    const cobradoDe = f => f.estado === "Anulada" ? 0 : (f.monto - f.saldoPendiente - (f.descuento_pronto_pago || 0));
+    const totalCli = activas.reduce((s, f) => s + f.monto, 0);
+    const cobradoCli = activas.reduce((s, f) => s + cobradoDe(f), 0);
+    const pendienteCli = activas.reduce((s, f) => s + f.saldoPendiente, 0);
     const pagadas = listaFact.filter(f => f.estado === "Pagado").length;
-    const filas = listaFact.map(f => {
-      const colorBg = {"Pagado":"#dcfce7","Pendiente":"#fef9c3","Abono parcial":"#dbeafe","Vencido":"#fee2e2","Anulada":"#f1f5f9"}[f.estado]||"#f1f5f9";
-      const colorTxt = {"Pagado":"#16a34a","Pendiente":"#92400e","Abono parcial":"#0369a1","Vencido":"#b91c1c","Anulada":"#64748b"}[f.estado]||"#555";
-      return `<tr><td>${f.numeroRecibo||"—"}</td><td>${MESES[(f.mes||1)-1]} ${f.anio}</td><td><span style="background:${colorBg};color:${colorTxt};padding:1px 5px;border-radius:3px;font-weight:bold">${f.estado}</span></td><td style="text-align:right">${cop(f.monto)}</td><td style="text-align:right;color:${f.saldoPendiente>0?"#dc2626":"#16a34a"}">${cop(f.monto-f.saldoPendiente)}</td></tr>`;
-    }).join("");
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Historial</title>
-    <style>
-      @page { size: 76mm auto; margin: 8mm 6mm; }
-      body { font-family: "Courier New", Courier, monospace; font-size: 9pt; color: #000; width: 64mm; padding: 4mm; line-height: 1.4; }
-      .center { text-align: center; } .bold { font-weight: bold; }
-      .sep { border: none; border-top: 1px dashed #555; margin: 6px 0; }
-      .sep-solid { border: none; border-top: 1px solid #000; margin: 5px 0; }
-      table { width: 100%; border-collapse: collapse; font-size: 7.5pt; }
-      th { border-bottom: 1px solid #000; padding: 3px 2px; text-align: left; font-size: 7pt; }
-      td { padding: 3px 2px; border-bottom: 1px dotted #ccc; }
-      .total-row td { font-weight: 900; border-top: 2px solid #000; font-size: 9pt; padding: 5px 2px; }
-      .btn-print { display: block; margin: 12px auto; padding: 8px 20px; background: #1d4ed8; color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 700; }
-      @media print { .btn-print { display: none; } body { width: 64mm; padding: 0; } }
-    </style></head><body>
-    <div class="center"><div class="bold" style="font-size:10.5pt;text-transform:uppercase">${empresaTirilla}</div><div style="font-size:8pt">Tel: ${telTirilla}</div></div>
-    <hr class="sep"/>
-    <div class="center bold" style="font-size:9pt">HISTORIAL DE PAGOS</div>
-    <div class="center" style="font-size:7.5pt;margin:2px 0">${new Date().toLocaleDateString("es-CO")}</div>
-    <hr class="sep"/>
-    <div class="bold" style="font-size:9pt">${cliente.nombre}</div>
-    <div style="font-size:7.5pt">CC: ${listaFact[0]?.clienteCedula||"—"}</div>
-    <div style="font-size:7.5pt">${listaFact[0]?.clienteDireccion||""}</div>
-    <hr class="sep"/>
-    <table><thead><tr><th>#</th><th>Mes</th><th>Estado</th><th style="text-align:right">Total</th><th style="text-align:right">Cobrado</th></tr></thead>
-    <tbody>${filas}</tbody>
-    <tr class="total-row"><td colspan="3">TOTALES (${listaFact.length} fact.)</td><td style="text-align:right">${cop(totalCli)}</td><td style="text-align:right;color:#16a34a">${cop(cobradoCli)}</td></tr>
-    </table>
-    <hr class="sep"/>
-    <div style="font-size:7.5pt;text-align:center">Facturas pagadas: ${pagadas} / ${listaFact.length}</div>
-    <hr class="sep"/>
-    <div style="font-size:7.5pt;text-align:center">Gracias por su pago</div>
-    <br/><button class="btn-print" onclick="window.print()">🖨️ Imprimir</button>
-    </body></html>`;
-    const w = window.open("", "_blank", "width=340,height=700");
-    w.document.write(html); w.document.close();
+    let t = "";
+    t += tCenter(empresaTirilla) + tCenter("Tel: " + telTirilla) + tDash();
+    t += tCenter("HISTORIAL DE PAGOS") + tCenter(new Date().toLocaleDateString("es-CO")) + tDash();
+    t += tWrap((cliente.nombre || "").toUpperCase());
+    t += tWrap("CC: " + (listaFact[0]?.clienteCedula || "-"));
+    if (listaFact[0]?.clienteDireccion) t += tWrap(listaFact[0].clienteDireccion);
+    t += tDash();
+    listaFact.forEach(f => {
+      t += tCols("#" + (f.numeroRecibo || "-") + " " + (MESES[(f.mes || 1) - 1] || "") + " " + f.anio, tMoney(f.monto));
+      t += tCols("   " + String(f.estado).toUpperCase(), "Cobrado " + tMoney(cobradoDe(f)));
+      if (f.metodoPago && f.estado !== "Anulada") t += "   Pago: " + String(f.metodoPago).slice(0, T_COLS - 10) + "\n";
+    });
+    t += tDash();
+    t += tCols("TOTAL FACTURADO (" + listaFact.length + ")", tMoney(totalCli));
+    t += tCols("TOTAL COBRADO", tMoney(cobradoCli));
+    t += tCols("SALDO PENDIENTE", tMoney(pendienteCli));
+    t += tDash();
+    t += tCenter("Facturas pagadas: " + pagadas + " / " + listaFact.length);
+    t += tCenter("Gracias por su pago");
+    setTirillaTexto({ titulo: "Historial de pagos", texto: t });
   };
 
   return (
     <div>
+      {tirillaTexto && <TirillaTexto titulo={tirillaTexto.titulo} texto={tirillaTexto.texto} usuario={usuario} onClose={() => setTirillaTexto(null)} />}
       {/* Filtros */}
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
         <Inp placeholder="🔍 Nombre, cédula o N° recibo..." value={busq} onChange={e => setBusq(e.target.value)} style={{ flex: 1, minWidth: 200 }} />
