@@ -5803,6 +5803,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
   const setFiltroZona = setFiltroZonaProp ?? (() => {});
   const [busq, setBusq] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("todos");
+  const [filtroMetodo, setFiltroMetodo] = useState("todos");
   const [showGenerarMasivo, setShowGenerarMasivo] = useState(false);
   const [generandoMasivo, setGenerandoMasivo] = useState(false);
   const [showFormManual, setShowFormManual] = useState(false);
@@ -5903,6 +5904,7 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     // 1. Si el usuario es secretario (no admin), SIEMPRE se restringe a su propia zona, sin excepción.
     // 2. Si es admin, se respeta el filtro visual que haya elegido (o "todas" para ver todo).
     const zonaObligatoria = !esAdmin ? usuario?.zonaId : (filtroZona !== "todas" ? filtroZona : null);
+    const matchMetodo = (f) => filtroMetodo === "todos" || (filtroMetodo === "sin" ? !f.metodoPago : f.metodoPago === filtroMetodo);
     const matchZona = (f) => {
       if (!zonaObligatoria) return true;
       // Buscar el cliente de la factura para ver su zona (fuente más confiable)
@@ -5911,18 +5913,18 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
     };
     if (q.length >= 2) {
       const matchEstado = (f) => filtroEstado === "todos" || f.estado === filtroEstado;
-      return resultadosBusqueda.filter(f => matchEstado(f) && matchZona(f));
+      return resultadosBusqueda.filter(f => matchEstado(f) && matchMetodo(f) && matchZona(f));
     }
     // Si filtra por Anulada: usar facturasAnuladas que contiene todas las anuladas históricas
     if (filtroEstado === "Anulada") {
       const todasAnuladas = [...facturas.filter(f => f.estado === "Anulada"), ...facturasAnuladas]
         .filter((f, i, arr) => arr.findIndex(x => x.id === f.id) === i);
-      return todasAnuladas.filter(f => matchZona(f));
+      return todasAnuladas.filter(f => matchZona(f) && matchMetodo(f));
     }
     // Sin busqueda: solo el mes/año seleccionado
     return facturas.filter(f => {
       const matchEstado = filtroEstado === "todos" || f.estado === filtroEstado;
-      return matchEstado && matchZona(f) && f.mes === filtroMes && f.anio === filtroAnio;
+      return matchEstado && matchMetodo(f) && matchZona(f) && f.mes === filtroMes && f.anio === filtroAnio;
     });
   })();
 
@@ -6522,6 +6524,14 @@ function SeccionEmitidas({ usuario, facturas, setFacturas, facturasHistoricas = 
           <option value="Vencido">Vencido</option>
           <option value="Anulada">Anulada</option>
         </Sel>
+        <Sel value={filtroMetodo} onChange={e => setFiltroMetodo(e.target.value)} style={{ width: "auto", minWidth: 130 }}>
+          <option value="todos">Todos los tipos de pago</option>
+          {METODOS_PAGO.map(m => <option key={m.id} value={m.id}>{m.emoji} {m.label}</option>)}
+          <option value="sin">Sin pago registrado</option>
+        </Sel>
+        {filtroMetodo !== "todos" && (
+          <button onClick={() => setFiltroMetodo("todos")} style={{ background: GC.bg3, color: GC.ink2, border: "none", borderRadius: 8, padding: "0 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Limpiar</button>
+        )}
       </div>
 
       {/* Lista facturas */}
@@ -12489,6 +12499,9 @@ export default function App() {
         .gc-scroll-x::-webkit-scrollbar { display: none; }
         .gc-scroll-x > button { flex: 1 0 auto !important; white-space: nowrap; }
         @media (max-width: 720px) {
+          /* Pestañas en celular: todas visibles, repartidas en filas (icono arriba, texto abajo) */
+          .gc-scroll-x { flex-wrap: wrap !important; overflow-x: visible; }
+          .gc-scroll-x > button { flex: 1 1 calc(33.333% - 4px) !important; flex-direction: column !important; gap: 2px !important; white-space: normal !important; text-align: center; font-size: 12px !important; line-height: 1.2; padding: 8px 4px !important; }
           /* Barra de filtros/botones: se reparte el ancho y no deja botones sueltos */
           .gc-toolbar > select, .gc-toolbar > button { flex: 1 1 auto; }
           .gc-toolbar > div:empty { display: none; }
