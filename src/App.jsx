@@ -25,6 +25,8 @@ const sbRaw = createClient(SUPABASE_URL, SUPABASE_ANON);
 let MODO_SOLO_LECTURA = false;
 // Zonas visibles del rol Dueño (null = sin restricción). Si no tiene ninguna asignada, no ve ninguna.
 let ZONAS_DUENO = null;
+let _timerRecargaAbonos = null;
+const _cacheTotalGlobal = new Map(); // zonaId|"todas" -> { t, v }
 const RPC_SOLO_LECTURA = ["verificar_espacio_numeracion_zonas", "informe_gerencia_detallado", "get_total_cobrado_por_zona"];
 const avisarSoloLectura = () => { try { window.dispatchEvent(new CustomEvent("gc-solo-lectura")); } catch {} };
 const resultadoBloqueado = () => {
@@ -890,6 +892,10 @@ const db = {
   async getTotalCobradoGlobal(zonaId = null) {
     // Suma real de TODOS los abonos excluyendo facturas anuladas
     // usando paginación para superar el límite de 1000 filas
+    // Recorre toda la tabla: se guarda 2 minutos para no saturar la base cuando varios usuarios abren la pantalla.
+    const llaveCache = (zonaId || "todas") + "|" + (ZONAS_DUENO ? ZONAS_DUENO.join(",") : "");
+    const enCache = _cacheTotalGlobal.get(llaveCache);
+    if (enCache && Date.now() - enCache.t < 2 * 60 * 1000) return enCache.v;
     let total = 0;
     let from = 0;
     const pageSize = 1000;
@@ -906,6 +912,7 @@ const db = {
       if (data.length < pageSize) break;
       from += pageSize;
     }
+    _cacheTotalGlobal.set(llaveCache, { t: Date.now(), v: total });
     return total;
   },
   async getMovimientosCaja(zonaId = null) {
@@ -5428,11 +5435,16 @@ function ModuloFacturacion({ usuario, usuarios, setUsuarios, zonas, planes, perf
       .subscribe();
     const canalAbonos = sb.channel("realtime-abonos")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "abonos" }, () => {
-        db.getAbonosByFecha(fechaLocal(), !esAdmin ? usuario?.zonaId : null).then(data => {
-          if (agregarAbonoHoyRef?.current?.recargar) agregarAbonoHoyRef.current.recargar(data);
-        }).catch(() => {});
+        // Se agrupan varios pagos seguidos en UNA sola recarga, y no se recarga si la pestaña está oculta
+        if (typeof document !== "undefined" && document.hidden) return;
+        clearTimeout(_timerRecargaAbonos);
+        _timerRecargaAbonos = setTimeout(() => {
+          db.getAbonosByFecha(fechaLocal(), !esAdmin ? usuario?.zonaId : null).then(data => {
+            if (agregarAbonoHoyRef?.current?.recargar) agregarAbonoHoyRef.current.recargar(data);
+          }).catch(() => {});
+        }, 3000);
       }).subscribe();
-    return () => { sb.removeChannel(canalFacturas); sb.removeChannel(canalAbonos); };
+    return () => { clearTimeout(_timerRecargaAbonos); sb.removeChannel(canalFacturas); sb.removeChannel(canalAbonos); };
   }, [filtroMes, filtroAnio]);
 
   // ── registrar abono ──
@@ -8152,19 +8164,36 @@ function SeccionInventario({ usuario, zonas, items, setItems, stock, setStock })
   );
 }
 
+const _cacheMaterialOrden = new Map(); // ordenId -> { t, data }
 function MaterialUsadoOrden({ orden, items, usuarioId, usuarioNombre }) {
-  const [movs, setMovs] = useState([]);
+  const [movs, setMovs] = useState(() => _cacheMaterialOrden.get(orden.id)?.data || []);
+  const rootRef = useRef(null);
+  const [visible, setVisible] = useState(false);
+  // Solo consulta a la base cuando la tarjeta entra en pantalla (antes consultaba TODAS las órdenes de golpe)
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") { setVisible(true); return; }
+    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { setVisible(true); io.disconnect(); } }, { rootMargin: "150px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [itemSel, setItemSel] = useState("");
   const [cantidad, setCantidad] = useState("");
   const [nota, setNota] = useState("");
   const [guardando, setGuardando] = useState(false);
 
-  const cargar = async () => {
-    try { setMovs(await db.getInventarioMovimientos({ ordenId: orden.id })); }
+  const cargar = async (forzar = false) => {
+    const c = _cacheMaterialOrden.get(orden.id);
+    if (c && !forzar && Date.now() - c.t < 5 * 60 * 1000) { setMovs(c.data); return; }
+    try {
+      const data = await db.getInventarioMovimientos({ ordenId: orden.id });
+      _cacheMaterialOrden.set(orden.id, { t: Date.now(), data });
+      setMovs(data);
+    }
     catch (e) { console.error("Error cargando material de la orden:", e); }
   };
-  useEffect(() => { cargar(); }, [orden.id]);
+  useEffect(() => { if (visible) cargar(); }, [orden.id, visible]);
 
   const registrar = async () => {
     const n = parseInt(cantidad, 10);
@@ -8178,7 +8207,7 @@ function MaterialUsadoOrden({ orden, items, usuarioId, usuarioNombre }) {
       });
       if (res.insuficiente) alert(`⚠️ No había suficiente stock: solo se descontaron ${Math.abs(res.cantidadAplicada)} unidades (quedó en 0).`);
       setItemSel(""); setCantidad(""); setNota(""); // deja el formulario abierto para seguir agregando más ítems
-      await cargar();
+      await cargar(true);
     } catch (e) { alert("Error registrando material: " + e.message); }
     setGuardando(false);
   };
@@ -8187,7 +8216,7 @@ function MaterialUsadoOrden({ orden, items, usuarioId, usuarioNombre }) {
   const totalUsado = usados.reduce((s, m) => s + Math.abs(m.cantidad), 0);
 
   return (
-    <div style={{ marginTop: 10, borderTop: "1px dashed #cbd5e1", paddingTop: 10 }} onClick={e => e.stopPropagation()}>
+    <div ref={rootRef} style={{ marginTop: 10, borderTop: "1px dashed #cbd5e1", paddingTop: 10 }} onClick={e => e.stopPropagation()}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontSize: 11, color: GC.ink3, textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 }}>
           🔧 Material usado {totalUsado > 0 ? `(${totalUsado} unid.)` : "· ninguno registrado"}
